@@ -16,7 +16,7 @@
 打开 Git Bash 后执行：
 
 ```bash
-cd /F/SummerSchool/SEU-CS-SummerSchool-2026
+cd ./SummerSchool/SEU-CS-SummerSchool-2026
 ```
 
 确认当前位置和仓库状态：
