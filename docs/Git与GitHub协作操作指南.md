@@ -29,7 +29,7 @@ git status
 进入成功后，终端提示通常带有当前分支名：
 
 ```text
-Lenovo@Laptop-Xuanhao MINGW64 /F/SummerSchool/SEU-CS-SummerSchool-2026 (main)
+Lenovo@Laptop-xxx MINGW64 ./SummerSchool/SEU-CS-SummerSchool-2026 (main)
 ```
 
 ## 3. 首次配置 Git 身份
