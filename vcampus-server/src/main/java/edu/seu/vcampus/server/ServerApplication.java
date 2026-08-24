@@ -5,6 +5,7 @@ import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.dispatcher.RequestDispatcher;
 import edu.seu.vcampus.server.network.VCampusServer;
 import edu.seu.vcampus.server.security.PasswordHasher;
+import edu.seu.vcampus.server.security.PermissionPolicy;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
@@ -24,7 +25,8 @@ public final class ServerApplication {
                 config.getDatabasePath(), passwordHasher);
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(userRepository, passwordHasher, sessions);
-        RequestDispatcher dispatcher = new RequestDispatcher(authService, sessions);
+        PermissionPolicy permissionPolicy = new PermissionPolicy();
+        RequestDispatcher dispatcher = new RequestDispatcher(authService, sessions, permissionPolicy);
         final VCampusServer server = new VCampusServer(
                 config.getPort(), config.getWorkerThreads(), dispatcher);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
