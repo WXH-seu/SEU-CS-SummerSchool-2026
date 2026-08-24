@@ -10,6 +10,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Access implementation of the user repository using UCanAccess. */
 public final class AccessUserRepository implements UserRepository {
@@ -33,18 +35,96 @@ public final class AccessUserRepository implements UserRepository {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) {
-                    return null;
-                }
-                return new UserAccount(
-                        result.getString("userId"),
-                        result.getString("passwordHash"),
-                        result.getString("passwordSalt"),
-                        result.getString("displayName"),
-                        Role.valueOf(result.getString("roleName")),
-                        result.getBoolean("active"));
+                return result.next() ? mapRow(result) : null;
             }
         }
+    }
+
+    @Override
+    public List<UserAccount> findAll() throws SQLException {
+        String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
+                + "[displayName], [roleName], [active] FROM [tblUser] ORDER BY [userId]";
+        List<UserAccount> users = new ArrayList<UserAccount>();
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                users.add(mapRow(result));
+            }
+        }
+        return users;
+    }
+
+    @Override
+    public void insert(UserAccount account) throws SQLException {
+        String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
+                + "[displayName], [roleName], [active]) VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, account.getUserId());
+            statement.setString(2, account.getPasswordHash());
+            statement.setString(3, account.getPasswordSalt());
+            statement.setString(4, account.getDisplayName());
+            statement.setString(5, account.getRole().name());
+            statement.setBoolean(6, account.isActive());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updateDisplayName(String userId, String displayName) throws SQLException {
+        String sql = "UPDATE [tblUser] SET [displayName] = ? WHERE [userId] = ?";
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, displayName);
+            statement.setString(2, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updatePassword(String userId, String passwordHash, String passwordSalt)
+            throws SQLException {
+        String sql = "UPDATE [tblUser] SET [passwordHash] = ?, [passwordSalt] = ? "
+                + "WHERE [userId] = ?";
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, passwordHash);
+            statement.setString(2, passwordSalt);
+            statement.setString(3, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updateActive(String userId, boolean active) throws SQLException {
+        String sql = "UPDATE [tblUser] SET [active] = ? WHERE [userId] = ?";
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, active);
+            statement.setString(2, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void delete(String userId) throws SQLException {
+        String sql = "DELETE FROM [tblUser] WHERE [userId] = ?";
+        try (Connection connection = openConnection(false);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    private UserAccount mapRow(ResultSet result) throws SQLException {
+        return new UserAccount(
+                result.getString("userId"),
+                result.getString("passwordHash"),
+                result.getString("passwordSalt"),
+                result.getString("displayName"),
+                Role.valueOf(result.getString("roleName")),
+                result.getBoolean("active"));
     }
 
     private void initializeDatabase() throws SQLException {
