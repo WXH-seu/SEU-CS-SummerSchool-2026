@@ -1,9 +1,10 @@
 package edu.seu.vcampus.client.ui;
 
+import edu.seu.vcampus.client.config.ClientConfig;
 import edu.seu.vcampus.client.network.ClientConnection;
+import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
-import edu.seu.vcampus.common.enums.Operation;
-import edu.seu.vcampus.common.message.RequestMessage;
+import edu.seu.vcampus.common.enums.Role;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -11,18 +12,24 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
-import java.io.Serializable;
 
-/** Main navigation shell for the five required modules. */
+/**
+ * Main navigation shell for the five required modules. The header shows the
+ * current identity together with account-management and logout actions, and
+ * module buttons the current role cannot use are disabled with an explicit
+ * permission hint. This mirrors the server-side {@code PermissionPolicy}.
+ */
 public final class MainFrame extends JFrame {
     private static final String[] CARD_NAMES = {
             "home", "student", "course", "library", "store"
@@ -31,15 +38,20 @@ public final class MainFrame extends JFrame {
             "首页", "学籍管理", "选课系统", "图书馆", "校园商店"
     };
 
+    private final ClientConfig config;
     private final ClientConnection connection;
     private final LoginResponse session;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
+    private final JLabel identityLabel = new JLabel();
+    private String displayName;
 
-    public MainFrame(ClientConnection connection, LoginResponse session) {
+    public MainFrame(ClientConfig config, ClientConnection connection, LoginResponse session) {
         super("东南大学虚拟校园");
+        this.config = config;
         this.connection = connection;
         this.session = session;
+        this.displayName = session.getDisplayName();
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setMinimumSize(new Dimension(1000, 650));
         setSize(1120, 720);
@@ -48,7 +60,7 @@ public final class MainFrame extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent event) {
-                logoutAndClose();
+                closeConnectionQuietly();
             }
         });
     }
@@ -87,6 +99,10 @@ public final class MainFrame extends JFrame {
             final String cardName = CARD_NAMES[i];
             JButton button = new JButton(BUTTON_NAMES[i]);
             button.setHorizontalAlignment(SwingConstants.LEFT);
+            if (!canEnterModule(cardName, session.getRole())) {
+                button.setEnabled(false);
+                button.setToolTipText("当前角色无权访问" + BUTTON_NAMES[i] + "模块");
+            }
             button.addActionListener(event -> cardLayout.show(cards, cardName));
             menu.add(button);
         }
@@ -98,24 +114,78 @@ public final class MainFrame extends JFrame {
         JPanel header = new JPanel(new BorderLayout());
         header.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(220, 224, 230)),
-                BorderFactory.createEmptyBorder(14, 24, 14, 24)));
-        JLabel identity = new JLabel(session.getDisplayName() + "  ·  " + session.getRole().name());
-        header.add(identity, BorderLayout.EAST);
+                BorderFactory.createEmptyBorder(12, 24, 12, 24)));
+
+        JLabel appTitle = new JLabel("东南大学虚拟校园");
+        appTitle.setFont(appTitle.getFont().deriveFont(Font.BOLD, 16f));
+        header.add(appTitle, BorderLayout.WEST);
+
+        JPanel identityPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 0));
+        identityLabel.setText(buildIdentityText());
+        identityPanel.add(identityLabel);
+
+        JButton accountButton = new JButton("账号管理");
+        accountButton.addActionListener(event ->
+                new AccountFrame(config, MainFrame.this, connection, session).setVisible(true));
+        identityPanel.add(accountButton);
+
+        JButton logoutButton = new JButton("退出登录");
+        logoutButton.addActionListener(event -> logout());
+        identityPanel.add(logoutButton);
+
+        header.add(identityPanel, BorderLayout.EAST);
         return header;
     }
 
-    private void logoutAndClose() {
-        try {
-            connection.request(new RequestMessage<Serializable>(
-                    Operation.USER_LOGOUT, session.getSessionToken(), null));
-        } catch (Exception ignored) {
-            // Closing the connection is sufficient if the server is unavailable.
-        } finally {
-            try {
-                connection.close();
-            } catch (IOException ignored) {
-                // Window is already closed.
+    /** Refreshes the header after the display name has been changed. */
+    public void updateDisplayName(String newDisplayName) {
+        this.displayName = newDisplayName;
+        identityLabel.setText(buildIdentityText());
+    }
+
+    private String buildIdentityText() {
+        return displayName + "（" + RoleNames.of(session.getRole()) + "）";
+    }
+
+    private void logout() {
+        final UserClientService service = new UserClientService(connection);
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                try {
+                    service.logout(session.getSessionToken());
+                } catch (Exception ignored) {
+                    // Closing the connection is sufficient when the server is gone.
+                }
+                return null;
             }
+
+            @Override
+            protected void done() {
+                dispose();
+                closeConnectionQuietly();
+                new LoginFrame(config).setVisible(true);
+            }
+        }.execute();
+    }
+
+    private void closeConnectionQuietly() {
+        try {
+            connection.close();
+        } catch (IOException ignored) {
+            // Window is already closed.
         }
+    }
+
+    /**
+     * Client-side mirror of the module entries in the server-side permission
+     * matrix. Keep this in sync with {@code PermissionPolicy} when modules are
+     * integrated.
+     */
+    private static boolean canEnterModule(String cardName, Role role) {
+        if ("student".equals(cardName)) {
+            return role == Role.TEACHER || role == Role.ADMIN;
+        }
+        return true;
     }
 }
