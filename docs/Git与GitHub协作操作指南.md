@@ -4,8 +4,6 @@
 
 本文档用于虚拟校园课程项目的五人 Git 协作，适用于 Windows Git Bash。
 
-- 本地仓库：`F:\SummerSchool\SEU-CS-SummerSchool-2026`
-- Git Bash 路径：`/F/SummerSchool/SEU-CS-SummerSchool-2026`
 - 远程仓库：<https://github.com/WXH-seu/SEU-CS-SummerSchool-2026>
 - 远程名称：`origin`
 - 稳定分支：`main`
