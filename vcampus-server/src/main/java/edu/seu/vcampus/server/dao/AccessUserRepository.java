@@ -1,11 +1,11 @@
 package edu.seu.vcampus.server.dao;
 
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
 
 import java.io.File;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,14 +13,17 @@ import java.sql.Statement;
 
 /** Access implementation of the user repository using UCanAccess. */
 public final class AccessUserRepository implements UserRepository {
-    private static final String DRIVER_CLASS = "net.ucanaccess.jdbc.UcanaccessDriver";
-
-    private final File databaseFile;
+    private final AccessDatabase database;
     private final PasswordHasher passwordHasher;
 
     public AccessUserRepository(String databasePath, PasswordHasher passwordHasher)
             throws SQLException {
-        this.databaseFile = new File(databasePath).getAbsoluteFile();
+        this(new AccessDatabase(databasePath), passwordHasher);
+    }
+
+    public AccessUserRepository(AccessDatabase database, PasswordHasher passwordHasher)
+            throws SQLException {
+        this.database = database;
         this.passwordHasher = passwordHasher;
         initializeDatabase();
     }
@@ -29,7 +32,7 @@ public final class AccessUserRepository implements UserRepository {
     public UserAccount findById(String userId) throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
                 + "[displayName], [roleName], [active] FROM [tblUser] WHERE [userId] = ?";
-        try (Connection connection = openConnection(false);
+        try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             try (ResultSet result = statement.executeQuery()) {
@@ -48,12 +51,7 @@ public final class AccessUserRepository implements UserRepository {
     }
 
     private void initializeDatabase() throws SQLException {
-        File parent = databaseFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new SQLException("Cannot create database directory: " + parent);
-        }
-        boolean create = !databaseFile.exists();
-        try (Connection connection = openConnection(create)) {
+        try (Connection connection = database.openConnection()) {
             if (!tableExists(connection, "tblUser")) {
                 createUserTable(connection);
             }
@@ -61,19 +59,6 @@ public final class AccessUserRepository implements UserRepository {
                 insertDemoUsers(connection);
             }
         }
-    }
-
-    private Connection openConnection(boolean create) throws SQLException {
-        try {
-            Class.forName(DRIVER_CLASS);
-        } catch (ClassNotFoundException e) {
-            throw new SQLException("UCanAccess driver not found", e);
-        }
-        String url = "jdbc:ucanaccess://" + databaseFile.getAbsolutePath();
-        if (create) {
-            url += ";newDatabaseVersion=V2010";
-        }
-        return DriverManager.getConnection(url);
     }
 
     private boolean tableExists(Connection connection, String tableName) throws SQLException {
@@ -131,6 +116,6 @@ public final class AccessUserRepository implements UserRepository {
     }
 
     public File getDatabaseFile() {
-        return databaseFile;
+        return database.getDatabaseFile();
     }
 }
