@@ -1,0 +1,28 @@
+# Maven and Java build output
+target/
+*.class
+*.log
+
+# Eclipse local metadata
+.metadata/
+.settings/
+.classpath
+.project
+
+# IntelliJ metadata from reference projects
+.idea/
+*.iml
+
+# Microsoft Office temporary and lock files
+~$*.docx
+~$*.xlsx
+*.laccdb
+*.ldb
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Local-only configuration and secrets
+*.local.properties
+credentials.txt
