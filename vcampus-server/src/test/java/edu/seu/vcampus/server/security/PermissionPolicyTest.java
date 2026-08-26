@@ -15,7 +15,7 @@ public class PermissionPolicyTest {
     public void publicOperationsNeedNoSession() {
         assertTrue(policy.isPublic(Operation.PING));
         assertTrue(policy.isPublic(Operation.USER_LOGIN));
-        assertTrue(policy.isPublic(Operation.USER_REGISTER));
+        assertFalse(policy.isPublic(Operation.USER_REGISTER));
         assertFalse(policy.isPublic(Operation.USER_LOGOUT));
     }
 
@@ -30,11 +30,19 @@ public class PermissionPolicyTest {
     }
 
     @Test
-    public void userAdministrationIsAdminOnly() {
+    public void userAdministrationIsAdminOrSuperAdmin() {
         assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.ADMIN));
+        assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN));
         assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.ADMIN));
+        assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.USER_REGISTER, Role.ADMIN));
+        assertTrue(policy.allows(Operation.USER_REGISTER, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.ADMIN));
+        assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN));
         assertFalse(policy.allows(Operation.USER_LIST_QUERY, Role.STUDENT));
         assertFalse(policy.allows(Operation.USER_STATUS_UPDATE, Role.TEACHER));
+        assertFalse(policy.allows(Operation.USER_REGISTER, Role.STUDENT));
+        assertFalse(policy.allows(Operation.USER_IMPORT_CSV, Role.TEACHER));
     }
 
     @Test
@@ -52,6 +60,13 @@ public class PermissionPolicyTest {
 
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.STUDENT));
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.ADMIN));
+        assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.SUPER_ADMIN));
+
+        // The super administrator is the global administrator with widest access.
+        assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.COURSE_SELECT, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.LIBRARY_BORROW, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.STORE_ORDER_CREATE, Role.SUPER_ADMIN));
     }
 
     @Test

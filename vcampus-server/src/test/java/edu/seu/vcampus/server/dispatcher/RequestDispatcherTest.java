@@ -1,8 +1,12 @@
 package edu.seu.vcampus.server.dispatcher;
 
+import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.UserImportRequest;
+import edu.seu.vcampus.common.dto.UserImportResponse;
+import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
@@ -19,14 +23,17 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.Serializable;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Verifies the dispatcher pipeline: public operations, session requirement,
- * role-based permission checks and user-module responses.
+ * Verifies the dispatcher pipeline with the admin-owned registration policy:
+ * public operations, session requirement, role-based permission checks and the
+ * user-module responses.
  */
 public class RequestDispatcherTest {
     @Rule
@@ -45,6 +52,14 @@ public class RequestDispatcherTest {
         dispatcher = new RequestDispatcher(authService, sessions, new PermissionPolicy());
     }
 
+    private String login(Role seedRole, String password) {
+        String userId = seedRole.name().toLowerCase();
+        ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<LoginRequest>(
+                Operation.USER_LOGIN, null, new LoginRequest(userId, password)));
+        assertEquals(ResponseCode.SUCCESS, response.getCode());
+        return ((LoginResponse) response.getBody()).getSessionToken();
+    }
+
     @Test
     public void pingWorksWithoutLogin() {
         ResponseMessage<?> response = dispatcher.dispatch(
@@ -61,21 +76,61 @@ public class RequestDispatcherTest {
     }
 
     @Test
-    public void registerLoginAndQueryFlowWorks() {
-        ResponseMessage<?> registered = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+    public void registerRequiresSession() {
+        ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, null,
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+        assertEquals(ResponseCode.UNAUTHORIZED, response.getCode());
+    }
+
+    @Test
+    public void studentCannotRegister() {
+        String token = login(Role.STUDENT, "student123");
+        ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, token,
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+        assertEquals(ResponseCode.FORBIDDEN, response.getCode());
+    }
+
+    @Test
+    public void adminRegistersThenUserLogsIn() {
+        String adminToken = login(Role.ADMIN, "admin123");
+
+        ResponseMessage<?> registered = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, adminToken,
                 new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
         assertEquals(ResponseCode.SUCCESS, registered.getCode());
-        String token = ((LoginResponse) registered.getBody()).getSessionToken();
-
-        ResponseMessage<?> query = dispatcher.dispatch(
-                new RequestMessage<Serializable>(Operation.USER_ACCOUNT_QUERY, token, null));
-        assertEquals(ResponseCode.SUCCESS, query.getCode());
+        AccountInfo created = (AccountInfo) registered.getBody();
+        assertEquals("stu2026", created.getUserId());
+        assertEquals(Role.STUDENT, created.getRole());
 
         ResponseMessage<?> duplicate = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
-                Operation.USER_REGISTER, null,
+                Operation.USER_REGISTER, adminToken,
                 new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
         assertEquals(ResponseCode.CONFLICT, duplicate.getCode());
+
+        ResponseMessage<?> studentLogin = dispatcher.dispatch(new RequestMessage<LoginRequest>(
+                Operation.USER_LOGIN, null, new LoginRequest("stu2026", "secret123")));
+        assertEquals(ResponseCode.SUCCESS, studentLogin.getCode());
+        String studentToken = ((LoginResponse) studentLogin.getBody()).getSessionToken();
+        assertEquals(ResponseCode.SUCCESS, dispatcher.dispatch(
+                new RequestMessage<Serializable>(Operation.USER_ACCOUNT_QUERY, studentToken, null)).getCode());
+    }
+
+    @Test
+    public void csvImportWorksForAdmin() {
+        String adminToken = login(Role.ADMIN, "admin123");
+        UserImportRequest payload = new UserImportRequest(Arrays.asList(
+                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT),
+                new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER)));
+
+        ResponseMessage<?> response = dispatcher.dispatch(
+                new RequestMessage<UserImportRequest>(Operation.USER_IMPORT_CSV, adminToken, payload));
+
+        assertEquals(ResponseCode.SUCCESS, response.getCode());
+        UserImportResponse result = (UserImportResponse) response.getBody();
+        assertEquals(2, result.getImported());
+        assertTrue(result.getFailures().isEmpty());
     }
 
     @Test
@@ -87,18 +142,12 @@ public class RequestDispatcherTest {
 
     @Test
     public void studentIsForbiddenFromAdminOperations() {
-        ResponseMessage<?> login = dispatcher.dispatch(new RequestMessage<LoginRequest>(
-                Operation.USER_LOGIN, null, new LoginRequest("student", "student123")));
-        String token = ((LoginResponse) login.getBody()).getSessionToken();
-
+        String token = login(Role.STUDENT, "student123");
         ResponseMessage<?> forbidden = dispatcher.dispatch(
                 new RequestMessage<Serializable>(Operation.USER_LIST_QUERY, token, null));
         assertEquals(ResponseCode.FORBIDDEN, forbidden.getCode());
 
-        ResponseMessage<?> adminList = dispatcher.dispatch(
-                new RequestMessage<LoginRequest>(
-                        Operation.USER_LOGIN, null, new LoginRequest("admin", "admin123")));
-        String adminToken = ((LoginResponse) adminList.getBody()).getSessionToken();
+        String adminToken = login(Role.ADMIN, "admin123");
         ResponseMessage<?> allowed = dispatcher.dispatch(
                 new RequestMessage<Serializable>(Operation.USER_LIST_QUERY, adminToken, null));
         assertEquals(ResponseCode.SUCCESS, allowed.getCode());
@@ -107,14 +156,10 @@ public class RequestDispatcherTest {
 
     @Test
     public void adminCanDisableStudentAccount() {
-        ResponseMessage<?> login = dispatcher.dispatch(new RequestMessage<LoginRequest>(
-                Operation.USER_LOGIN, null, new LoginRequest("admin", "admin123")));
-        String adminToken = ((LoginResponse) login.getBody()).getSessionToken();
-
+        String adminToken = login(Role.ADMIN, "admin123");
         ResponseMessage<?> result = dispatcher.dispatch(
-                new RequestMessage<edu.seu.vcampus.common.dto.UserStatusUpdateRequest>(
-                        Operation.USER_STATUS_UPDATE, adminToken,
-                        new edu.seu.vcampus.common.dto.UserStatusUpdateRequest("student", false)));
+                new RequestMessage<UserStatusUpdateRequest>(Operation.USER_STATUS_UPDATE, adminToken,
+                        new UserStatusUpdateRequest("student", false)));
         assertEquals(ResponseCode.SUCCESS, result.getCode());
 
         ResponseMessage<?> disabledLogin = dispatcher.dispatch(new RequestMessage<LoginRequest>(
@@ -123,11 +168,31 @@ public class RequestDispatcherTest {
     }
 
     @Test
-    public void unimplementedModuleOperationIsRejectedWithNotice() {
-        ResponseMessage<?> login = dispatcher.dispatch(new RequestMessage<LoginRequest>(
-                Operation.USER_LOGIN, null, new LoginRequest("student", "student123")));
-        String token = ((LoginResponse) login.getBody()).getSessionToken();
+    public void superAdminCanCreateAdministratorOverProtocol() {
+        ResponseMessage<?> loginRes = dispatcher.dispatch(new RequestMessage<LoginRequest>(
+                Operation.USER_LOGIN, null, new LoginRequest("superadmin", "super123")));
+        assertEquals(ResponseCode.SUCCESS, loginRes.getCode());
+        String superToken = ((LoginResponse) loginRes.getBody()).getSessionToken();
 
+        ResponseMessage<?> created = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, superToken,
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+        assertEquals(ResponseCode.SUCCESS, created.getCode());
+        assertEquals(Role.ADMIN, ((AccountInfo) created.getBody()).getRole());
+    }
+
+    @Test
+    public void subsystemAdminCannotRegisterAdministrator() {
+        String adminToken = login(Role.ADMIN, "admin123");
+        ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, adminToken,
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+        assertEquals(ResponseCode.FORBIDDEN, response.getCode());
+    }
+
+    @Test
+    public void unimplementedModuleOperationIsRejectedWithNotice() {
+        String token = login(Role.STUDENT, "student123");
         ResponseMessage<?> response = dispatcher.dispatch(
                 new RequestMessage<Serializable>(Operation.COURSE_QUERY, token, null));
         assertEquals(ResponseCode.NOT_IMPLEMENTED, response.getCode());

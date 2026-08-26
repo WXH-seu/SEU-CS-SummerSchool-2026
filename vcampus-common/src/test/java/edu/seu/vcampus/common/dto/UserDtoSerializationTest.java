@@ -51,6 +51,20 @@ public class UserDtoSerializationTest {
         assertFalse(roundTrip(new UserStatusUpdateRequest("stu2026", false)).isActive());
     }
 
+    @Test
+    public void importDtosRoundTrip() throws Exception {
+        UserImportRequest request = roundTrip(new UserImportRequest(Arrays.asList(
+                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT),
+                new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER))));
+        assertEquals(2, request.getUsers().size());
+
+        UserImportResponse response = roundTrip(new UserImportResponse(3,
+                Arrays.asList(new UserImportFailure(1, "s001", "账号已存在"))));
+        assertEquals(3, response.getImported());
+        assertEquals(1, response.getFailures().size());
+        assertEquals("账号已存在", response.getFailures().get(0).getReason());
+    }
+
     @SuppressWarnings("unchecked")
     private <T> T roundTrip(T value) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();

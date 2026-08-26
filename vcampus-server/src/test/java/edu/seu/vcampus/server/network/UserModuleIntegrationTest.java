@@ -5,6 +5,8 @@ import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.PasswordChangeRequest;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.UserImportRequest;
+import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
 import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
@@ -31,6 +33,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -102,15 +105,21 @@ public class UserModuleIntegrationTest {
     public void fullUserLifecycleOverTheWire() throws Exception {
         TestClient client = connect();
 
-        // 1. Register a new student and get a session automatically.
+        // 1. Authenticate as an administrator and register a student account.
+        String registerAsAdmin = loginAs(client, "admin", "admin123");
         ResponseMessage<?> registered = client.request(new RequestMessage<RegisterRequest>(
-                Operation.USER_REGISTER, null,
+                Operation.USER_REGISTER, registerAsAdmin,
                 new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
         assertEquals(ResponseCode.SUCCESS, registered.getCode());
-        LoginResponse session = (LoginResponse) registered.getBody();
-        String token = session.getSessionToken();
+        assertEquals("stu2026", ((AccountInfo) registered.getBody()).getUserId());
 
-        // 2. Query own account.
+        // 2. The new student logs in and gets a session.
+        ResponseMessage<?> studentLogin = client.request(new RequestMessage<LoginRequest>(
+                Operation.USER_LOGIN, null, new LoginRequest("stu2026", "secret123")));
+        assertEquals(ResponseCode.SUCCESS, studentLogin.getCode());
+        String token = ((LoginResponse) studentLogin.getBody()).getSessionToken();
+
+        // 3. Query own account.
         ResponseMessage<?> query = client.request(
                 new RequestMessage<Serializable>(Operation.USER_ACCOUNT_QUERY, token, null));
         assertEquals(ResponseCode.SUCCESS, query.getCode());
@@ -118,7 +127,7 @@ public class UserModuleIntegrationTest {
         assertEquals("stu2026", info.getUserId());
         assertEquals(Role.STUDENT, info.getRole());
 
-        // 3. Change password and log out.
+        // 4. Change password and log out.
         ResponseMessage<?> changed = client.request(new RequestMessage<PasswordChangeRequest>(
                 Operation.USER_PASSWORD_CHANGE, token,
                 new PasswordChangeRequest("secret123", "newpass456")));
@@ -127,7 +136,7 @@ public class UserModuleIntegrationTest {
                 new RequestMessage<Serializable>(Operation.USER_LOGOUT, token, null)).getCode());
         client.close();
 
-        // 4. Old password is rejected, new password logs in.
+        // 5. Old password is rejected, new password logs in.
         TestClient second = connect();
         ResponseMessage<?> oldLogin = second.request(new RequestMessage<LoginRequest>(
                 Operation.USER_LOGIN, null, new LoginRequest("stu2026", "secret123")));
@@ -137,7 +146,7 @@ public class UserModuleIntegrationTest {
         assertEquals(ResponseCode.SUCCESS, newLogin.getCode());
         String studentToken = ((LoginResponse) newLogin.getBody()).getSessionToken();
 
-        // 5. A student is forbidden from the administrator user list.
+        // 6. A student is forbidden from the administrator user list.
         ResponseMessage<?> forbidden = second.request(
                 new RequestMessage<Serializable>(Operation.USER_LIST_QUERY, studentToken, null));
         assertEquals(ResponseCode.FORBIDDEN, forbidden.getCode());
@@ -162,6 +171,14 @@ public class UserModuleIntegrationTest {
         }
         assertTrue(containsNewUser);
 
+        // 7. Administrator batch-imports a teacher via the CSV channel.
+        ResponseMessage<?> imported = adminClient.request(new RequestMessage<UserImportRequest>(
+                Operation.USER_IMPORT_CSV, adminToken,
+                new UserImportRequest(Arrays.asList(
+                        new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER)))));
+        assertEquals(ResponseCode.SUCCESS, imported.getCode());
+        assertEquals(1, ((UserImportResponse) imported.getBody()).getImported());
+
         ResponseMessage<?> disabled = adminClient.request(
                 new RequestMessage<UserStatusUpdateRequest>(Operation.USER_STATUS_UPDATE,
                         adminToken, new UserStatusUpdateRequest("stu2026", false)));
@@ -171,7 +188,7 @@ public class UserModuleIntegrationTest {
                 Operation.USER_LOGIN, null, new LoginRequest("stu2026", "newpass456")));
         assertEquals(ResponseCode.UNAUTHORIZED, blockedLogin.getCode());
 
-        // 7. Re-enable and deregister the account with its own password.
+        // 8. Re-enable and deregister the account with its own password.
         assertEquals(ResponseCode.SUCCESS, adminClient.request(
                 new RequestMessage<UserStatusUpdateRequest>(Operation.USER_STATUS_UPDATE,
                         adminToken, new UserStatusUpdateRequest("stu2026", true))).getCode());
@@ -189,6 +206,21 @@ public class UserModuleIntegrationTest {
         ResponseMessage<?> gone = adminClient.request(new RequestMessage<LoginRequest>(
                 Operation.USER_LOGIN, null, new LoginRequest("stu2026", "newpass456")));
         assertEquals(ResponseCode.UNAUTHORIZED, gone.getCode());
+
+        // 9. Only a super administrator can create another administrator.
+        ResponseMessage<?> deniedBySubAdmin = adminClient.request(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, adminToken,
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+        assertEquals(ResponseCode.FORBIDDEN, deniedBySubAdmin.getCode());
+
+        TestClient superClient = connect();
+        String superToken = loginAs(superClient, "superadmin", "super123");
+        ResponseMessage<?> createdBySuper = superClient.request(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, superToken,
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+        assertEquals(ResponseCode.SUCCESS, createdBySuper.getCode());
+        assertEquals(Role.ADMIN, ((AccountInfo) createdBySuper.getBody()).getRole());
+        superClient.close();
         adminClient.close();
     }
 
@@ -204,6 +236,13 @@ public class UserModuleIntegrationTest {
 
     private TestClient connect() throws IOException {
         return new TestClient("127.0.0.1", port);
+    }
+
+    private String loginAs(TestClient client, String userId, String password) throws IOException {
+        ResponseMessage<?> response = client.request(new RequestMessage<LoginRequest>(
+                Operation.USER_LOGIN, null, new LoginRequest(userId, password)));
+        assertEquals(ResponseCode.SUCCESS, response.getCode());
+        return ((LoginResponse) response.getBody()).getSessionToken();
     }
 
     /** Minimal protocol client used to drive the integration scenario. */
