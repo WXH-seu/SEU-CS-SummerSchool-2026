@@ -6,7 +6,7 @@
 vcampus-database/vCampus.accdb
 ```
 
-初始数据库包含 `tblUser`，以及管理员、学生和教师三个演示账号。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
+初始数据库包含 `tblUser`，以及超级管理员、管理员、学生和教师四个演示账号。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
 
 ## 用户表结构（tblUser）
 
@@ -16,11 +16,12 @@ vcampus-database/vCampus.accdb
 | `passwordHash` | TEXT(128) | PBKDF2 哈希值（Base64），不保存明文 |
 | `passwordSalt` | TEXT(64) | 随机盐（Base64） |
 | `displayName` | TEXT(64) | 显示名 |
-| `roleName` | TEXT(16) | 角色：`STUDENT` / `TEACHER` / `ADMIN` |
+| `roleName` | TEXT(16) | 角色：`STUDENT` / `TEACHER` / `ADMIN` / `SUPER_ADMIN` |
 | `active` | YESNO | 是否启用，管理员可禁用账号 |
 
-演示账号：`admin / admin123`（管理员）、`student / student123`（学生）、`teacher / teacher123`（教师）。
-客户端可通过“注册新账号”创建任意角色账号；注册、修改密码与注销均在服务端完成密码哈希处理。
+演示账号：`superadmin / super123`（超级管理员）、`admin / admin123`（管理员）、`student / student123`（学生）、`teacher / teacher123`（教师）。
+
+账号由管理员统一创建，登录界面不提供自助注册：学生可经 CSV 批量导入；教师由管理员手动注册；管理员（`ADMIN`）与超级管理员（`SUPER_ADMIN`）仅能由现有超级管理员创建。注册、修改密码与注销均在服务端完成密码哈希处理。
 
 ## 使用规则
 
