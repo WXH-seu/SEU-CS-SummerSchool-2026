@@ -76,21 +76,17 @@ public final class LoginFrame extends JFrame {
         form.add(statusLabel, constraints);
         root.add(form, BorderLayout.CENTER);
 
-        JPanel bottom = new JPanel(new BorderLayout(0, 8));
-        JButton registerButton = new JButton("注册新账号");
-        bottom.add(registerButton, BorderLayout.NORTH);
         JLabel hint = new JLabel(
-                "<html>演示账号：admin / admin123（管理员），student / student123（学生），"
-                        + "teacher / teacher123（教师）</html>",
+                "<html>演示账号：superadmin / super123（超级管理员），admin / admin123（管理员），"
+                        + "student / student123（学生），teacher / teacher123（教师）。"
+                        + "账号由管理员统一创建，如需新账号请联系管理员。</html>",
                 JLabel.CENTER);
         hint.setFont(hint.getFont().deriveFont(12f));
-        bottom.add(hint, BorderLayout.SOUTH);
-        root.add(bottom, BorderLayout.SOUTH);
+        root.add(hint, BorderLayout.SOUTH);
 
         setContentPane(root);
         getRootPane().setDefaultButton(loginButton);
         loginButton.addActionListener(event -> login());
-        registerButton.addActionListener(event -> new RegisterFrame(config, this).setVisible(true));
     }
 
     private void login() {

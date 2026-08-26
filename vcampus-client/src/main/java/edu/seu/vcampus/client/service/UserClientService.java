@@ -8,6 +8,8 @@ import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.PasswordChangeRequest;
 import edu.seu.vcampus.common.dto.ProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.UserImportRequest;
+import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
 import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
@@ -39,11 +41,19 @@ public final class UserClientService {
         return (LoginResponse) response.getBody();
     }
 
-    /** Registers a new account and signs it in immediately. */
-    public LoginResponse register(RegisterRequest request)
+    /** Creates one account on behalf of an administrator. */
+    public AccountInfo register(RegisterRequest request, String sessionToken)
             throws IOException, ClientServiceException {
-        ResponseMessage<?> response = send(Operation.USER_REGISTER, null, request);
-        return (LoginResponse) response.getBody();
+        ResponseMessage<?> response = send(Operation.USER_REGISTER, sessionToken, request);
+        return (AccountInfo) response.getBody();
+    }
+
+    /** Batch-registers accounts from a parsed CSV payload (administrator only). */
+    public UserImportResponse importUsers(List<RegisterRequest> users, String sessionToken)
+            throws IOException, ClientServiceException {
+        ResponseMessage<?> response = send(Operation.USER_IMPORT_CSV, sessionToken,
+                new UserImportRequest(users));
+        return (UserImportResponse) response.getBody();
     }
 
     /** Returns the current account information. */

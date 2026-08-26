@@ -3,13 +3,17 @@ package edu.seu.vcampus.client.ui;
 import edu.seu.vcampus.client.config.ClientConfig;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
+import edu.seu.vcampus.client.service.UserCsvParser;
 import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.dto.UserImportFailure;
+import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.enums.Role;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -28,6 +32,13 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -227,18 +238,100 @@ public final class AccountFrame extends JFrame {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         JButton refreshButton = new JButton("刷新列表");
+        JButton addButton = new JButton("注册用户");
+        JButton importButton = new JButton("批量导入CSV");
         JButton enableButton = new JButton("启用选中账号");
         JButton disableButton = new JButton("禁用选中账号");
         actions.add(refreshButton);
+        actions.add(addButton);
+        actions.add(importButton);
         actions.add(enableButton);
         actions.add(disableButton);
         panel.add(actions, BorderLayout.SOUTH);
 
         refreshButton.addActionListener(event -> loadUsers());
+        addButton.addActionListener(event ->
+                new RegisterFrame(connection, session.getSessionToken(), this).setVisible(true));
+        importButton.addActionListener(event -> importCsv());
         enableButton.addActionListener(event -> changeUserStatus(true));
         disableButton.addActionListener(event -> changeUserStatus(false));
         loadUsers();
         return panel;
+    }
+
+    /** Reloads the user list; invoked after a new user is created. */
+    public void refreshUserList() {
+        loadUsers();
+    }
+
+    private void importCsv() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("选择学生批量注册 CSV 文件");
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        final File file = chooser.getSelectedFile();
+        final List<edu.seu.vcampus.common.dto.RegisterRequest> parsed;
+        try {
+            parsed = UserCsvParser.parse(readUtf8(file));
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "读取文件失败：" + e.getMessage(), "导入失败",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        } catch (IllegalArgumentException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "CSV 格式错误",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        setBusy(true);
+        new SwingWorker<UserImportResponse, Void>() {
+            @Override
+            protected UserImportResponse doInBackground() throws Exception {
+                return service.importUsers(parsed, session.getSessionToken());
+            }
+
+            @Override
+            protected void done() {
+                setBusy(false);
+                try {
+                    UserImportResponse response = get();
+                    presentImportResult(response);
+                    loadUsers();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException e) {
+                    showError("批量导入失败", e);
+                }
+            }
+        }.execute();
+    }
+
+    private void presentImportResult(UserImportResponse response) {
+        StringBuilder message = new StringBuilder();
+        message.append("成功导入 ").append(response.getImported()).append(" 个账号。");
+        List<UserImportFailure> failures = response.getFailures();
+        if (!failures.isEmpty()) {
+            message.append("\n失败 ").append(failures.size()).append(" 个：");
+            for (UserImportFailure failure : failures) {
+                message.append("\n第 ").append(failure.getRow()).append(" 行 ")
+                        .append(failure.getUserId() == null ? "" : failure.getUserId())
+                        .append("：").append(failure.getReason());
+            }
+        }
+        JOptionPane.showMessageDialog(this, message.toString(), "导入结果",
+                failures.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+    }
+
+    private String readUtf8(File file) throws IOException {
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(file), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append('\n');
+            }
+        }
+        return builder.toString();
     }
 
     private void refreshAccount() {

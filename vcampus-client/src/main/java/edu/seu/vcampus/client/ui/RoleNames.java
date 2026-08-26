@@ -12,6 +12,8 @@ public final class RoleNames {
             return "未知";
         }
         switch (role) {
+            case SUPER_ADMIN:
+                return "超级管理员";
             case ADMIN:
                 return "管理员";
             case TEACHER:
