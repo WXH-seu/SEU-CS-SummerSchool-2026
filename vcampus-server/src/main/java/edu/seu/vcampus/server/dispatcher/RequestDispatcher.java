@@ -8,6 +8,7 @@ import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.session.SessionRegistry;
+import edu.seu.vcampus.server.dao.UserAccount;
 
 import java.io.Serializable;
 import java.sql.SQLException;
@@ -20,10 +21,17 @@ public final class RequestDispatcher {
 
     private final AuthService authService;
     private final SessionRegistry sessionRegistry;
+    private final AcademicRequestHandler academicHandler;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry) {
+        this(authService, sessionRegistry, null);
+    }
+
+    public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
+                             AcademicRequestHandler academicHandler) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
+        this.academicHandler = academicHandler;
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -41,13 +49,21 @@ public final class RequestDispatcher {
                 authService.logout(request.getSessionToken());
                 return ResponseMessage.success(request.getRequestId(), "已退出登录", "OK");
             }
-            if (sessionRegistry.find(request.getSessionToken()) == null) {
+            UserAccount actor = sessionRegistry.find(request.getSessionToken());
+            if (actor == null) {
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.UNAUTHORIZED, "请先登录");
+            }
+            if (academicHandler != null && academicHandler.supports(request.getOperation())) {
+                return academicHandler.handle(request, actor);
             }
             return ResponseMessage.failure(request.getRequestId(),
                     ResponseCode.NOT_IMPLEMENTED, "该模块接口已预留，尚未实现");
         } catch (SQLException e) {
+            if (isConstraintViolation(e)) {
+                return ResponseMessage.failure(request.getRequestId(),
+                        ResponseCode.CONFLICT, "数据重复或仍被其他记录引用");
+            }
             LOGGER.log(Level.SEVERE, "Database request failed", e);
             return ResponseMessage.failure(request.getRequestId(),
                     ResponseCode.SERVER_ERROR, "数据库操作失败");
@@ -70,5 +86,21 @@ public final class RequestDispatcher {
                     ResponseCode.UNAUTHORIZED, "账号或密码错误");
         }
         return ResponseMessage.success(request.getRequestId(), "登录成功", response);
+    }
+
+    private boolean isConstraintViolation(SQLException exception) {
+        SQLException current = exception;
+        while (current != null) {
+            String state = current.getSQLState();
+            if (state != null && state.startsWith("23")) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("constraint")) {
+                return true;
+            }
+            current = current.getNextException();
+        }
+        return false;
     }
 }

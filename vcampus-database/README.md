@@ -6,7 +6,16 @@
 vcampus-database/vCampus.accdb
 ```
 
-初始数据库包含 `tblUser`，以及管理员、学生和教师三个演示账号。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
+初始数据库包含：
+
+- `tblUser`：登录账号。
+- `tblDepartment`：院系。
+- `tblSchoolClass`：班级。
+- `tblStudent`：学生学籍。
+- `tblTeacher`：教师档案。
+
+数据库包含管理员、学生和教师演示账号，以及与学生、教师账号关联的演示学籍。
+密码以 PBKDF2 加盐哈希保存，不保存明文密码。
 
 ## 使用规则
 
@@ -24,7 +33,7 @@ vcampus-database/vCampus.accdb
 | 模块 | 建议表 |
 | --- | --- |
 | 用户 | `tblUser`、`tblRole` |
-| 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblClass` |
+| 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblSchoolClass` |
 | 选课 | `tblCourse`、`tblTeachingClass`、`tblEnrollment` |
 | 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord` |
 | 商店 | `tblProduct`、`tblCartItem`、`tblOrder`、`tblOrderItem` |
