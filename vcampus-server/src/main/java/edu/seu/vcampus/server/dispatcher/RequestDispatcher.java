@@ -7,6 +7,8 @@ import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.PasswordChangeRequest;
 import edu.seu.vcampus.common.dto.ProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.UserImportRequest;
+import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
 import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
@@ -89,11 +91,6 @@ public final class RequestDispatcher {
             LoginResponse session = authService.login(body);
             return ResponseMessage.success(request.getRequestId(), "登录成功", session);
         }
-        if (operation == Operation.USER_REGISTER) {
-            RegisterRequest body = requireBody(request, RegisterRequest.class);
-            LoginResponse session = authService.register(body);
-            return ResponseMessage.success(request.getRequestId(), "注册成功", session);
-        }
         return ResponseMessage.failure(request.getRequestId(),
                 ResponseCode.NOT_IMPLEMENTED, "该操作尚未实现");
     }
@@ -105,6 +102,15 @@ public final class RequestDispatcher {
             case USER_LOGOUT:
                 authService.logout(request.getSessionToken());
                 return ResponseMessage.success(request.getRequestId(), "已退出登录", "OK");
+            case USER_REGISTER:
+                RegisterRequest newUser = requireBody(request, RegisterRequest.class);
+                AccountInfo created = authService.register(newUser, account.getRole());
+                return ResponseMessage.success(request.getRequestId(), "已创建账号", created);
+            case USER_IMPORT_CSV:
+                UserImportRequest importRequest = requireBody(request, UserImportRequest.class);
+                UserImportResponse importResult =
+                        authService.importUsers(importRequest, account.getRole());
+                return ResponseMessage.success(request.getRequestId(), "导入完成", importResult);
             case USER_ACCOUNT_QUERY:
                 return ResponseMessage.success(request.getRequestId(), "查询成功",
                         authService.getAccount(account.getUserId()));
@@ -123,13 +129,13 @@ public final class RequestDispatcher {
                 authService.deleteAccount(account.getUserId(), deletion.getPassword());
                 return ResponseMessage.success(request.getRequestId(), "账号已注销", "OK");
             case USER_LIST_QUERY:
-                List<AccountInfo> users = authService.listUsers();
+                List<AccountInfo> users = authService.listUsers(account.getRole());
                 return ResponseMessage.success(request.getRequestId(), "查询成功",
                         new UserListResponse(users));
             case USER_STATUS_UPDATE:
                 UserStatusUpdateRequest status = requireBody(request, UserStatusUpdateRequest.class);
                 authService.updateUserStatus(account.getUserId(),
-                        status.getUserId(), status.isActive());
+                        status.getUserId(), status.isActive(), account.getRole());
                 return ResponseMessage.success(request.getRequestId(), "账号状态已更新", "OK");
             default:
                 return ResponseMessage.failure(request.getRequestId(),

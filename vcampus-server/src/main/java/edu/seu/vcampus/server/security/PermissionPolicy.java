@@ -95,7 +95,14 @@ public final class PermissionPolicy {
     private void installDefaults() {
         markPublic(Operation.PING);
         markPublic(Operation.USER_LOGIN);
-        markPublic(Operation.USER_REGISTER);
+
+        // Registration is administrator-owned: students are batch-imported via
+        // CSV and teachers/admins are created by an existing administrator.
+        // The finer "who may create a given role" rule (e.g. only a super
+        // administrator can create another administrator) is enforced in
+        // AuthService as a second line of defence.
+        require(Operation.USER_REGISTER, Role.ADMIN, Role.SUPER_ADMIN);
+        require(Operation.USER_IMPORT_CSV, Role.ADMIN, Role.SUPER_ADMIN);
 
         // Any authenticated user may manage his or her own account.
         require(Operation.USER_LOGOUT);
@@ -104,21 +111,22 @@ public final class PermissionPolicy {
         require(Operation.USER_PASSWORD_CHANGE);
         require(Operation.USER_DELETE);
 
-        // Administrator-only operations.
-        require(Operation.USER_LIST_QUERY, Role.ADMIN);
-        require(Operation.USER_STATUS_UPDATE, Role.ADMIN);
+        // Administrator-only operations (admin or super admin).
+        require(Operation.USER_LIST_QUERY, Role.ADMIN, Role.SUPER_ADMIN);
+        require(Operation.USER_STATUS_UPDATE, Role.ADMIN, Role.SUPER_ADMIN);
 
         // Default matrix for the remaining modules. Owners may adjust these
-        // entries with require(...) while integrating their features.
-        require(Operation.STUDENT_QUERY, Role.TEACHER, Role.ADMIN);
-        require(Operation.STUDENT_SAVE, Role.TEACHER, Role.ADMIN);
+        // entries with require(...) while integrating their features. The
+        // super administrator is granted the widest access as the global admin.
+        require(Operation.STUDENT_QUERY, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);
+        require(Operation.STUDENT_SAVE, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);
         require(Operation.COURSE_QUERY);
-        require(Operation.COURSE_SELECT, Role.STUDENT);
-        require(Operation.COURSE_DROP, Role.STUDENT);
+        require(Operation.COURSE_SELECT, Role.STUDENT, Role.SUPER_ADMIN);
+        require(Operation.COURSE_DROP, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.LIBRARY_BOOK_QUERY);
-        require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER);
-        require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER);
+        require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
+        require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
         require(Operation.STORE_PRODUCT_QUERY);
-        require(Operation.STORE_ORDER_CREATE, Role.STUDENT, Role.TEACHER);
+        require(Operation.STORE_ORDER_CREATE, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
     }
 }

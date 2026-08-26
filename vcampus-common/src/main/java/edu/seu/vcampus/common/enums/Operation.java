@@ -8,6 +8,7 @@ public enum Operation implements Serializable {
     USER_LOGIN,
     USER_LOGOUT,
     USER_REGISTER,
+    USER_IMPORT_CSV,
     USER_ACCOUNT_QUERY,
     USER_PROFILE_UPDATE,
     USER_PASSWORD_CHANGE,
