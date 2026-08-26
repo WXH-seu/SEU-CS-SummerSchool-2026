@@ -2,6 +2,7 @@ package edu.seu.vcampus.server;
 
 import edu.seu.vcampus.server.config.ServerConfig;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
+import edu.seu.vcampus.server.dao.AccessBookRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.dispatcher.AcademicRequestHandler;
@@ -27,6 +28,7 @@ public final class ServerApplication {
         AccessDatabase database = new AccessDatabase(config.getDatabasePath());
         AccessUserRepository userRepository = new AccessUserRepository(database, passwordHasher);
         AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
+        new AccessBookRepository(database);
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(userRepository, passwordHasher, sessions);
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
@@ -46,6 +48,7 @@ public final class ServerApplication {
             }
         }, "vcampus-shutdown"));
         LOGGER.info("Access database: " + userRepository.getDatabaseFile());
+        LOGGER.info("Library tables ready: " + database.getDatabaseFile());
         server.start();
     }
 }
