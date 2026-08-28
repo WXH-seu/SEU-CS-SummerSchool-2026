@@ -34,7 +34,7 @@ public final class UserCsvParser {
         String[] lines = content.split("\\r?\\n");
         List<RegisterRequest> result = new ArrayList<RegisterRequest>();
         for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
+            String line = stripBom(lines[i]).trim();
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
@@ -91,5 +91,13 @@ public final class UserCsvParser {
             trimmed = trimmed.substring(1, trimmed.length() - 1);
         }
         return trimmed;
+    }
+
+    /** Strips a leading UTF-8 byte-order mark that some editors prepend. */
+    private static String stripBom(String value) {
+        if (value != null && value.startsWith("\uFEFF")) {
+            return value.substring(1);
+        }
+        return value;
     }
 }

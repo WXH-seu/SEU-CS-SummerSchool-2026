@@ -51,6 +51,15 @@ public class UserCsvParserTest {
     }
 
     @Test
+    public void parsesWithUtf8BomHeader() {
+        List<RegisterRequest> users = UserCsvParser.parse(
+                "\uFEFF账号,密码,显示名,角色\ns001,secret123,学生一,STUDENT");
+        assertEquals(1, users.size());
+        assertEquals("s001", users.get(0).getUserId());
+        assertEquals(Role.STUDENT, users.get(0).getRole());
+    }
+
+    @Test
     public void rejectsMalformedLine() {
         try {
             UserCsvParser.parse("s001,secret123");
