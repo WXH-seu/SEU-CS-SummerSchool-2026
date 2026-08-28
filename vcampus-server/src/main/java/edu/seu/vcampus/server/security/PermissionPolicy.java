@@ -96,13 +96,14 @@ public final class PermissionPolicy {
         markPublic(Operation.PING);
         markPublic(Operation.USER_LOGIN);
 
-        // Registration is administrator-owned: students are batch-imported via
-        // CSV and teachers/admins are created by an existing administrator.
-        // The finer "who may create a given role" rule (e.g. only a super
-        // administrator can create another administrator) is enforced in
-        // AuthService as a second line of defence.
-        require(Operation.USER_REGISTER, Role.ADMIN, Role.SUPER_ADMIN);
-        require(Operation.USER_IMPORT_CSV, Role.ADMIN, Role.SUPER_ADMIN);
+        // Account management is super-admin only. The sub-system admin (ADMIN)
+        // only operates business sub-systems and cannot register users or
+        // change account status.
+        require(Operation.USER_REGISTER, Role.SUPER_ADMIN);
+        require(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN);
+        require(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN);
+        require(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN);
+        require(Operation.USER_AUDIT_QUERY, Role.SUPER_ADMIN);
 
         // Any authenticated user may manage his or her own account.
         require(Operation.USER_LOGOUT);
@@ -111,12 +112,9 @@ public final class PermissionPolicy {
         require(Operation.USER_PASSWORD_CHANGE);
         require(Operation.USER_DELETE);
 
-        // Administrator-only operations (admin or super admin).
-        require(Operation.USER_LIST_QUERY, Role.ADMIN, Role.SUPER_ADMIN);
-        require(Operation.USER_STATUS_UPDATE, Role.ADMIN, Role.SUPER_ADMIN);
-
         // Default matrix for the remaining modules. Owners may adjust these
         // entries with require(...) while integrating their features. The
+        // sub-system admin (ADMIN) manages these business sub-systems, and the
         // super administrator is granted the widest access as the global admin.
         require(Operation.STUDENT_QUERY, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);
         require(Operation.STUDENT_SAVE, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);

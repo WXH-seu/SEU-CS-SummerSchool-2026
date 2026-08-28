@@ -10,6 +10,7 @@ import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
+import edu.seu.vcampus.common.dto.UserOperationLogResponse;
 import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
@@ -17,6 +18,7 @@ import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
 import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.security.PermissionPolicy;
+import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthException;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.session.SessionRegistry;
@@ -41,12 +43,14 @@ public final class RequestDispatcher {
     private final AuthService authService;
     private final SessionRegistry sessionRegistry;
     private final PermissionPolicy permissionPolicy;
+    private final AuditService auditService;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
-                             PermissionPolicy permissionPolicy) {
+                             PermissionPolicy permissionPolicy, AuditService auditService) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
         this.permissionPolicy = permissionPolicy;
+        this.auditService = auditService;
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -104,12 +108,13 @@ public final class RequestDispatcher {
                 return ResponseMessage.success(request.getRequestId(), "已退出登录", "OK");
             case USER_REGISTER:
                 RegisterRequest newUser = requireBody(request, RegisterRequest.class);
-                AccountInfo created = authService.register(newUser, account.getRole());
+                AccountInfo created = authService.register(
+                        newUser, account.getRole(), account.getUserId());
                 return ResponseMessage.success(request.getRequestId(), "已创建账号", created);
             case USER_IMPORT_CSV:
                 UserImportRequest importRequest = requireBody(request, UserImportRequest.class);
-                UserImportResponse importResult =
-                        authService.importUsers(importRequest, account.getRole());
+                UserImportResponse importResult = authService.importUsers(
+                        importRequest, account.getRole(), account.getUserId());
                 return ResponseMessage.success(request.getRequestId(), "导入完成", importResult);
             case USER_ACCOUNT_QUERY:
                 return ResponseMessage.success(request.getRequestId(), "查询成功",
@@ -137,6 +142,9 @@ public final class RequestDispatcher {
                 authService.updateUserStatus(account.getUserId(),
                         status.getUserId(), status.isActive(), account.getRole());
                 return ResponseMessage.success(request.getRequestId(), "账号状态已更新", "OK");
+            case USER_AUDIT_QUERY:
+                return ResponseMessage.success(request.getRequestId(), "查询成功",
+                        new UserOperationLogResponse(auditService.recent(200)));
             default:
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.NOT_IMPLEMENTED, "该模块接口已预留，尚未实现");

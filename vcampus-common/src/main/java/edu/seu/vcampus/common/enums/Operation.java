@@ -15,6 +15,7 @@ public enum Operation implements Serializable {
     USER_DELETE,
     USER_LIST_QUERY,
     USER_STATUS_UPDATE,
+    USER_AUDIT_QUERY,
     STUDENT_QUERY,
     STUDENT_SAVE,
     COURSE_QUERY,
