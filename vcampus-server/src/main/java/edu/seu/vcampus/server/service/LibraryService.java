@@ -3,6 +3,9 @@ package edu.seu.vcampus.server.service;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.Book;
 import edu.seu.vcampus.server.dao.BookCopy;
 import edu.seu.vcampus.server.dao.BookRepository;
@@ -23,6 +26,15 @@ public final class LibraryService {
     public ArrayList<BookSummary> queryBooks(UserAccount actor, BookQueryRequest query)
             throws SQLException, BusinessException {
         requireActor(actor);
+        // Book lookup is a usage operation, open to every authenticated role
+        // (student / teacher / admin). Authorization is based on the normalized
+        // three-tier role for the library sub-system, so scoped authority set up
+        // by the user module is honoured; admin-only library operations (when
+        // added) must check effectiveRole(actor) == ADMIN.
+        SubSystemRole effectiveRole = effectiveRole(actor);
+        if (effectiveRole == null) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "无法识别的用户角色");
+        }
         String keyword = query == null ? null : query.getKeyword();
         List<Book> books = repository.findBooks(keyword);
         ArrayList<BookSummary> result = new ArrayList<BookSummary>();
@@ -30,6 +42,11 @@ public final class LibraryService {
             result.add(toSummary(book));
         }
         return result;
+    }
+
+    /** Resolves the three-tier role the actor is granted within the library. */
+    private SubSystemRole effectiveRole(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.LIBRARY);
     }
 
     private BookSummary toSummary(Book book) throws SQLException {

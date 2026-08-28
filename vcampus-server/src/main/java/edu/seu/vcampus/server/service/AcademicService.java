@@ -7,6 +7,9 @@ import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.AcademicRepository;
 import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.dao.UserRepository;
@@ -36,7 +39,7 @@ public final class AcademicService {
     public ArrayList<StudentDto> queryStudents(UserAccount actor, AcademicQueryRequest query)
             throws SQLException, BusinessException {
         requireActor(actor);
-        if (actor.getRole() == Role.STUDENT) {
+        if (effectiveRole(actor) == SubSystemRole.STUDENT) {
             StudentDto ownRecord = repository.findStudentByUserId(actor.getUserId());
             ArrayList<StudentDto> result = new ArrayList<StudentDto>();
             if (ownRecord != null) {
@@ -212,16 +215,26 @@ public final class AcademicService {
 
     private void requireStaff(UserAccount actor) throws BusinessException {
         requireActor(actor);
-        if (actor.getRole() == Role.STUDENT) {
+        if (effectiveRole(actor) == SubSystemRole.STUDENT) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "学生无权查询教师信息");
         }
     }
 
     private void requireAdmin(UserAccount actor) throws BusinessException {
         requireActor(actor);
-        if (actor.getRole() != Role.ADMIN) {
+        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以修改学籍信息");
         }
+    }
+
+    /**
+     * Resolves the three-tier role the actor is granted within the academic
+     * (student) sub-system, so scoped authority (an administrator granted only
+     * the library sub-system becomes a teacher here) is honoured consistently
+     * with the user module.
+     */
+    private SubSystemRole effectiveRole(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.STUDENT);
     }
 
     private void validateEmail(String email) throws BusinessException {

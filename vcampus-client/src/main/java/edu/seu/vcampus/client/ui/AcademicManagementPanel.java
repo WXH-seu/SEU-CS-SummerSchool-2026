@@ -7,6 +7,9 @@ import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -25,6 +28,7 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Search and maintenance page for students, teachers, classes and departments. */
@@ -45,7 +49,7 @@ public final class AcademicManagementPanel extends JPanel {
     }
 
     private final AcademicClientService service;
-    private final Role role;
+    private final SubSystemRole effectiveRole;
     private final JComboBox<EntityType> entityType = new JComboBox<EntityType>(EntityType.values());
     private final JTextField keyword = new JTextField(10);
     private final JTextField departmentId = new JTextField(7);
@@ -66,10 +70,10 @@ public final class AcademicManagementPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<?> rows = new ArrayList<Object>();
 
-    public AcademicManagementPanel(AcademicClientService service, Role role) {
+    public AcademicManagementPanel(AcademicClientService service, Role role, Set<String> adminScopes) {
         super(new BorderLayout(0, 12));
         this.service = service;
-        this.role = role;
+        this.effectiveRole = SubSystems.effectiveRole(role, adminScopes, SubSystem.STUDENT);
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
@@ -105,11 +109,11 @@ public final class AcademicManagementPanel extends JPanel {
         table.setAutoCreateRowSorter(true);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        boolean administrator = role == Role.ADMIN;
+        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
         addButton.setVisible(administrator);
         editButton.setVisible(administrator);
         deleteButton.setVisible(administrator);
-        if (role == Role.STUDENT) {
+        if (effectiveRole == SubSystemRole.STUDENT) {
             entityType.setSelectedItem(EntityType.STUDENT);
             entityType.setEnabled(false);
         }
@@ -125,7 +129,7 @@ public final class AcademicManagementPanel extends JPanel {
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2 && role == Role.ADMIN) {
+                if (event.getClickCount() == 2 && effectiveRole == SubSystemRole.ADMIN) {
                     editSelected();
                 }
             }
@@ -344,7 +348,7 @@ public final class AcademicManagementPanel extends JPanel {
         addButton.setEnabled(!busy);
         editButton.setEnabled(!busy);
         deleteButton.setEnabled(!busy);
-        entityType.setEnabled(!busy && role != Role.STUDENT);
+        entityType.setEnabled(!busy && effectiveRole != SubSystemRole.STUDENT);
     }
 
     private String messageOf(ExecutionException exception) {

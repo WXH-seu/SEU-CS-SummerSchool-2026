@@ -6,26 +6,26 @@ import java.io.Serializable;
 import java.util.Collections;
 import java.util.Set;
 
-/** Session information returned after successful authentication. */
-public final class LoginResponse implements Serializable {
+/** Registration form submitted when a new account is created. */
+public final class RegisterRequest implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private final String sessionToken;
     private final String userId;
+    private final String password;
     private final String displayName;
     private final Role role;
 
-    /** Sub-system keys granted to a sub-system administrator; empty otherwise. */
+    /** Sub-system keys granted when the role is {@link Role#SUBSYSADMIN}. */
     private final Set<String> adminScopes;
 
-    public LoginResponse(String sessionToken, String userId, String displayName, Role role) {
-        this(sessionToken, userId, displayName, role, Collections.<String>emptySet());
+    public RegisterRequest(String userId, String password, String displayName, Role role) {
+        this(userId, password, displayName, role, Collections.<String>emptySet());
     }
 
-    public LoginResponse(String sessionToken, String userId, String displayName, Role role,
-                         Set<String> adminScopes) {
-        this.sessionToken = sessionToken;
+    public RegisterRequest(String userId, String password, String displayName, Role role,
+                           Set<String> adminScopes) {
         this.userId = userId;
+        this.password = password;
         this.displayName = displayName;
         this.role = role;
         this.adminScopes = adminScopes == null
@@ -33,12 +33,12 @@ public final class LoginResponse implements Serializable {
                 : Collections.unmodifiableSet(adminScopes);
     }
 
-    public String getSessionToken() {
-        return sessionToken;
-    }
-
     public String getUserId() {
         return userId;
+    }
+
+    public String getPassword() {
+        return password;
     }
 
     public String getDisplayName() {
@@ -49,7 +49,7 @@ public final class LoginResponse implements Serializable {
         return role;
     }
 
-    /** Sub-system keys this administrator may manage; empty for other roles. */
+    /** Sub-system keys to grant when the role is {@link Role#SUBSYSADMIN}. */
     public Set<String> getAdminScopes() {
         return adminScopes;
     }
