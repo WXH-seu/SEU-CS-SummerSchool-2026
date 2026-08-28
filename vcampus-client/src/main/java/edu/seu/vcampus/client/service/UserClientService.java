@@ -11,6 +11,8 @@ import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
+import edu.seu.vcampus.common.dto.UserOperationLog;
+import edu.seu.vcampus.common.dto.UserOperationLogResponse;
 import edu.seu.vcampus.common.dto.UserStatusUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
@@ -91,11 +93,18 @@ public final class UserClientService {
         return ((UserListResponse) response.getBody()).getUsers();
     }
 
-    /** Enables or disables another account; administrators only. */
+    /** Enables or disables another account; super administrator only. */
     public void updateUserStatus(String sessionToken, String userId, boolean active)
             throws IOException, ClientServiceException {
         send(Operation.USER_STATUS_UPDATE, sessionToken,
                 new UserStatusUpdateRequest(userId, active));
+    }
+
+    /** Returns recent audit-log records; super administrator only. */
+    public List<UserOperationLog> queryAuditLog(String sessionToken)
+            throws IOException, ClientServiceException {
+        ResponseMessage<?> response = send(Operation.USER_AUDIT_QUERY, sessionToken, null);
+        return ((UserOperationLogResponse) response.getBody()).getLogs();
     }
 
     /** Ends the server-side session. */

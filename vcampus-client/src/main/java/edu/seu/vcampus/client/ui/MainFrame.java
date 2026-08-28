@@ -184,7 +184,7 @@ public final class MainFrame extends JFrame {
      */
     private static boolean canEnterModule(String cardName, Role role) {
         if ("student".equals(cardName)) {
-            return role == Role.TEACHER || role == Role.ADMIN;
+            return role == Role.TEACHER || role == Role.ADMIN || role == Role.SUPER_ADMIN;
         }
         return true;
     }

@@ -9,6 +9,7 @@ import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.UserImportFailure;
 import edu.seu.vcampus.common.dto.UserImportResponse;
+import edu.seu.vcampus.common.dto.UserOperationLog;
 import edu.seu.vcampus.common.enums.Role;
 
 import javax.swing.BorderFactory;
@@ -38,6 +39,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -80,6 +82,17 @@ public final class AccountFrame extends JFrame {
     };
     private final JTable userTable = new JTable(userTableModel);
 
+    private final DefaultTableModel logTableModel = new DefaultTableModel(
+            new String[]{"时间", "账号", "操作", "目标", "结果", "说明"}, 0) {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable logTable = new JTable(logTableModel);
+
     public AccountFrame(ClientConfig config, MainFrame mainFrame,
                         ClientConnection connection, LoginResponse session) {
         super("账号管理 - " + session.getDisplayName());
@@ -99,8 +112,9 @@ public final class AccountFrame extends JFrame {
         tabs.addTab("我的账号", createProfileTab());
         tabs.addTab("修改资料", createEditTab());
         tabs.addTab("注销账号", createDeregisterTab());
-        if (session.getRole() == Role.ADMIN) {
+        if (session.getRole() == Role.SUPER_ADMIN) {
             tabs.addTab("用户管理", createUserAdminTab());
+            tabs.addTab("操作日志", createAuditTab());
         }
         setContentPane(tabs);
     }
@@ -332,6 +346,52 @@ public final class AccountFrame extends JFrame {
             }
         }
         return builder.toString();
+    }
+
+    private JPanel createAuditTab() {
+        JPanel panel = new JPanel(new BorderLayout(0, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+        panel.add(new JScrollPane(logTable), BorderLayout.CENTER);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        JButton refreshButton = new JButton("刷新");
+        actions.add(refreshButton);
+        panel.add(actions, BorderLayout.SOUTH);
+        refreshButton.addActionListener(event -> loadAuditLog());
+        loadAuditLog();
+        return panel;
+    }
+
+    private void loadAuditLog() {
+        setBusy(true);
+        new SwingWorker<List<UserOperationLog>, Void>() {
+            @Override
+            protected List<UserOperationLog> doInBackground() throws Exception {
+                return service.queryAuditLog(session.getSessionToken());
+            }
+
+            @Override
+            protected void done() {
+                setBusy(false);
+                try {
+                    List<UserOperationLog> logs = get();
+                    logTableModel.setRowCount(0);
+                    SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                    for (UserOperationLog log : logs) {
+                        logTableModel.addRow(new Object[]{
+                                fmt.format(log.getLogTime()),
+                                log.getUserId(),
+                                log.getOperation(),
+                                log.getTargetUserId() == null ? "-" : log.getTargetUserId(),
+                                log.isSuccess() ? "成功" : "失败",
+                                log.getDetail() == null ? "" : log.getDetail()});
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException e) {
+                    showError("加载操作日志失败", e);
+                }
+            }
+        }.execute();
     }
 
     private void refreshAccount() {
