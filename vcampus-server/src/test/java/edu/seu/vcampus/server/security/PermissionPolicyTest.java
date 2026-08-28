@@ -30,19 +30,23 @@ public class PermissionPolicyTest {
     }
 
     @Test
-    public void userAdministrationIsAdminOrSuperAdmin() {
-        assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.ADMIN));
-        assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN));
-        assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.ADMIN));
-        assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN));
-        assertTrue(policy.allows(Operation.USER_REGISTER, Role.ADMIN));
+    public void accountManagementIsSuperAdminOnly() {
         assertTrue(policy.allows(Operation.USER_REGISTER, Role.SUPER_ADMIN));
-        assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.ADMIN));
-        assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_LIST_QUERY, Role.STUDENT));
-        assertFalse(policy.allows(Operation.USER_STATUS_UPDATE, Role.TEACHER));
+        assertFalse(policy.allows(Operation.USER_REGISTER, Role.ADMIN));
         assertFalse(policy.allows(Operation.USER_REGISTER, Role.STUDENT));
-        assertFalse(policy.allows(Operation.USER_IMPORT_CSV, Role.TEACHER));
+
+        assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.USER_IMPORT_CSV, Role.ADMIN));
+
+        assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.USER_LIST_QUERY, Role.ADMIN));
+
+        assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.USER_STATUS_UPDATE, Role.ADMIN));
+
+        assertTrue(policy.allows(Operation.USER_AUDIT_QUERY, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.USER_AUDIT_QUERY, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_AUDIT_QUERY, Role.TEACHER));
     }
 
     @Test

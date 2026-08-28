@@ -4,6 +4,7 @@ import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.session.SessionRegistry;
@@ -29,8 +30,10 @@ public class AccessAuthenticationTest {
         PasswordHasher passwordHasher = new PasswordHasher();
         AccessUserRepository repository =
                 new AccessUserRepository(database.getAbsolutePath(), passwordHasher);
+        AuditService auditService =
+                new AuditService(new AccessOperationLogRepository(database.getAbsolutePath()));
         AuthService authService =
-                new AuthService(repository, passwordHasher, new SessionRegistry());
+                new AuthService(repository, passwordHasher, new SessionRegistry(), auditService);
 
         LoginResponse response = authService.login(
                 new LoginRequest("student", "student123"));

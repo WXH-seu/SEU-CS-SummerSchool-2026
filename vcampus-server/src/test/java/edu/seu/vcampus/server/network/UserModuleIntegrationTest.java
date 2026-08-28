@@ -14,10 +14,12 @@ import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
+import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.dispatcher.RequestDispatcher;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.security.PermissionPolicy;
+import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 import org.junit.After;
@@ -56,14 +58,15 @@ public class UserModuleIntegrationTest {
 
     @Before
     public void startServer() throws Exception {
+        String db = new java.io.File(temporaryFolder.getRoot(), "integration.accdb")
+                .getAbsolutePath();
         PasswordHasher passwordHasher = new PasswordHasher();
-        AccessUserRepository repository = new AccessUserRepository(
-                new java.io.File(temporaryFolder.getRoot(), "integration.accdb")
-                        .getAbsolutePath(), passwordHasher);
+        AccessUserRepository repository = new AccessUserRepository(db, passwordHasher);
+        AuditService auditService = new AuditService(new AccessOperationLogRepository(db));
         SessionRegistry sessions = new SessionRegistry();
-        AuthService authService = new AuthService(repository, passwordHasher, sessions);
+        AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
         RequestDispatcher dispatcher =
-                new RequestDispatcher(authService, sessions, new PermissionPolicy());
+                new RequestDispatcher(authService, sessions, new PermissionPolicy(), auditService);
         server = new VCampusServer(0, 4, dispatcher);
         Thread thread = new Thread(new Runnable() {
             @Override
@@ -105,8 +108,8 @@ public class UserModuleIntegrationTest {
     public void fullUserLifecycleOverTheWire() throws Exception {
         TestClient client = connect();
 
-        // 1. Authenticate as an administrator and register a student account.
-        String registerAsAdmin = loginAs(client, "admin", "admin123");
+        // 1. Authenticate as the super administrator and register a student account.
+        String registerAsAdmin = loginAs(client, "superadmin", "super123");
         ResponseMessage<?> registered = client.request(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, registerAsAdmin,
                 new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
@@ -152,12 +155,9 @@ public class UserModuleIntegrationTest {
         assertEquals(ResponseCode.FORBIDDEN, forbidden.getCode());
         second.close();
 
-        // 6. Administrator lists users and disables the student.
+        // 6. The super administrator lists users and disables the student.
         TestClient adminClient = connect();
-        ResponseMessage<?> adminLogin = adminClient.request(new RequestMessage<LoginRequest>(
-                Operation.USER_LOGIN, null, new LoginRequest("admin", "admin123")));
-        assertEquals(ResponseCode.SUCCESS, adminLogin.getCode());
-        String adminToken = ((LoginResponse) adminLogin.getBody()).getSessionToken();
+        String adminToken = loginAs(adminClient, "superadmin", "super123");
 
         ResponseMessage<?> list = adminClient.request(
                 new RequestMessage<Serializable>(Operation.USER_LIST_QUERY, adminToken, null));
@@ -208,10 +208,13 @@ public class UserModuleIntegrationTest {
         assertEquals(ResponseCode.UNAUTHORIZED, gone.getCode());
 
         // 9. Only a super administrator can create another administrator.
-        ResponseMessage<?> deniedBySubAdmin = adminClient.request(new RequestMessage<RegisterRequest>(
-                Operation.USER_REGISTER, adminToken,
+        TestClient subAdminClient = connect();
+        String subAdminToken = loginAs(subAdminClient, "admin", "admin123");
+        ResponseMessage<?> deniedBySubAdmin = subAdminClient.request(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, subAdminToken,
                 new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
         assertEquals(ResponseCode.FORBIDDEN, deniedBySubAdmin.getCode());
+        subAdminClient.close();
 
         TestClient superClient = connect();
         String superToken = loginAs(superClient, "superadmin", "super123");

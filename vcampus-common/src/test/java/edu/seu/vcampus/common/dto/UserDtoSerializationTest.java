@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -63,6 +64,23 @@ public class UserDtoSerializationTest {
         assertEquals(3, response.getImported());
         assertEquals(1, response.getFailures().size());
         assertEquals("账号已存在", response.getFailures().get(0).getReason());
+    }
+
+    @Test
+    public void auditDtosRoundTrip() throws Exception {
+        Date now = new Date();
+        UserOperationLog log = new UserOperationLog(7, now, "superadmin", "REGISTER",
+                "stu2026", "创建账号", true);
+        UserOperationLog restored = roundTrip(log);
+        assertEquals(7, restored.getId());
+        assertEquals("REGISTER", restored.getOperation());
+        assertEquals("stu2026", restored.getTargetUserId());
+        assertTrue(restored.isSuccess());
+
+        UserOperationLogResponse response =
+                roundTrip(new UserOperationLogResponse(Arrays.asList(log)));
+        assertEquals(1, response.getLogs().size());
+        assertEquals("superadmin", response.getLogs().get(0).getUserId());
     }
 
     @SuppressWarnings("unchecked")
