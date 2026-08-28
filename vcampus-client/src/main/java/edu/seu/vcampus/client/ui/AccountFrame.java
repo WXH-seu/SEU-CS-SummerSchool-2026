@@ -11,6 +11,7 @@ import edu.seu.vcampus.common.dto.UserImportFailure;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserOperationLog;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -64,6 +65,7 @@ public final class AccountFrame extends JFrame {
     private final JLabel displayNameLabel = new JLabel();
     private final JLabel roleLabel = new JLabel();
     private final JLabel activeLabel = new JLabel();
+    private final JLabel scopeLabel = new JLabel();
 
     private final JTextField displayNameField = new JTextField(16);
     private final JPasswordField oldPasswordField = new JPasswordField(16);
@@ -72,7 +74,7 @@ public final class AccountFrame extends JFrame {
     private final JPasswordField deletePasswordField = new JPasswordField(16);
 
     private final DefaultTableModel userTableModel = new DefaultTableModel(
-            new String[]{"账号", "显示名", "角色", "状态"}, 0) {
+            new String[]{"账号", "显示名", "角色", "权限范围", "状态"}, 0) {
         private static final long serialVersionUID = 1L;
 
         @Override
@@ -145,18 +147,23 @@ public final class AccountFrame extends JFrame {
         panel.add(new JLabel("状态"), constraints);
         constraints.gridx = 1;
         panel.add(activeLabel, constraints);
+        constraints.gridx = 0;
+        constraints.gridy = 4;
+        panel.add(new JLabel("权限范围"), constraints);
+        constraints.gridx = 1;
+        panel.add(scopeLabel, constraints);
 
         JButton refreshButton = new JButton("刷新");
         constraints.gridx = 0;
-        constraints.gridy = 4;
+        constraints.gridy = 5;
         constraints.gridwidth = 2;
         constraints.anchor = GridBagConstraints.CENTER;
         panel.add(refreshButton, constraints);
         refreshButton.addActionListener(event -> refreshAccount());
 
-        JLabel tip = new JLabel("账号、角色与状态由系统统一管理，不可自行修改。");
+        JLabel tip = new JLabel("账号、角色、权限范围与状态由系统统一管理，不可自行修改。");
         tip.setFont(tip.getFont().deriveFont(Font.PLAIN, 12f));
-        constraints.gridy = 5;
+        constraints.gridy = 6;
         panel.add(tip, constraints);
 
         refreshAccount();
@@ -422,6 +429,24 @@ public final class AccountFrame extends JFrame {
         displayNameLabel.setText(info.getDisplayName());
         roleLabel.setText(RoleNames.of(info.getRole()));
         activeLabel.setText(info.isActive() ? "正常" : "已禁用");
+        scopeLabel.setText(scopesOf(info));
+    }
+
+    /** Renders a human-readable list of granted sub-systems for an administrator. */
+    private static String scopesOf(AccountInfo info) {
+        if (info.getRole() != Role.SUBSYSADMIN || info.getAdminScopes().isEmpty()) {
+            return "-";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (SubSystem subSystem : SubSystem.values()) {
+            if (info.getAdminScopes().contains(subSystem.getKey())) {
+                if (builder.length() > 0) {
+                    builder.append("、");
+                }
+                builder.append(subSystem.getDisplayName());
+            }
+        }
+        return builder.length() == 0 ? "-" : builder.toString();
     }
 
     private void updateProfile() {
@@ -568,6 +593,7 @@ public final class AccountFrame extends JFrame {
                                 user.getUserId(),
                                 user.getDisplayName(),
                                 RoleNames.of(user.getRole()),
+                                scopesOf(user),
                                 user.isActive() ? "正常" : "已禁用"});
                     }
                 } catch (InterruptedException e) {

@@ -16,10 +16,12 @@ import java.util.List;
  *   账号,密码,显示名[,角色]
  * </pre>
  *
- * <p>The optional role column accepts {@code STUDENT}/{@code TEACHER}/
- * {@code SUBSYSADMIN}/{@code SUPER_ADMIN} or the Chinese equivalents
- * {@code 学生}/{@code 教师}/{@code 管理员}/{@code 超级管理员}; it defaults to
- * {@link Role#STUDENT} when omitted. Blank lines, {@code #} comments and an
+ * <p>The optional role column accepts {@code STUDENT}/{@code TEACHER} or the
+ * Chinese equivalents {@code 学生}/{@code 教师}; it defaults to
+ * {@link Role#STUDENT} when omitted. <strong>Administrator roles
+ * ({@link Role#SUBSYSADMIN}/{@link Role#SUPER_ADMIN}) cannot be imported by CSV
+ * and are rejected</strong>: administrators must be registered manually so that
+ * their sub-system scopes can be chosen. Blank lines, {@code #} comments and an
  * optional header row are ignored. Any malformed row raises an
  * {@link IllegalArgumentException} carrying the row number.
  */
@@ -78,11 +80,10 @@ public final class UserCsvParser {
             return Role.TEACHER;
         }
         if ("ADMIN".equalsIgnoreCase(value) || "SUBSYSADMIN".equalsIgnoreCase(value)
-                || "管理员".equals(value) || "子系统管理员".equals(value)) {
-            return Role.SUBSYSADMIN;
-        }
-        if ("SUPER_ADMIN".equalsIgnoreCase(value) || "超级管理员".equals(value)) {
-            return Role.SUPER_ADMIN;
+                || "管理员".equals(value) || "子系统管理员".equals(value)
+                || "SUPER_ADMIN".equalsIgnoreCase(value) || "超级管理员".equals(value)) {
+            throw new IllegalArgumentException(
+                    "CSV 不支持导入管理员角色，请在界面手动注册并选择子系统权限");
         }
         throw new IllegalArgumentException("无法识别的角色：" + value);
     }

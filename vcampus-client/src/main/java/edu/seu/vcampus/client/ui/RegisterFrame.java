@@ -6,9 +6,11 @@ import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -18,11 +20,16 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -40,7 +47,9 @@ public final class RegisterFrame extends JFrame {
     private final JTextField displayNameField = new JTextField(16);
     private final JPasswordField passwordField = new JPasswordField(16);
     private final JComboBox<String> roleBox = new JComboBox<String>(
-            new String[]{"学生", "教师", "管理员", "超级管理员"});
+            new String[]{"学生", "教师", "子系统管理员", "超级管理员"});
+    private final JPanel scopePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+    private final List<JCheckBox> scopeChecks = new ArrayList<JCheckBox>();
     private final JButton registerButton = new JButton("创建账号");
     private final JLabel statusLabel = new JLabel(" ");
 
@@ -96,6 +105,29 @@ public final class RegisterFrame extends JFrame {
         constraints.weightx = 1;
         form.add(roleBox, constraints);
 
+        constraints.gridx = 0;
+        constraints.gridy = 4;
+        constraints.weightx = 0;
+        form.add(new JLabel("可管理子系统"), constraints);
+        constraints.gridx = 1;
+        constraints.weightx = 1;
+        form.add(scopePanel, constraints);
+        constraints.gridy = 5;
+        JLabel scopeHint = new JLabel("仅子系统管理员需要勾选，可多选");
+        scopeHint.setFont(scopeHint.getFont().deriveFont(Font.PLAIN, 11f));
+        constraints.gridx = 1;
+        constraints.gridwidth = 2;
+        form.add(scopeHint, constraints);
+
+        for (SubSystem subSystem : SubSystem.values()) {
+            JCheckBox checkBox = new JCheckBox(subSystem.getDisplayName());
+            checkBox.setActionCommand(subSystem.getKey());
+            scopeChecks.add(checkBox);
+            scopePanel.add(checkBox);
+        }
+        roleBox.addActionListener(event -> setScopeEnabled(selectedRole() == Role.SUBSYSADMIN));
+        setScopeEnabled(false);
+
         JPanel buttons = new JPanel(new GridBagLayout());
         GridBagConstraints buttonConstraints = new GridBagConstraints();
         buttonConstraints.insets = new Insets(4, 8, 4, 8);
@@ -111,7 +143,7 @@ public final class RegisterFrame extends JFrame {
         buttons.add(statusLabel, buttonConstraints);
 
         form.add(buttons, constraints);
-        constraints.gridy = 4;
+        constraints.gridy = 6;
         constraints.gridwidth = 2;
         root.add(form, BorderLayout.CENTER);
 
@@ -137,6 +169,13 @@ public final class RegisterFrame extends JFrame {
             return;
         }
         final Role role = selectedRole();
+        final Set<String> scopes = selectedScopes();
+        if (role == Role.SUBSYSADMIN && scopes.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "子系统管理员至少需要勾选一个可管理子系统", "提示",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         setFormEnabled(false, "正在创建...");
         new SwingWorker<AccountInfo, Void>() {
             @Override
@@ -145,7 +184,7 @@ public final class RegisterFrame extends JFrame {
                 Arrays.fill(passwordChars, '\0');
                 UserClientService service = new UserClientService(connection);
                 return service.register(
-                        new RegisterRequest(userId, password, displayName, role), sessionToken);
+                        new RegisterRequest(userId, password, displayName, role, scopes), sessionToken);
             }
 
             @Override
@@ -187,6 +226,25 @@ public final class RegisterFrame extends JFrame {
             return Role.TEACHER;
         }
         return Role.STUDENT;
+    }
+
+    private Set<String> selectedScopes() {
+        Set<String> scopes = new LinkedHashSet<String>();
+        for (JCheckBox checkBox : scopeChecks) {
+            if (checkBox.isSelected()) {
+                scopes.add(checkBox.getActionCommand());
+            }
+        }
+        return scopes;
+    }
+
+    private void setScopeEnabled(boolean enabled) {
+        for (JCheckBox checkBox : scopeChecks) {
+            checkBox.setEnabled(enabled);
+            if (!enabled) {
+                checkBox.setSelected(false);
+            }
+        }
     }
 
     private void setFormEnabled(boolean enabled, String status) {

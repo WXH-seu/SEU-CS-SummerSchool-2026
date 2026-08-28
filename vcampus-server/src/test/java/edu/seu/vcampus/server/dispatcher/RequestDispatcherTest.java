@@ -178,9 +178,11 @@ public class RequestDispatcherTest {
         String superToken = login("superadmin", "super123");
         ResponseMessage<?> created = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN,
+                        java.util.Collections.singleton("student"))));
         assertEquals(ResponseCode.SUCCESS, created.getCode());
         assertEquals(Role.SUBSYSADMIN, ((AccountInfo) created.getBody()).getRole());
+        assertTrue(((AccountInfo) created.getBody()).getAdminScopes().contains("student"));
     }
 
     @Test
@@ -190,6 +192,30 @@ public class RequestDispatcherTest {
                 Operation.USER_REGISTER, adminToken,
                 new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
+    }
+
+    @Test
+    public void scopedSubsystemAdminKeepsUsageButNotManagementOutsideScope() {
+        String superToken = login("superadmin", "super123");
+        dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.USER_REGISTER, superToken,
+                new RegisterRequest("adminLib", "secret123", "图书馆管理员", Role.SUBSYSADMIN,
+                        java.util.Collections.singleton("library"))));
+
+        String adminLibToken = login("adminLib", "secret123");
+
+        // Out of scope management: saving a student record is admin-only and the
+        // library administrator is not granted the student sub-system.
+        ResponseMessage<?> studentSave = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
+                Operation.STUDENT_SAVE, adminLibToken, null));
+        assertEquals(ResponseCode.FORBIDDEN, studentSave.getCode());
+
+        // Out of scope usage: the administrator keeps ordinary (teacher) usage
+        // rights, so it can borrow a book; the stub module reports it as
+        // not implemented after passing the permission check.
+        ResponseMessage<?> borrow = dispatcher.dispatch(new RequestMessage<Serializable>(
+                Operation.LIBRARY_BORROW, adminLibToken, null));
+        assertEquals(ResponseCode.NOT_IMPLEMENTED, borrow.getCode());
     }
 
     @Test

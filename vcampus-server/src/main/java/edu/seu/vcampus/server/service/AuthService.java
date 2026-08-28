@@ -9,6 +9,7 @@ import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.dao.UserRepository;
 import edu.seu.vcampus.server.security.PasswordHasher;
@@ -16,7 +17,10 @@ import edu.seu.vcampus.server.session.SessionRegistry;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -74,7 +78,7 @@ public final class AuthService {
             String token = sessionRegistry.create(account);
             auditService.recordLogin(request.getUserId().trim(), true, "登录成功");
             return new LoginResponse(token, account.getUserId(),
-                    account.getDisplayName(), account.getRole());
+                    account.getDisplayName(), account.getRole(), account.getAdminScopes());
         } catch (AuthException e) {
             auditService.recordLogin(userId, false, e.getMessage());
             throw e;
@@ -116,6 +120,12 @@ public final class AuthService {
             List<UserImportFailure> failures = new ArrayList<UserImportFailure>();
             for (int i = 0; i < users.size(); i++) {
                 RegisterRequest one = users.get(i);
+                if (one != null && (one.getRole() == Role.SUBSYSADMIN
+                        || one.getRole() == Role.SUPER_ADMIN)) {
+                    failures.add(new UserImportFailure(i + 1, safeUserId(one),
+                            "CSV 仅支持导入学生/教师，管理员请手动注册"));
+                    continue;
+                }
                 try {
                     createAccount(one);
                     imported++;
@@ -251,12 +261,38 @@ public final class AuthService {
         if (userRepository.findById(userId) != null) {
             throw new AuthException(ResponseCode.CONFLICT, "账号已存在");
         }
+        Set<String> scopes = resolveScopes(request.getRole(), request.getAdminScopes());
+        if (request.getRole() == Role.SUBSYSADMIN && scopes.isEmpty()) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST,
+                    "子系统管理员至少需要勾选一个子系统");
+        }
         String salt = passwordHasher.newSalt();
         UserAccount account = new UserAccount(userId,
                 passwordHasher.hash(password, salt), salt, displayName,
-                request.getRole(), true);
+                request.getRole(), true, scopes);
         userRepository.insert(account);
         return toInfo(account);
+    }
+
+    /**
+     * Normalises the requested sub-system scopes. Only a sub-system
+     * administrator may carry scopes; every other role is forced to an empty
+     * set, and unknown keys are dropped.
+     */
+    private Set<String> resolveScopes(Role role, Set<String> requested) {
+        if (role != Role.SUBSYSADMIN) {
+            return Collections.emptySet();
+        }
+        if (requested == null || requested.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<String> scopes = new LinkedHashSet<String>();
+        for (String scope : requested) {
+            if (scope != null && SubSystems.isValidKey(scope.trim())) {
+                scopes.add(scope.trim());
+            }
+        }
+        return Collections.unmodifiableSet(scopes);
     }
 
     private void requireSuperAdmin(Role actorRole) throws AuthException {
@@ -278,7 +314,7 @@ public final class AuthService {
 
     private AccountInfo toInfo(UserAccount account) {
         return new AccountInfo(account.getUserId(), account.getDisplayName(),
-                account.getRole(), account.isActive());
+                account.getRole(), account.isActive(), account.getAdminScopes());
     }
 
     private String safeUserId(RegisterRequest request) {

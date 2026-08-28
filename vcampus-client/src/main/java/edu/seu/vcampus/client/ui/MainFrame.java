@@ -5,6 +5,9 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -28,7 +31,9 @@ import java.io.IOException;
  * Main navigation shell for the five required modules. The header shows the
  * current identity together with account-management and logout actions, and
  * module buttons the current role cannot use are disabled with an explicit
- * permission hint. This mirrors the server-side {@code PermissionPolicy}.
+ * permission hint. This mirrors the server-side {@code PermissionPolicy}:
+ * a sub-system administrator may only open the business sub-systems granted in
+ * his or her {@code adminScopes}.
  */
 public final class MainFrame extends JFrame {
     private static final String[] CARD_NAMES = {
@@ -97,7 +102,7 @@ public final class MainFrame extends JFrame {
         JPanel menu = new JPanel(new GridLayout(0, 1, 0, 10));
         for (int i = 0; i < BUTTON_NAMES.length; i++) {
             final String cardName = CARD_NAMES[i];
-            JButton button = new JButton(BUTTON_NAMES[i]);
+            JButton button = new JButton(buildModuleLabel(cardName, BUTTON_NAMES[i]));
             button.setHorizontalAlignment(SwingConstants.LEFT);
             if (!canEnterModule(cardName, session.getRole())) {
                 button.setEnabled(false);
@@ -108,6 +113,21 @@ public final class MainFrame extends JFrame {
         }
         sidebar.add(menu, BorderLayout.CENTER);
         return sidebar;
+    }
+
+    /**
+     * Builds the sidebar label for a module, appending "（管理员）" when the
+     * current session is an administrator of that sub-system. This mirrors the
+     * normalized three-tier role that sub-system modules observe
+     * ({@link SubSystems#effectiveRole}).
+     */
+    private String buildModuleLabel(String cardName, String baseName) {
+        SubSystem subSystem = SubSystems.byKey(cardName);
+        if (subSystem != null && SubSystems.effectiveRole(
+                session.getRole(), session.getAdminScopes(), subSystem) == SubSystemRole.ADMIN) {
+            return baseName + "（管理员）";
+        }
+        return baseName;
     }
 
     private JPanel createHeader() {
@@ -180,11 +200,17 @@ public final class MainFrame extends JFrame {
     /**
      * Client-side mirror of the module entries in the server-side permission
      * matrix. Keep this in sync with {@code PermissionPolicy} when modules are
-     * integrated.
+     * integrated. A sub-system administrator keeps ordinary usage rights in
+     * every sub-system (it is normalized to a teacher there) and only gains
+     * management authority in its granted sub-systems, so it may enter every
+     * module.
      */
     private static boolean canEnterModule(String cardName, Role role) {
+        if (role == Role.SUBSYSADMIN) {
+            return true;
+        }
         if ("student".equals(cardName)) {
-            return role == Role.TEACHER || role == Role.SUBSYSADMIN || role == Role.SUPER_ADMIN;
+            return role == Role.TEACHER || role == Role.SUPER_ADMIN;
         }
         return true;
     }

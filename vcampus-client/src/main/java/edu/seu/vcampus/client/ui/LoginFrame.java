@@ -77,7 +77,7 @@ public final class LoginFrame extends JFrame {
         root.add(form, BorderLayout.CENTER);
 
         JLabel hint = new JLabel(
-                "<html>演示账号：superadmin / super123（超级管理员），admin / admin123（管理员），"
+                "<html>演示账号：superadmin / super123（超级管理员），admin / admin123（子系统管理员，可管理全部子系统），"
                         + "student / student123（学生），teacher / teacher123（教师）。"
                         + "账号由管理员统一创建，如需新账号请联系管理员。</html>",
                 JLabel.CENTER);

@@ -2,6 +2,8 @@ package edu.seu.vcampus.server.security;
 
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import java.util.Collections;
 import java.util.EnumSet;
@@ -20,7 +22,11 @@ import java.util.concurrent.ConcurrentMap;
  *
  * <p>Module owners can adjust the matrix through
  * {@link #require(Operation, Role...)}; a call with no roles means "any
- * authenticated user". This class is thread-safe.
+ * authenticated user". The sub-system administrator
+ * ({@link Role#SUBSYSADMIN}) is scoped: {@link #effectiveRole} turns it into the
+ * manager ({@link Role#SUBSYSADMIN}) inside a granted sub-system and into a
+ * regular user ({@link Role#TEACHER}) elsewhere, so it can use but never
+ * manage un-granted sub-systems. This class is thread-safe.
  */
 public final class PermissionPolicy {
     private final Set<Operation> publicOperations =
@@ -68,12 +74,16 @@ public final class PermissionPolicy {
     }
 
     /**
-     * Checks whether a logged-in user with the given role may run the
-     * operation. Operations without an explicit role restriction are allowed
-     * for every authenticated role; a {@code null} role never passes a
-     * protected operation.
+     * Checks whether a logged-in user with the given role and granted sub-system
+     * scopes may run the operation. For a sub-system administrator the
+     * <em>effective</em> role is used: granted sub-systems keep the
+     * {@link Role#SUBSYSADMIN} (manager) role, while sub-systems outside the
+     * scopes are treated as {@link Role#TEACHER} so the administrator still has
+     * ordinary usage rights but no management authority there. Operations
+     * without an explicit role restriction are allowed for every authenticated
+     * role; a {@code null} role never passes a protected operation.
      */
-    public boolean allows(Operation operation, Role role) {
+    public boolean allows(Operation operation, Role role, Set<String> adminScopes) {
         if (operation == null) {
             return false;
         }
@@ -83,8 +93,30 @@ public final class PermissionPolicy {
         if (role == null) {
             return false;
         }
+        Role effective = effectiveRole(role, adminScopes, operation);
         Set<Role> allowed = requirements.get(operation);
-        return allowed == null || allowed.contains(role);
+        return allowed == null || allowed.contains(effective);
+    }
+
+    /**
+     * Resolves the role to use when checking an operation. A sub-system
+     * administrator is the manager ({@link Role#SUBSYSADMIN}) inside a granted
+     * sub-system and an ordinary user ({@link Role#TEACHER}) everywhere else.
+     * All other roles are returned unchanged.
+     */
+    public Role effectiveRole(Role role, Set<String> adminScopes, Operation operation) {
+        if (role != Role.SUBSYSADMIN) {
+            return role;
+        }
+        SubSystem subSystem = SubSystems.of(operation);
+        return SubSystems.isGranted(adminScopes, subSystem)
+                ? Role.SUBSYSADMIN
+                : Role.TEACHER;
+    }
+
+    /** Convenience overload: checks access with no granted sub-system scopes. */
+    public boolean allows(Operation operation, Role role) {
+        return allows(operation, role, Collections.<String>emptySet());
     }
 
     /** Returns the roles allowed for the operation, or {@code null} when unrestricted. */
@@ -114,17 +146,25 @@ public final class PermissionPolicy {
 
         // Default matrix for the remaining modules. Owners may adjust these
         // entries with require(...) while integrating their features. The
-        // sub-system admin (SUBSYSADMIN) manages these business sub-systems, and the
-        // super administrator is granted the widest access as the global admin.
+        // matrix is expressed in the three roles a sub-system management
+        // operation actually needs: management/write operations are restricted
+        // to the sub-system and super administrators, while usage operations
+        // are open to ordinary users (student/teacher) as well as both
+        // administrators. A sub-system administrator (SUBSYSADMIN) outside its
+        // granted sub-systems is normalized to TEACHER by effectiveRole(...),
+        // so it can use but never manage an un-granted sub-system.
         require(Operation.STUDENT_QUERY, Role.TEACHER, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
-        require(Operation.STUDENT_SAVE, Role.TEACHER, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
+        require(Operation.STUDENT_SAVE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
         require(Operation.COURSE_QUERY);
         require(Operation.COURSE_SELECT, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.COURSE_DROP, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.LIBRARY_BOOK_QUERY);
-        require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
-        require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
+        require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
+                Role.SUPER_ADMIN);
+        require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
+                Role.SUPER_ADMIN);
         require(Operation.STORE_PRODUCT_QUERY);
-        require(Operation.STORE_ORDER_CREATE, Role.STUDENT, Role.TEACHER, Role.SUPER_ADMIN);
+        require(Operation.STORE_ORDER_CREATE, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
+                Role.SUPER_ADMIN);
     }
 }

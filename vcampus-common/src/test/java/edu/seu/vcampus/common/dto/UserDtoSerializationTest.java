@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -81,6 +82,22 @@ public class UserDtoSerializationTest {
                 roundTrip(new UserOperationLogResponse(Arrays.asList(log)));
         assertEquals(1, response.getLogs().size());
         assertEquals("superadmin", response.getLogs().get(0).getUserId());
+    }
+
+    @Test
+    public void adminScopeRoundTrips() throws Exception {
+        RegisterRequest request = new RegisterRequest("a001", "secret123", "管理员", Role.SUBSYSADMIN,
+                Collections.singleton("library"));
+        assertEquals(Collections.singleton("library"),
+                roundTrip(request).getAdminScopes());
+
+        AccountInfo account = new AccountInfo("a001", "管理员", Role.SUBSYSADMIN, true,
+                new java.util.LinkedHashSet<String>(Arrays.asList("student", "course")));
+        assertTrue(roundTrip(account).getAdminScopes().contains("student"));
+
+        LoginResponse session = new LoginResponse("token", "a001", "管理员", Role.SUBSYSADMIN,
+                Collections.singleton("store"));
+        assertTrue(roundTrip(session).getAdminScopes().contains("store"));
     }
 
     @SuppressWarnings("unchecked")

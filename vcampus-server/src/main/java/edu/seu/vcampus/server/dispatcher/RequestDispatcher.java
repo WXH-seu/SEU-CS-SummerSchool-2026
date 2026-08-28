@@ -67,7 +67,8 @@ public final class RequestDispatcher {
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.UNAUTHORIZED, "请先登录");
             }
-            if (!permissionPolicy.allows(operation, account.getRole())) {
+            if (!permissionPolicy.allows(operation, account.getRole(),
+                    account.getAdminScopes())) {
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.FORBIDDEN, "您没有权限执行该操作");
             }

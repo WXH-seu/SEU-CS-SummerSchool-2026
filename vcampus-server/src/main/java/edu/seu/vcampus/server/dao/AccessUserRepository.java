@@ -11,7 +11,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Access implementation of the user repository using UCanAccess. */
 public final class AccessUserRepository implements UserRepository {
@@ -30,7 +32,8 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public UserAccount findById(String userId) throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active] FROM [tblUser] WHERE [userId] = ?";
+                + "[displayName], [roleName], [active], [adminScopes] "
+                + "FROM [tblUser] WHERE [userId] = ?";
         try (Connection connection = openConnection(false);
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
@@ -43,7 +46,8 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public List<UserAccount> findAll() throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active] FROM [tblUser] ORDER BY [userId]";
+                + "[displayName], [roleName], [active], [adminScopes] "
+                + "FROM [tblUser] ORDER BY [userId]";
         List<UserAccount> users = new ArrayList<UserAccount>();
         try (Connection connection = openConnection(false);
              PreparedStatement statement = connection.prepareStatement(sql);
@@ -58,7 +62,7 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public void insert(UserAccount account) throws SQLException {
         String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active]) VALUES (?, ?, ?, ?, ?, ?)";
+                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = openConnection(false);
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, account.getUserId());
@@ -67,6 +71,7 @@ public final class AccessUserRepository implements UserRepository {
             statement.setString(4, account.getDisplayName());
             statement.setString(5, account.getRole().name());
             statement.setBoolean(6, account.isActive());
+            statement.setString(7, serializeScopes(account.getAdminScopes()));
             statement.executeUpdate();
         }
     }
@@ -124,7 +129,8 @@ public final class AccessUserRepository implements UserRepository {
                 result.getString("passwordSalt"),
                 result.getString("displayName"),
                 parseRole(result.getString("roleName")),
-                result.getBoolean("active"));
+                result.getBoolean("active"),
+                parseScopes(result.getString("adminScopes")));
     }
 
     /** Maps a stored role name, tolerating the legacy {@code ADMIN} value. */
@@ -133,6 +139,34 @@ public final class AccessUserRepository implements UserRepository {
             return Role.SUBSYSADMIN;
         }
         return Role.valueOf(roleName);
+    }
+
+    private Set<String> parseScopes(String raw) {
+        Set<String> scopes = new LinkedHashSet<String>();
+        if (raw == null || raw.trim().isEmpty()) {
+            return scopes;
+        }
+        for (String token : raw.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                scopes.add(trimmed);
+            }
+        }
+        return scopes;
+    }
+
+    private String serializeScopes(Set<String> scopes) {
+        if (scopes == null || scopes.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String scope : scopes) {
+            if (builder.length() > 0) {
+                builder.append(',');
+            }
+            builder.append(scope);
+        }
+        return builder.toString();
     }
 
     private void initializeDatabase() throws SQLException {
@@ -144,6 +178,8 @@ public final class AccessUserRepository implements UserRepository {
         try (Connection connection = openConnection(create)) {
             if (!tableExists(connection, "tblUser")) {
                 createUserTable(connection);
+            } else {
+                ensureScopeColumn(connection);
             }
             if (countUsers(connection) == 0) {
                 insertDemoUsers(connection);
@@ -183,9 +219,32 @@ public final class AccessUserRepository implements UserRepository {
                 + "[passwordSalt] TEXT(64) NOT NULL, "
                 + "[displayName] TEXT(64) NOT NULL, "
                 + "[roleName] TEXT(16) NOT NULL, "
-                + "[active] YESNO NOT NULL)";
+                + "[active] YESNO NOT NULL, "
+                + "[adminScopes] TEXT(64))";
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);
+        }
+    }
+
+    /**
+     * Migrates databases created before the scoped-subsystem-admin feature by
+     * adding the {@code adminScopes} column when it is missing.
+     */
+    private void ensureScopeColumn(Connection connection) throws SQLException {
+        boolean present = false;
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, "tblUser", "%")) {
+            while (columns.next()) {
+                if ("adminScopes".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+        if (!present) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE [tblUser] ADD COLUMN [adminScopes] TEXT(64)");
+            }
         }
     }
 
@@ -197,17 +256,18 @@ public final class AccessUserRepository implements UserRepository {
     }
 
     private void insertDemoUsers(Connection connection) throws SQLException {
-        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN);
-        insertUser(connection, "admin", "admin123", "系统管理员", Role.SUBSYSADMIN);
-        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT);
-        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER);
+        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN, null);
+        insertUser(connection, "admin", "admin123", "子系统管理员", Role.SUBSYSADMIN,
+                "student,course,library,store");
+        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT, null);
+        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER, null);
     }
 
     private void insertUser(Connection connection, String userId, String password,
-                            String displayName, Role role) throws SQLException {
+                            String displayName, Role role, String adminScopes) throws SQLException {
         String salt = passwordHasher.newSalt();
         String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active]) VALUES (?, ?, ?, ?, ?, ?)";
+                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             statement.setString(2, passwordHasher.hash(password, salt));
@@ -215,6 +275,7 @@ public final class AccessUserRepository implements UserRepository {
             statement.setString(4, displayName);
             statement.setString(5, role.name());
             statement.setBoolean(6, true);
+            statement.setString(7, adminScopes == null ? "" : adminScopes);
             statement.executeUpdate();
         }
     }

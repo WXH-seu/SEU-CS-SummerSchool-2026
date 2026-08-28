@@ -220,7 +220,8 @@ public class UserModuleIntegrationTest {
         String superToken = loginAs(superClient, "superadmin", "super123");
         ResponseMessage<?> createdBySuper = superClient.request(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN,
+                        java.util.Collections.singleton("student"))));
         assertEquals(ResponseCode.SUCCESS, createdBySuper.getCode());
         assertEquals(Role.SUBSYSADMIN, ((AccountInfo) createdBySuper.getBody()).getRole());
         superClient.close();

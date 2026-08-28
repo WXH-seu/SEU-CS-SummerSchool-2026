@@ -26,13 +26,33 @@ public class UserCsvParserTest {
         List<RegisterRequest> users = UserCsvParser.parse(
                 "s001,secret123,学生一,STUDENT\n"
                         + "t001,secret123,教师一,教师\n"
-                        + "a001,secret123,管理员,ADMIN\n"
-                        + "a002,secret123,管理员,管理员");
-        assertEquals(4, users.size());
+                        + "s002,secret123,学生二,学生");
+        assertEquals(3, users.size());
         assertEquals(Role.STUDENT, users.get(0).getRole());
         assertEquals(Role.TEACHER, users.get(1).getRole());
-        assertEquals(Role.SUBSYSADMIN, users.get(2).getRole());
-        assertEquals(Role.SUBSYSADMIN, users.get(3).getRole());
+        assertEquals(Role.STUDENT, users.get(2).getRole());
+    }
+
+    @Test
+    public void rejectsAdministratorRoles() {
+        try {
+            UserCsvParser.parse("a001,secret123,管理员一,ADMIN");
+            fail("legacy ADMIN role must be rejected");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("管理员"));
+        }
+        try {
+            UserCsvParser.parse("a002,secret123,管理员二,SUPER_ADMIN");
+            fail("super administrator role must be rejected");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("管理员"));
+        }
+        try {
+            UserCsvParser.parse("a003,secret123,管理员三,管理员");
+            fail("Chinese administrator role must be rejected");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("管理员"));
+        }
     }
 
     @Test
