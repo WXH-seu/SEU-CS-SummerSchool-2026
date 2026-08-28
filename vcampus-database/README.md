@@ -13,8 +13,12 @@ vcampus-database/vCampus.accdb
 - `tblSchoolClass`：班级。
 - `tblStudent`：学生学籍。
 - `tblTeacher`：教师档案。
+- `tblBook`：图书书目。
+- `tblBookCopy`：馆藏副本。
+- `tblBorrowRecord`：借阅记录。
 
-数据库包含管理员、学生和教师演示账号，以及与学生、教师账号关联的演示学籍。
+数据库包含管理员、学生和教师演示账号，与学生、教师账号关联的演示学籍，以及 10 种
+演示图书。演示学生账号有一条在借记录和一条逾期未还记录。
 密码以 PBKDF2 加盐哈希保存，不保存明文密码。
 
 ## 使用规则
@@ -35,7 +39,7 @@ vcampus-database/vCampus.accdb
 | 用户 | `tblUser`、`tblRole` |
 | 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblSchoolClass` |
 | 选课 | `tblCourse`、`tblTeachingClass`、`tblEnrollment` |
-| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord` |
+| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`（已自动创建） |
 | 商店 | `tblProduct`、`tblCartItem`、`tblOrder`、`tblOrderItem` |
 
 Access 不适合大量并发写入。库存扣减、选课、借书等关键业务应由服务器端使用短事务完成。

@@ -6,11 +6,13 @@ import edu.seu.vcampus.server.dao.AccessBookRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.dispatcher.AcademicRequestHandler;
+import edu.seu.vcampus.server.dispatcher.LibraryRequestHandler;
 import edu.seu.vcampus.server.dispatcher.RequestDispatcher;
 import edu.seu.vcampus.server.network.VCampusServer;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuthService;
+import edu.seu.vcampus.server.service.LibraryService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
 import java.util.logging.Logger;
@@ -28,13 +30,15 @@ public final class ServerApplication {
         AccessDatabase database = new AccessDatabase(config.getDatabasePath());
         AccessUserRepository userRepository = new AccessUserRepository(database, passwordHasher);
         AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
-        new AccessBookRepository(database);
+        AccessBookRepository bookRepository = new AccessBookRepository(database);
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(userRepository, passwordHasher, sessions);
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
+        LibraryService libraryService = new LibraryService(bookRepository);
         AcademicRequestHandler academicHandler = new AcademicRequestHandler(academicService);
+        LibraryRequestHandler libraryHandler = new LibraryRequestHandler(libraryService);
         RequestDispatcher dispatcher = new RequestDispatcher(
-                authService, sessions, academicHandler);
+                authService, sessions, academicHandler, libraryHandler);
         final VCampusServer server = new VCampusServer(
                 config.getPort(), config.getWorkerThreads(), dispatcher);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
