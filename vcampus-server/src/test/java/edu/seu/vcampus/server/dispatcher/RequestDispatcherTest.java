@@ -178,9 +178,9 @@ public class RequestDispatcherTest {
         String superToken = login("superadmin", "super123");
         ResponseMessage<?> created = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
         assertEquals(ResponseCode.SUCCESS, created.getCode());
-        assertEquals(Role.ADMIN, ((AccountInfo) created.getBody()).getRole());
+        assertEquals(Role.SUBSYSADMIN, ((AccountInfo) created.getBody()).getRole());
     }
 
     @Test
@@ -188,7 +188,7 @@ public class RequestDispatcherTest {
         String adminToken = login("admin", "admin123");
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, adminToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
     }
 

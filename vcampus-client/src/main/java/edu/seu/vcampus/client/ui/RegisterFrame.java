@@ -181,7 +181,7 @@ public final class RegisterFrame extends JFrame {
             return Role.SUPER_ADMIN;
         }
         if (index == 2) {
-            return Role.ADMIN;
+            return Role.SUBSYSADMIN;
         }
         if (index == 1) {
             return Role.TEACHER;

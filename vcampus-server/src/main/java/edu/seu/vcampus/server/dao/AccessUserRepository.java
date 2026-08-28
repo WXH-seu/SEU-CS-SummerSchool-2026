@@ -123,8 +123,16 @@ public final class AccessUserRepository implements UserRepository {
                 result.getString("passwordHash"),
                 result.getString("passwordSalt"),
                 result.getString("displayName"),
-                Role.valueOf(result.getString("roleName")),
+                parseRole(result.getString("roleName")),
                 result.getBoolean("active"));
+    }
+
+    /** Maps a stored role name, tolerating the legacy {@code ADMIN} value. */
+    private Role parseRole(String roleName) {
+        if ("ADMIN".equalsIgnoreCase(roleName)) {
+            return Role.SUBSYSADMIN;
+        }
+        return Role.valueOf(roleName);
     }
 
     private void initializeDatabase() throws SQLException {
@@ -190,7 +198,7 @@ public final class AccessUserRepository implements UserRepository {
 
     private void insertDemoUsers(Connection connection) throws SQLException {
         insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN);
-        insertUser(connection, "admin", "admin123", "系统管理员", Role.ADMIN);
+        insertUser(connection, "admin", "admin123", "系统管理员", Role.SUBSYSADMIN);
         insertUser(connection, "student", "student123", "演示学生", Role.STUDENT);
         insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER);
     }

@@ -25,7 +25,7 @@ import java.util.logging.Logger;
  *
  * <p><strong>Account management is super-admin only.</strong> Registering users
  * (single or via CSV) and managing account status requires
- * {@link Role#SUPER_ADMIN}. The sub-system administrator ({@link Role#ADMIN})
+ * {@link Role#SUPER_ADMIN}. The sub-system administrator ({@link Role#SUBSYSADMIN})
  * only operates business sub-systems (student management, library, etc.) and
  * has no account-management permission.
  *

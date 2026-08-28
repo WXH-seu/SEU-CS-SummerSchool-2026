@@ -96,7 +96,7 @@ public class AuthServiceTest {
 
     @Test
     public void adminAndTeacherCannotRegisterAccount() throws Exception {
-        for (Role actor : new Role[]{Role.TEACHER, Role.ADMIN}) {
+        for (Role actor : new Role[]{Role.TEACHER, Role.SUBSYSADMIN}) {
             try {
                 authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
                         actor, "someone");
@@ -180,7 +180,7 @@ public class AuthServiceTest {
             assertEquals(ResponseCode.FORBIDDEN, e.getCode());
         }
         try {
-            authService.updateUserStatus("admin", "stu2026", false, Role.ADMIN);
+            authService.updateUserStatus("admin", "stu2026", false, Role.SUBSYSADMIN);
             fail("sub-system admin must not manage users");
         } catch (AuthException e) {
             assertEquals(ResponseCode.FORBIDDEN, e.getCode());

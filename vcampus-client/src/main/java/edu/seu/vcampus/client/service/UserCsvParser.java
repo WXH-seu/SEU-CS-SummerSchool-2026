@@ -16,8 +16,9 @@ import java.util.List;
  *   账号,密码,显示名[,角色]
  * </pre>
  *
- * <p>The optional role column accepts {@code STUDENT}/{@code TEACHER}/{@code ADMIN}
- * or the Chinese equivalents {@code 学生}/{@code 教师}/{@code 管理员}; it defaults to
+ * <p>The optional role column accepts {@code STUDENT}/{@code TEACHER}/
+ * {@code SUBSYSADMIN}/{@code SUPER_ADMIN} or the Chinese equivalents
+ * {@code 学生}/{@code 教师}/{@code 管理员}/{@code 超级管理员}; it defaults to
  * {@link Role#STUDENT} when omitted. Blank lines, {@code #} comments and an
  * optional header row are ignored. Any malformed row raises an
  * {@link IllegalArgumentException} carrying the row number.
@@ -76,8 +77,12 @@ public final class UserCsvParser {
         if ("TEACHER".equalsIgnoreCase(value) || "教师".equals(value)) {
             return Role.TEACHER;
         }
-        if ("ADMIN".equalsIgnoreCase(value) || "管理员".equals(value)) {
-            return Role.ADMIN;
+        if ("ADMIN".equalsIgnoreCase(value) || "SUBSYSADMIN".equalsIgnoreCase(value)
+                || "管理员".equals(value) || "子系统管理员".equals(value)) {
+            return Role.SUBSYSADMIN;
+        }
+        if ("SUPER_ADMIN".equalsIgnoreCase(value) || "超级管理员".equals(value)) {
+            return Role.SUPER_ADMIN;
         }
         throw new IllegalArgumentException("无法识别的角色：" + value);
     }

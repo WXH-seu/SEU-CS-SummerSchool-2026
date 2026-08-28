@@ -31,8 +31,8 @@ public class UserCsvParserTest {
         assertEquals(4, users.size());
         assertEquals(Role.STUDENT, users.get(0).getRole());
         assertEquals(Role.TEACHER, users.get(1).getRole());
-        assertEquals(Role.ADMIN, users.get(2).getRole());
-        assertEquals(Role.ADMIN, users.get(3).getRole());
+        assertEquals(Role.SUBSYSADMIN, users.get(2).getRole());
+        assertEquals(Role.SUBSYSADMIN, users.get(3).getRole());
     }
 
     @Test

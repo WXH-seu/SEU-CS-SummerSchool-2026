@@ -96,7 +96,7 @@ public final class PermissionPolicy {
         markPublic(Operation.PING);
         markPublic(Operation.USER_LOGIN);
 
-        // Account management is super-admin only. The sub-system admin (ADMIN)
+        // Account management is super-admin only. The sub-system admin (SUBSYSADMIN)
         // only operates business sub-systems and cannot register users or
         // change account status.
         require(Operation.USER_REGISTER, Role.SUPER_ADMIN);
@@ -114,10 +114,10 @@ public final class PermissionPolicy {
 
         // Default matrix for the remaining modules. Owners may adjust these
         // entries with require(...) while integrating their features. The
-        // sub-system admin (ADMIN) manages these business sub-systems, and the
+        // sub-system admin (SUBSYSADMIN) manages these business sub-systems, and the
         // super administrator is granted the widest access as the global admin.
-        require(Operation.STUDENT_QUERY, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);
-        require(Operation.STUDENT_SAVE, Role.TEACHER, Role.ADMIN, Role.SUPER_ADMIN);
+        require(Operation.STUDENT_QUERY, Role.TEACHER, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
+        require(Operation.STUDENT_SAVE, Role.TEACHER, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
         require(Operation.COURSE_QUERY);
         require(Operation.COURSE_SELECT, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.COURSE_DROP, Role.STUDENT, Role.SUPER_ADMIN);

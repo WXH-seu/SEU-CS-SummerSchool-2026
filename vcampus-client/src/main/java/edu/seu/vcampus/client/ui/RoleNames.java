@@ -14,8 +14,8 @@ public final class RoleNames {
         switch (role) {
             case SUPER_ADMIN:
                 return "超级管理员";
-            case ADMIN:
-                return "管理员";
+            case SUBSYSADMIN:
+                return "子系统管理员";
             case TEACHER:
                 return "教师";
             default:

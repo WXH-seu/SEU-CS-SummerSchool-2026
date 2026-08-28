@@ -32,7 +32,7 @@ public class UserDtoSerializationTest {
     public void accountInfoAndListRoundTrip() throws Exception {
         AccountInfo student =
                 new AccountInfo("stu2026", "新同学", Role.STUDENT, true);
-        AccountInfo admin = new AccountInfo("admin", "管理员", Role.ADMIN, true);
+        AccountInfo admin = new AccountInfo("admin", "管理员", Role.SUBSYSADMIN, true);
         UserListResponse response = new UserListResponse(Arrays.asList(student, admin));
 
         UserListResponse restored = roundTrip(response);

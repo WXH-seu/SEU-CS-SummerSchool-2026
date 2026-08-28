@@ -32,38 +32,38 @@ public class PermissionPolicyTest {
     @Test
     public void accountManagementIsSuperAdminOnly() {
         assertTrue(policy.allows(Operation.USER_REGISTER, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_REGISTER, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_REGISTER, Role.SUBSYSADMIN));
         assertFalse(policy.allows(Operation.USER_REGISTER, Role.STUDENT));
 
         assertTrue(policy.allows(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_IMPORT_CSV, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_IMPORT_CSV, Role.SUBSYSADMIN));
 
         assertTrue(policy.allows(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_LIST_QUERY, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_LIST_QUERY, Role.SUBSYSADMIN));
 
         assertTrue(policy.allows(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_STATUS_UPDATE, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_STATUS_UPDATE, Role.SUBSYSADMIN));
 
         assertTrue(policy.allows(Operation.USER_AUDIT_QUERY, Role.SUPER_ADMIN));
-        assertFalse(policy.allows(Operation.USER_AUDIT_QUERY, Role.ADMIN));
+        assertFalse(policy.allows(Operation.USER_AUDIT_QUERY, Role.SUBSYSADMIN));
         assertFalse(policy.allows(Operation.USER_AUDIT_QUERY, Role.TEACHER));
     }
 
     @Test
     public void studentModuleDefaultsMatchTheDocumentedMatrix() {
         assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.TEACHER));
-        assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.ADMIN));
+        assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.SUBSYSADMIN));
         assertFalse(policy.allows(Operation.STUDENT_QUERY, Role.STUDENT));
 
         assertTrue(policy.allows(Operation.COURSE_SELECT, Role.STUDENT));
         assertFalse(policy.allows(Operation.COURSE_SELECT, Role.TEACHER));
-        assertFalse(policy.allows(Operation.COURSE_SELECT, Role.ADMIN));
+        assertFalse(policy.allows(Operation.COURSE_SELECT, Role.SUBSYSADMIN));
 
         assertTrue(policy.allows(Operation.LIBRARY_BORROW, Role.STUDENT));
         assertTrue(policy.allows(Operation.LIBRARY_BORROW, Role.TEACHER));
 
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.STUDENT));
-        assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.ADMIN));
+        assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.SUBSYSADMIN));
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.SUPER_ADMIN));
 
         // The super administrator is the global administrator with widest access.
@@ -77,25 +77,25 @@ public class PermissionPolicyTest {
     public void unrestrictedOperationsAllowEveryRole() {
         assertTrue(policy.allows(Operation.COURSE_QUERY, Role.STUDENT));
         assertTrue(policy.allows(Operation.COURSE_QUERY, Role.TEACHER));
-        assertTrue(policy.allows(Operation.COURSE_QUERY, Role.ADMIN));
+        assertTrue(policy.allows(Operation.COURSE_QUERY, Role.SUBSYSADMIN));
         assertFalse(policy.allows(Operation.COURSE_QUERY, null));
     }
 
     @Test
     public void moduleOwnersCanAdjustTheMatrix() {
-        assertFalse(policy.allows(Operation.LIBRARY_RETURN, Role.ADMIN));
-        policy.require(Operation.LIBRARY_RETURN, Role.ADMIN);
-        assertTrue(policy.allows(Operation.LIBRARY_RETURN, Role.ADMIN));
+        assertFalse(policy.allows(Operation.LIBRARY_RETURN, Role.SUBSYSADMIN));
+        policy.require(Operation.LIBRARY_RETURN, Role.SUBSYSADMIN);
+        assertTrue(policy.allows(Operation.LIBRARY_RETURN, Role.SUBSYSADMIN));
         assertFalse(policy.allows(Operation.LIBRARY_RETURN, Role.STUDENT));
 
         policy.require(Operation.COURSE_DROP);
-        assertTrue(policy.allows(Operation.COURSE_DROP, Role.ADMIN));
+        assertTrue(policy.allows(Operation.COURSE_DROP, Role.SUBSYSADMIN));
     }
 
     @Test
     public void nullRoleNeverPassesRestrictedChecks() {
         assertFalse(policy.allows(Operation.USER_LIST_QUERY, null));
         assertFalse(policy.allows(Operation.USER_DELETE, null));
-        assertFalse(policy.allows(null, Role.ADMIN));
+        assertFalse(policy.allows(null, Role.SUBSYSADMIN));
     }
 }

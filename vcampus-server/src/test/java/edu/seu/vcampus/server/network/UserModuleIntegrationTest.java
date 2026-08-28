@@ -212,7 +212,7 @@ public class UserModuleIntegrationTest {
         String subAdminToken = loginAs(subAdminClient, "admin", "admin123");
         ResponseMessage<?> deniedBySubAdmin = subAdminClient.request(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, subAdminToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
         assertEquals(ResponseCode.FORBIDDEN, deniedBySubAdmin.getCode());
         subAdminClient.close();
 
@@ -220,9 +220,9 @@ public class UserModuleIntegrationTest {
         String superToken = loginAs(superClient, "superadmin", "super123");
         ResponseMessage<?> createdBySuper = superClient.request(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("admin2", "secret123", "管理员二", Role.ADMIN)));
+                new RegisterRequest("admin2", "secret123", "管理员二", Role.SUBSYSADMIN)));
         assertEquals(ResponseCode.SUCCESS, createdBySuper.getCode());
-        assertEquals(Role.ADMIN, ((AccountInfo) createdBySuper.getBody()).getRole());
+        assertEquals(Role.SUBSYSADMIN, ((AccountInfo) createdBySuper.getBody()).getRole());
         superClient.close();
         adminClient.close();
     }
