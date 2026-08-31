@@ -2,6 +2,7 @@ package edu.seu.vcampus.server.security;
 
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -62,7 +63,7 @@ public class PermissionPolicyTest {
     public void studentModuleDefaultsMatchTheDocumentedMatrix() {
         assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.TEACHER));
         assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.SUBSYSADMIN, scopes("student")));
-        assertFalse(policy.allows(Operation.STUDENT_QUERY, Role.STUDENT));
+        assertTrue(policy.allows(Operation.STUDENT_QUERY, Role.STUDENT));
 
         assertTrue(policy.allows(Operation.COURSE_SELECT, Role.STUDENT));
         assertFalse(policy.allows(Operation.COURSE_SELECT, Role.TEACHER));
@@ -110,11 +111,11 @@ public class PermissionPolicyTest {
     public void moduleOwnersCanAdjustTheMatrix() {
         // SAVE is a management (admin-only) operation by default.
         assertFalse(policy.allows(Operation.STUDENT_SAVE, Role.SUBSYSADMIN));
-        policy.require(Operation.STUDENT_SAVE, Role.SUBSYSADMIN);
+        policy.requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
         assertTrue(policy.allows(Operation.STUDENT_SAVE, Role.SUBSYSADMIN, scopes("student")));
         assertFalse(policy.allows(Operation.STUDENT_SAVE, Role.STUDENT));
 
-        policy.require(Operation.COURSE_DROP);
+        policy.requireSubSystem(Operation.COURSE_DROP);
         assertTrue(policy.allows(Operation.COURSE_DROP, Role.SUBSYSADMIN, scopes("course")));
     }
 

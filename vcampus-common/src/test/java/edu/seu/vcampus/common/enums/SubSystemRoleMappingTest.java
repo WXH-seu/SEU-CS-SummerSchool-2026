@@ -36,4 +36,18 @@ public class SubSystemRoleMappingTest {
         assertEquals(SubSystemRole.STUDENT, SubSystems.effectiveRole(
                 Role.STUDENT, Collections.<String>emptySet(), SubSystem.COURSE));
     }
+
+    @Test
+    public void mapsEveryAcademicOperationToStudentSubsystem() {
+        Operation[] operations = {
+                Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_DELETE,
+                Operation.TEACHER_QUERY, Operation.TEACHER_SAVE, Operation.TEACHER_DELETE,
+                Operation.DEPARTMENT_QUERY, Operation.DEPARTMENT_SAVE,
+                Operation.DEPARTMENT_DELETE, Operation.CLASS_QUERY,
+                Operation.CLASS_SAVE, Operation.CLASS_DELETE
+        };
+        for (Operation operation : operations) {
+            assertEquals(SubSystem.STUDENT, SubSystems.of(operation));
+        }
+    }
 }

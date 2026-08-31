@@ -20,6 +20,9 @@ vcampus-database/vCampus.accdb
 
 数据库包含超级管理员、子系统管理员、学生和教师四个演示账号；与学生、教师账号关联的演示学籍，以及 10 种演示图书。演示学生账号有一条在借记录和一条逾期未还记录。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
 
+`tblBorrowRecord.userId` 以外键引用 `tblUser.userId`。借阅人统一使用登录账号标识，
+需要学号或工号时再通过学籍表的 `userId` 关联。
+
 ## 用户表结构（tblUser）
 
 | 字段 | 类型 | 说明 |

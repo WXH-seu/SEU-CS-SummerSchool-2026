@@ -6,10 +6,7 @@ import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -28,7 +25,6 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Search and maintenance page for students, teachers, classes and departments. */
@@ -70,10 +66,13 @@ public final class AcademicManagementPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<?> rows = new ArrayList<Object>();
 
-    public AcademicManagementPanel(AcademicClientService service, Role role, Set<String> adminScopes) {
+    public AcademicManagementPanel(AcademicClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
-        this.effectiveRole = SubSystems.effectiveRole(role, adminScopes, SubSystem.STUDENT);
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();

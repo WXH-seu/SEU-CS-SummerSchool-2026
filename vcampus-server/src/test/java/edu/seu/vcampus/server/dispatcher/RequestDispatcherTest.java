@@ -1,9 +1,11 @@
 package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.AccountInfo;
+import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserOperationLogResponse;
@@ -13,10 +15,13 @@ import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
+import edu.seu.vcampus.server.dao.AccessAcademicRepository;
 import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
+import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.security.PermissionPolicy;
+import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.session.SessionRegistry;
@@ -27,6 +32,7 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -48,11 +54,15 @@ public class RequestDispatcherTest {
         PasswordHasher passwordHasher = new PasswordHasher();
         String db = new java.io.File(temporaryFolder.getRoot(), "dispatcher-test.accdb")
                 .getAbsolutePath();
-        AccessUserRepository repository = new AccessUserRepository(db, passwordHasher);
+        AccessDatabase database = new AccessDatabase(db);
+        AccessUserRepository repository = new AccessUserRepository(database, passwordHasher);
+        AcademicRequestHandler academicHandler = new AcademicRequestHandler(
+                new AcademicService(new AccessAcademicRepository(database), repository));
         AuditService auditService = new AuditService(new AccessOperationLogRepository(db));
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
-        dispatcher = new RequestDispatcher(authService, sessions, new PermissionPolicy(), auditService);
+        dispatcher = new RequestDispatcher(authService, sessions, new PermissionPolicy(),
+                auditService, academicHandler, null);
     }
 
     private String login(String userId, String password) {
@@ -216,6 +226,22 @@ public class RequestDispatcherTest {
         ResponseMessage<?> borrow = dispatcher.dispatch(new RequestMessage<Serializable>(
                 Operation.LIBRARY_BORROW, adminLibToken, null));
         assertEquals(ResponseCode.NOT_IMPLEMENTED, borrow.getCode());
+    }
+
+    @Test
+    public void studentQueriesOnlyOwnAcademicRecordAndCannotModifyIt() {
+        String token = login("student", "student123");
+        ResponseMessage<?> query = dispatcher.dispatch(
+                new RequestMessage<AcademicQueryRequest>(Operation.STUDENT_QUERY, token,
+                        new AcademicQueryRequest("其他学生", null, null, false)));
+        assertEquals(ResponseCode.SUCCESS, query.getCode());
+        List<?> rows = (List<?>) query.getBody();
+        assertEquals(1, rows.size());
+        assertEquals("20260001", ((StudentDto) rows.get(0)).getStudentId());
+
+        ResponseMessage<?> save = dispatcher.dispatch(
+                new RequestMessage<Serializable>(Operation.STUDENT_SAVE, token, null));
+        assertEquals(ResponseCode.FORBIDDEN, save.getCode());
     }
 
     @Test

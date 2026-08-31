@@ -2,6 +2,7 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.LibraryClientService;
 import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -23,6 +24,7 @@ import java.util.concurrent.ExecutionException;
 /** Search page for library titles and available inventory. */
 public final class LibraryPanel extends JPanel {
     private final LibraryClientService service;
+    private final SubSystemRole effectiveRole;
     private final JTextField keyword = new JTextField(18);
     private final JButton searchButton = new JButton("查询");
     private final JLabel statusLabel = new JLabel("准备就绪");
@@ -37,9 +39,13 @@ public final class LibraryPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<BookSummary> rows = new ArrayList<BookSummary>();
 
-    public LibraryPanel(LibraryClientService service) {
+    public LibraryPanel(LibraryClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
@@ -48,7 +54,7 @@ public final class LibraryPanel extends JPanel {
 
     private void buildUi() {
         JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("图书馆");
+        JLabel title = new JLabel("图书馆（" + effectiveRole.getDisplayName() + "）");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
