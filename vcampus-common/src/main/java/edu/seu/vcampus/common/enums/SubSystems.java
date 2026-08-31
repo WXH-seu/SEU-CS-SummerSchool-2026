@@ -89,8 +89,11 @@ public final class SubSystems {
             case CLASS_DELETE:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
+            case COURSE_SAVE:
+            case COURSE_DELETE:
             case COURSE_SELECT:
             case COURSE_DROP:
+            case SCHEDULE_QUERY:
                 return SubSystem.COURSE;
             case LIBRARY_BOOK_QUERY:
             case LIBRARY_BORROW:
