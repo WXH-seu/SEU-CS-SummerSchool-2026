@@ -15,6 +15,7 @@ import java.util.List;
 
 /** Access implementation that creates library tables and demo data on first use. */
 public final class AccessBookRepository implements BookRepository {
+    private static final String BORROW_USER_FOREIGN_KEY = "fkBorrowRecordUser";
     private static final String DEMO_STUDENT_ID = "student";
     private static final String MATH_ISBN = "9787040396621";
     private static final String NOVEL_ISBN = "9787020008735";
@@ -181,6 +182,10 @@ public final class AccessBookRepository implements BookRepository {
 
     private void initializeDatabase() throws SQLException {
         try (Connection connection = database.openConnection()) {
+            if (!tableExists(connection, "tblUser")) {
+                throw new SQLException(
+                        "tblUser must be initialized before the library repository");
+            }
             if (!tableExists(connection, "tblBook")) {
                 createBookTable(connection);
             }
@@ -190,6 +195,7 @@ public final class AccessBookRepository implements BookRepository {
             if (!tableExists(connection, "tblBorrowRecord")) {
                 createBorrowRecordTable(connection);
             }
+            ensureBorrowUserForeignKey(connection);
             if (countBooks(connection) == 0) {
                 insertDemoData(connection);
             }
@@ -234,8 +240,34 @@ public final class AccessBookRepository implements BookRepository {
                 + "[userId] TEXT(32) NOT NULL, "
                 + "[borrowTime] DATETIME NOT NULL, "
                 + "[dueTime] DATETIME NOT NULL, "
-                + "[returnTime] DATETIME)";
+                + "[returnTime] DATETIME, "
+                + "CONSTRAINT [" + BORROW_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId]))";
         execute(connection, sql);
+    }
+
+    /** Adds the user relation when upgrading a database created before version 1.3. */
+    private void ensureBorrowUserForeignKey(Connection connection) throws SQLException {
+        if (hasBorrowUserForeignKey(connection)) {
+            return;
+        }
+        execute(connection, "ALTER TABLE [tblBorrowRecord] ADD CONSTRAINT ["
+                + BORROW_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId])");
+    }
+
+    private boolean hasBorrowUserForeignKey(Connection connection) throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(
+                null, null, "tblBorrowRecord")) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     private int countBooks(Connection connection) throws SQLException {

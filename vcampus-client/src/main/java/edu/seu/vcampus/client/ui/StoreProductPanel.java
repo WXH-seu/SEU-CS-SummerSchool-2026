@@ -1,8 +1,8 @@
 package edu.seu.vcampus.client.ui;
 
-import edu.seu.vcampus.client.service.LibraryClientService;
-import edu.seu.vcampus.common.dto.BookDto;
-import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.client.service.StoreClientService;
+import edu.seu.vcampus.common.dto.ProductDto;
+import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -10,7 +10,6 @@ import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -28,13 +27,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
-/** Search and maintenance page for library titles and inventory. */
-public final class LibraryPanel extends JPanel {
-    private final LibraryClientService service;
-    private final SubSystemRole effectiveRole;
-    private final JTextField keyword = new JTextField(18);
-    private final JCheckBox includeInactive = new JCheckBox("含已下架");
+/** Product browsing page with a shop cart entry and admin maintenance. */
+public final class StoreProductPanel extends JPanel {
+    private final StoreClientService service;
+    private final Role role;
+    private final Set<String> adminScopes;
+    private final JTextField keyword = new JTextField(10);
+    private final JTextField category = new JTextField(8);
     private final JButton searchButton = new JButton("查询");
+    private final JButton addToCartButton = new JButton("加入购物车");
     private final JButton addButton = new JButton("新增");
     private final JButton editButton = new JButton("编辑");
     private final JButton deleteButton = new JButton("删除");
@@ -48,21 +49,22 @@ public final class LibraryPanel extends JPanel {
         }
     };
     private final JTable table = new JTable(tableModel);
-    private List<BookSummary> rows = new ArrayList<BookSummary>();
+    private List<ProductDto> rows = new ArrayList<ProductDto>();
 
-    public LibraryPanel(LibraryClientService service, Role role, Set<String> adminScopes) {
+    public StoreProductPanel(StoreClientService service, Role role, Set<String> adminScopes) {
         super(new BorderLayout(0, 12));
         this.service = service;
-        this.effectiveRole = SubSystems.effectiveRole(role, adminScopes, SubSystem.LIBRARY);
+        this.role = role;
+        this.adminScopes = adminScopes;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
-        refreshRows();
+        refresh();
     }
 
     private void buildUi() {
         JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("图书馆（" + effectiveRole.getDisplayName() + "）");
+        JLabel title = new JLabel("校园商店 · 商品");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
@@ -70,8 +72,10 @@ public final class LibraryPanel extends JPanel {
         JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         filters.add(new JLabel("关键字"));
         filters.add(keyword);
-        filters.add(includeInactive);
+        filters.add(new JLabel("分类"));
+        filters.add(category);
         filters.add(searchButton);
+        filters.add(addToCartButton);
         filters.add(addButton);
         filters.add(editButton);
         filters.add(deleteButton);
@@ -80,49 +84,43 @@ public final class LibraryPanel extends JPanel {
         north.add(heading, BorderLayout.NORTH);
         north.add(filters, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
-
-        tableModel.setColumnIdentifiers(new String[]{
-                "ISBN", "书名", "作者", "出版社", "分类", "可借", "馆藏", "状态"});
         table.setFillsViewportHeight(true);
         table.setAutoCreateRowSorter(true);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
-        includeInactive.setVisible(administrator);
+        boolean administrator = effectiveRole() == SubSystemRole.ADMIN;
+        addToCartButton.setVisible(!administrator);
         addButton.setVisible(administrator);
         editButton.setVisible(administrator);
         deleteButton.setVisible(administrator);
     }
 
     private void bindActions() {
-        searchButton.addActionListener(event -> refreshRows());
-        keyword.addActionListener(event -> refreshRows());
-        includeInactive.addActionListener(event -> refreshRows());
-        addButton.addActionListener(event -> editBook(null));
-        editButton.addActionListener(event -> editSelectedBook());
-        deleteButton.addActionListener(event -> deleteSelectedBook());
+        searchButton.addActionListener(event -> refresh());
+        keyword.addActionListener(event -> refresh());
+        category.addActionListener(event -> refresh());
+        addToCartButton.addActionListener(event -> addSelectedToCart());
+        addButton.addActionListener(event -> editProduct(null));
+        editButton.addActionListener(event -> editSelected());
+        deleteButton.addActionListener(event -> deleteSelected());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2) {
-                    if (effectiveRole == SubSystemRole.ADMIN) {
-                        editSelectedBook();
-                    } else {
-                        showSelectedDetails();
-                    }
+                if (event.getClickCount() == 2 && effectiveRole() == SubSystemRole.ADMIN) {
+                    editSelected();
                 }
             }
         });
     }
 
-    private void refreshRows() {
-        setBusy(true, "正在加载……");
-        final String requestedKeyword = keyword.getText();
-        final boolean requestedInactive = includeInactive.isSelected();
-        new SwingWorker<List<BookSummary>, Void>() {
+    public void refresh() {
+        setBusy(true, "正在加载商品……");
+        final StoreQueryRequest query = new StoreQueryRequest(
+                keyword.getText(), category.getText(), true);
+        new SwingWorker<List<ProductDto>, Void>() {
             @Override
-            protected List<BookSummary> doInBackground() throws Exception {
-                return service.queryBooks(requestedKeyword, requestedInactive);
+            protected List<ProductDto> doInBackground() throws Exception {
+                return service.queryProducts(query);
             }
 
             @Override
@@ -130,7 +128,7 @@ public final class LibraryPanel extends JPanel {
                 try {
                     rows = get();
                     renderRows();
-                    statusLabel.setText("共 " + rows.size() + " 种图书");
+                    statusLabel.setText("共 " + rows.size() + " 件商品");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     showError("加载被中断");
@@ -145,88 +143,99 @@ public final class LibraryPanel extends JPanel {
 
     private void renderRows() {
         tableModel.setRowCount(0);
-        for (BookSummary book : rows) {
-            tableModel.addRow(new Object[]{
-                    book.getIsbn(),
-                    book.getTitle(),
-                    book.getAuthor(),
-                    book.getPublisher(),
-                    book.getCategory(),
-                    Integer.valueOf(book.getAvailableCopies()),
-                    Integer.valueOf(book.getTotalCopies()),
-                    book.isActive() ? "在架" : "已下架"
-            });
+        tableModel.setColumnIdentifiers(new String[]{
+                "商品编号", "名称", "分类", "描述", "单价", "库存", "上架"});
+        for (ProductDto product : rows) {
+            tableModel.addRow(new Object[]{product.getProductId(), product.getProductName(),
+                    product.getCategory(), product.getDescription(),
+                    StoreFormat.money(product.getPrice()), product.getStock(),
+                    product.isActive() ? "是" : "否"});
         }
     }
 
-    private void editSelectedBook() {
-        BookSummary book = selectedBook();
-        if (book != null) {
-            editBook(book);
+    private void addSelectedToCart() {
+        ProductDto product = selectedProduct();
+        if (product == null) {
+            return;
         }
-    }
-
-    private void editBook(BookSummary existing) {
-        final BookDto edited;
+        String input = JOptionPane.showInputDialog(this,
+                "请输入购买数量（剩余库存 " + product.getStock() + "）：", "1");
+        if (input == null) {
+            return;
+        }
+        final int quantity;
         try {
-            edited = BookEditorDialog.edit(this, existing);
-        } catch (IllegalArgumentException e) {
-            showError(e.getMessage());
+            quantity = Integer.parseInt(input.trim());
+        } catch (NumberFormatException e) {
+            showError("数量必须是整数");
             return;
         }
-        if (edited == null) {
+        if (quantity <= 0) {
+            showError("数量必须大于 0");
             return;
         }
-        runMutation("正在保存图书……", new IoAction() {
+        runMutation("正在加入购物车……", new IoAction() {
             @Override
             public void run() throws IOException {
-                service.saveBook(edited);
+                service.updateCart(product.getProductId(), quantity);
             }
-        });
+        }, "已加入购物车");
     }
 
-    private void deleteSelectedBook() {
-        final BookSummary book = selectedBook();
-        if (book == null || JOptionPane.showConfirmDialog(this,
-                "确定删除图书「" + book.getTitle() + "」吗？仍有借阅记录时请改用下架。",
+    private void editProduct(ProductDto existing) {
+        try {
+            final ProductDto edited = StoreEditors.editProduct(this, existing);
+            if (edited == null) {
+                return;
+            }
+            runMutation("正在保存……", new IoAction() {
+                @Override
+                public void run() throws IOException {
+                    service.saveProduct(edited);
+                }
+            }, "商品已保存");
+        } catch (IllegalArgumentException e) {
+            showError(e.getMessage());
+        }
+    }
+
+    private void editSelected() {
+        ProductDto selected = selectedProduct();
+        if (selected != null) {
+            editProduct(selected);
+        }
+    }
+
+    private void deleteSelected() {
+        final ProductDto selected = selectedProduct();
+        if (selected == null || JOptionPane.showConfirmDialog(this,
+                "确定删除商品「" + selected.getProductName() + "」吗？",
                 "确认删除", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
             return;
         }
-        runMutation("正在删除图书……", new IoAction() {
+        runMutation("正在删除……", new IoAction() {
             @Override
             public void run() throws IOException {
-                service.deleteBook(book.getIsbn());
+                service.deleteProduct(selected.getProductId());
             }
-        });
+        }, "商品已删除");
     }
 
-    private BookSummary selectedBook() {
+    private ProductDto selectedProduct() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
-            JOptionPane.showMessageDialog(this, "请先选择一种图书", "提示",
+            JOptionPane.showMessageDialog(this, "请先选择一件商品", "提示",
                     JOptionPane.INFORMATION_MESSAGE);
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
     }
 
-    private void showSelectedDetails() {
-        BookSummary book = selectedBook();
-        if (book == null) {
-            return;
-        }
-        String details = "ISBN：" + nullToEmpty(book.getIsbn())
-                + "\n书名：" + nullToEmpty(book.getTitle())
-                + "\n作者：" + nullToEmpty(book.getAuthor())
-                + "\n出版社：" + nullToEmpty(book.getPublisher())
-                + "\n分类：" + nullToEmpty(book.getCategory())
-                + "\n可借 / 馆藏：" + book.getAvailableCopies() + " / " + book.getTotalCopies()
-                + "\n状态：" + (book.isActive() ? "在架" : "已下架");
-        JOptionPane.showMessageDialog(this, details, "图书详情",
-                JOptionPane.INFORMATION_MESSAGE);
+    private SubSystemRole effectiveRole() {
+        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
     }
 
-    private void runMutation(final String status, final IoAction action) {
+    private void runMutation(String status, final IoAction action, String successMessage) {
         setBusy(true, status);
         new SwingWorker<Void, Void>() {
             @Override
@@ -239,7 +248,9 @@ public final class LibraryPanel extends JPanel {
             protected void done() {
                 try {
                     get();
-                    refreshRows();
+                    refresh();
+                    JOptionPane.showMessageDialog(StoreProductPanel.this,
+                            successMessage, "操作成功", JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     showError("操作被中断");
@@ -255,8 +266,7 @@ public final class LibraryPanel extends JPanel {
     private void setBusy(boolean busy, String status) {
         statusLabel.setText(status);
         searchButton.setEnabled(!busy);
-        keyword.setEnabled(!busy);
-        includeInactive.setEnabled(!busy);
+        addToCartButton.setEnabled(!busy);
         addButton.setEnabled(!busy);
         editButton.setEnabled(!busy);
         deleteButton.setEnabled(!busy);
@@ -269,10 +279,6 @@ public final class LibraryPanel extends JPanel {
 
     private void showError(String message) {
         JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 
     private interface IoAction {

@@ -13,6 +13,7 @@ import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
@@ -62,12 +63,11 @@ public final class CourseManagementPanel extends JPanel {
 
     public CourseManagementPanel(CourseClientService service,
                                  AcademicClientService academicService,
-                                 Role role, Set<String> adminScopes) {
+                                 SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
         this.academicService = academicService;
-        this.effectiveRole = SubSystems.effectiveRole(
-                role, adminScopes, SubSystem.COURSE);
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
@@ -84,23 +84,30 @@ public final class CourseManagementPanel extends JPanel {
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
 
-        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filters.add(new JLabel("关键字"));
-        filters.add(keyword);
-        filters.add(new JLabel("学期"));
-        filters.add(semester);
-        filters.add(new JLabel("院系"));
-        filters.add(departmentId);
-        filters.add(activeOnly);
-        filters.add(searchButton);
-        filters.add(selectButton);
-        filters.add(addButton);
-        filters.add(editButton);
-        filters.add(deleteButton);
+        JPanel filterRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        filterRow.add(new JLabel("关键字"));
+        filterRow.add(keyword);
+        filterRow.add(new JLabel("学期"));
+        filterRow.add(semester);
+        filterRow.add(new JLabel("院系"));
+        filterRow.add(departmentId);
+        filterRow.add(activeOnly);
+        filterRow.add(searchButton);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
+        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actionRow.add(selectButton);
+        actionRow.add(addButton);
+        actionRow.add(editButton);
+        actionRow.add(deleteButton);
+
+        JPanel tools = new JPanel();
+        tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
+        tools.add(filterRow);
+        tools.add(actionRow);
+
+        JPanel north = new JPanel(new BorderLayout(0, 12));
         north.add(heading, BorderLayout.NORTH);
-        north.add(filters, BorderLayout.SOUTH);
+        north.add(tools, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
         JTabbedPane tabs = new JTabbedPane();

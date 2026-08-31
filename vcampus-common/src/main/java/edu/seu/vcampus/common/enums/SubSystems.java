@@ -77,10 +77,23 @@ public final class SubSystems {
         switch (operation) {
             case STUDENT_QUERY:
             case STUDENT_SAVE:
+            case STUDENT_DELETE:
+            case TEACHER_QUERY:
+            case TEACHER_SAVE:
+            case TEACHER_DELETE:
+            case DEPARTMENT_QUERY:
+            case DEPARTMENT_SAVE:
+            case DEPARTMENT_DELETE:
+            case CLASS_QUERY:
+            case CLASS_SAVE:
+            case CLASS_DELETE:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
+            case COURSE_SAVE:
+            case COURSE_DELETE:
             case COURSE_SELECT:
             case COURSE_DROP:
+            case SCHEDULE_QUERY:
                 return SubSystem.COURSE;
             case LIBRARY_BOOK_QUERY:
             case LIBRARY_BOOK_SAVE:
@@ -89,7 +102,13 @@ public final class SubSystems {
             case LIBRARY_RETURN:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:
+            case STORE_PRODUCT_SAVE:
+            case STORE_PRODUCT_DELETE:
+            case STORE_CART_QUERY:
+            case STORE_CART_UPDATE:
             case STORE_ORDER_CREATE:
+            case STORE_ORDER_QUERY:
+            case STORE_ORDER_STATUS:
                 return SubSystem.STORE;
             default:
                 return null;

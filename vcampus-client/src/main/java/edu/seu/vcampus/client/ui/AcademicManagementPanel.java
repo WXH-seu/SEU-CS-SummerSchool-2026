@@ -6,12 +6,10 @@ import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
@@ -28,7 +26,6 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Search and maintenance page for students, teachers, classes and departments. */
@@ -70,10 +67,13 @@ public final class AcademicManagementPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<?> rows = new ArrayList<Object>();
 
-    public AcademicManagementPanel(AcademicClientService service, Role role, Set<String> adminScopes) {
+    public AcademicManagementPanel(AcademicClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
-        this.effectiveRole = SubSystems.effectiveRole(role, adminScopes, SubSystem.STUDENT);
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
@@ -87,23 +87,30 @@ public final class AcademicManagementPanel extends JPanel {
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
 
-        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filters.add(new JLabel("数据类型"));
-        filters.add(entityType);
-        filters.add(new JLabel("关键字"));
-        filters.add(keyword);
-        filters.add(new JLabel("院系"));
-        filters.add(departmentId);
-        filters.add(new JLabel("班级"));
-        filters.add(classId);
-        filters.add(searchButton);
-        filters.add(addButton);
-        filters.add(editButton);
-        filters.add(deleteButton);
+        JPanel filterRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        filterRow.add(new JLabel("数据类型"));
+        filterRow.add(entityType);
+        filterRow.add(new JLabel("关键字"));
+        filterRow.add(keyword);
+        filterRow.add(new JLabel("院系"));
+        filterRow.add(departmentId);
+        filterRow.add(new JLabel("班级"));
+        filterRow.add(classId);
+        filterRow.add(searchButton);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
+        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actionRow.add(addButton);
+        actionRow.add(editButton);
+        actionRow.add(deleteButton);
+
+        JPanel tools = new JPanel();
+        tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
+        tools.add(filterRow);
+        tools.add(actionRow);
+
+        JPanel north = new JPanel(new BorderLayout(0, 12));
         north.add(heading, BorderLayout.NORTH);
-        north.add(filters, BorderLayout.SOUTH);
+        north.add(tools, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
         table.setFillsViewportHeight(true);
         table.setAutoCreateRowSorter(true);

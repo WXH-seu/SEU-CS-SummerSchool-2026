@@ -1,11 +1,15 @@
 package edu.seu.vcampus.server.dao;
 
 import edu.seu.vcampus.server.database.AccessDatabase;
+import edu.seu.vcampus.server.security.PasswordHasher;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -22,6 +26,7 @@ public class AccessBookRepositoryTest {
     public void createsTablesAndSeedsDemoBooks() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
         AccessBookRepository repository = new AccessBookRepository(database);
 
         assertTrue(file.isFile());
@@ -49,6 +54,7 @@ public class AccessBookRepositoryTest {
         }
         assertTrue(hasCurrentBorrow);
         assertTrue(hasOverdue);
+        assertTrue(hasBorrowUserForeignKey(database));
 
         new AccessBookRepository(database);
         assertEquals(10, repository.findBooks(null).size());

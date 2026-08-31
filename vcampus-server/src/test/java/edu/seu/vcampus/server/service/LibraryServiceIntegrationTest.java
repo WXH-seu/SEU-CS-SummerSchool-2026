@@ -4,9 +4,9 @@ import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.AccessBookRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
-import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import org.junit.Before;
@@ -45,10 +45,11 @@ public class LibraryServiceIntegrationTest {
 
     @Test
     public void studentCanSearchDemoBooksAndSeeInventory() throws Exception {
-        List<BookSummary> allBooks = service.queryBooks(studentAccount, null);
+        List<BookSummary> allBooks = service.queryBooks(
+                "student", SubSystemRole.STUDENT, null);
         assertEquals(10, allBooks.size());
 
-        List<BookSummary> matched = service.queryBooks(studentAccount,
+        List<BookSummary> matched = service.queryBooks("student", SubSystemRole.STUDENT,
                 new BookQueryRequest("红楼梦"));
         assertEquals(1, matched.size());
         assertEquals("9787020008735", matched.get(0).getIsbn());
@@ -63,7 +64,7 @@ public class LibraryServiceIntegrationTest {
     @Test
     public void rejectsQueryWithoutLogin() throws Exception {
         try {
-            service.queryBooks(null, new BookQueryRequest("Java"));
+            service.queryBooks(null, null, new BookQueryRequest("Java"));
             fail("Anonymous query should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.UNAUTHORIZED, expected.getResponseCode());
@@ -72,7 +73,8 @@ public class LibraryServiceIntegrationTest {
 
     @Test
     public void emptyKeywordReturnsEveryActiveTitle() throws Exception {
-        List<BookSummary> books = service.queryBooks(studentAccount, new BookQueryRequest(""));
+        List<BookSummary> books = service.queryBooks(
+                "student", SubSystemRole.STUDENT, new BookQueryRequest(""));
         assertEquals(10, books.size());
         assertTrue(findByIsbn(books, "9787020024759").getAvailableCopies() >= 1);
     }

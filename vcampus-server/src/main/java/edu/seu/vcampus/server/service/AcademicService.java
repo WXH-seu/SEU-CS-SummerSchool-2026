@@ -6,12 +6,8 @@ import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.AcademicRepository;
-import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.dao.UserRepository;
 
 import java.sql.SQLException;
@@ -36,11 +32,12 @@ public final class AcademicService {
         this.userRepository = userRepository;
     }
 
-    public ArrayList<StudentDto> queryStudents(UserAccount actor, AcademicQueryRequest query)
+    public ArrayList<StudentDto> queryStudents(String actorUserId, SubSystemRole actorRole,
+                                                AcademicQueryRequest query)
             throws SQLException, BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) == SubSystemRole.STUDENT) {
-            StudentDto ownRecord = repository.findStudentByUserId(actor.getUserId());
+        requireActor(actorUserId, actorRole);
+        if (actorRole == SubSystemRole.STUDENT) {
+            StudentDto ownRecord = repository.findStudentByUserId(actorUserId);
             ArrayList<StudentDto> result = new ArrayList<StudentDto>();
             if (ownRecord != null) {
                 result.add(ownRecord);
@@ -50,44 +47,48 @@ public final class AcademicService {
         return new ArrayList<StudentDto>(repository.findStudents(query));
     }
 
-    public ArrayList<TeacherDto> queryTeachers(UserAccount actor, AcademicQueryRequest query)
+    public ArrayList<TeacherDto> queryTeachers(String actorUserId, SubSystemRole actorRole,
+                                                AcademicQueryRequest query)
             throws SQLException, BusinessException {
-        requireStaff(actor);
+        requireStaff(actorUserId, actorRole);
         return new ArrayList<TeacherDto>(repository.findTeachers(query));
     }
 
-    public ArrayList<DepartmentDto> queryDepartments(UserAccount actor, boolean activeOnly)
+    public ArrayList<DepartmentDto> queryDepartments(String actorUserId, SubSystemRole actorRole,
+                                                      boolean activeOnly)
             throws SQLException, BusinessException {
-        requireActor(actor);
+        requireActor(actorUserId, actorRole);
         return new ArrayList<DepartmentDto>(repository.findDepartments(activeOnly));
     }
 
-    public ArrayList<SchoolClassDto> queryClasses(UserAccount actor, AcademicQueryRequest query)
+    public ArrayList<SchoolClassDto> queryClasses(String actorUserId, SubSystemRole actorRole,
+                                                  AcademicQueryRequest query)
             throws SQLException, BusinessException {
-        requireActor(actor);
+        requireActor(actorUserId, actorRole);
         List<SchoolClassDto> classes = repository.findClasses(query);
         return new ArrayList<SchoolClassDto>(classes);
     }
 
-    public void saveStudent(UserAccount actor, StudentDto student)
+    public void saveStudent(String actorUserId, SubSystemRole actorRole, StudentDto student)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         validateStudent(student);
-        validateLinkedUser(student.getUserId(), Role.STUDENT);
+        validateLinkedUser(student.getUserId());
         repository.saveStudent(student);
     }
 
-    public void saveTeacher(UserAccount actor, TeacherDto teacher)
+    public void saveTeacher(String actorUserId, SubSystemRole actorRole, TeacherDto teacher)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         validateTeacher(teacher);
-        validateLinkedUser(teacher.getUserId(), Role.TEACHER);
+        validateLinkedUser(teacher.getUserId());
         repository.saveTeacher(teacher);
     }
 
-    public void saveDepartment(UserAccount actor, DepartmentDto department)
+    public void saveDepartment(String actorUserId, SubSystemRole actorRole,
+                               DepartmentDto department)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         if (department == null || isBlank(department.getDepartmentId())
                 || isBlank(department.getDepartmentName())) {
             throw invalid("院系编号和名称不能为空");
@@ -95,9 +96,10 @@ public final class AcademicService {
         repository.saveDepartment(department);
     }
 
-    public void saveClass(UserAccount actor, SchoolClassDto schoolClass)
+    public void saveClass(String actorUserId, SubSystemRole actorRole,
+                          SchoolClassDto schoolClass)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         if (schoolClass == null || isBlank(schoolClass.getClassId())
                 || isBlank(schoolClass.getClassName())
                 || isBlank(schoolClass.getDepartmentId())) {
@@ -110,27 +112,27 @@ public final class AcademicService {
         repository.saveClass(schoolClass);
     }
 
-    public void deleteStudent(UserAccount actor, String studentId)
+    public void deleteStudent(String actorUserId, SubSystemRole actorRole, String studentId)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         requireId(studentId);
         if (!repository.deleteStudent(studentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "学生记录不存在");
         }
     }
 
-    public void deleteTeacher(UserAccount actor, String teacherId)
+    public void deleteTeacher(String actorUserId, SubSystemRole actorRole, String teacherId)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         requireId(teacherId);
         if (!repository.deleteTeacher(teacherId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "教师记录不存在");
         }
     }
 
-    public void deleteDepartment(UserAccount actor, String departmentId)
+    public void deleteDepartment(String actorUserId, SubSystemRole actorRole, String departmentId)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         requireId(departmentId);
         if (repository.departmentIsReferenced(departmentId)) {
             throw new BusinessException(ResponseCode.CONFLICT, "院系仍被班级或人员引用，请先停用");
@@ -140,9 +142,9 @@ public final class AcademicService {
         }
     }
 
-    public void deleteClass(UserAccount actor, String classId)
+    public void deleteClass(String actorUserId, SubSystemRole actorRole, String classId)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         requireId(classId);
         if (repository.classIsReferenced(classId)) {
             throw new BusinessException(ResponseCode.CONFLICT, "班级仍有学生，请先停用");
@@ -193,48 +195,37 @@ public final class AcademicService {
         }
     }
 
-    private void validateLinkedUser(String userId, Role expectedRole)
+    private void validateLinkedUser(String userId)
             throws SQLException, BusinessException {
         if (isBlank(userId)) {
             return;
         }
-        UserAccount account = userRepository.findById(userId.trim());
-        if (account == null) {
+        if (userRepository.findById(userId.trim()) == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "关联登录账号不存在");
-        }
-        if (account.getRole() != expectedRole) {
-            throw new BusinessException(ResponseCode.CONFLICT, "关联账号角色与学籍类型不一致");
         }
     }
 
-    private void requireActor(UserAccount actor) throws BusinessException {
-        if (actor == null) {
+    private void requireActor(String actorUserId, SubSystemRole actorRole)
+            throws BusinessException {
+        if (isBlank(actorUserId) || actorRole == null) {
             throw new BusinessException(ResponseCode.UNAUTHORIZED, "请先登录");
         }
     }
 
-    private void requireStaff(UserAccount actor) throws BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) == SubSystemRole.STUDENT) {
+    private void requireStaff(String actorUserId, SubSystemRole actorRole)
+            throws BusinessException {
+        requireActor(actorUserId, actorRole);
+        if (actorRole == SubSystemRole.STUDENT) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "学生无权查询教师信息");
         }
     }
 
-    private void requireAdmin(UserAccount actor) throws BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
+    private void requireAdmin(String actorUserId, SubSystemRole actorRole)
+            throws BusinessException {
+        requireActor(actorUserId, actorRole);
+        if (actorRole != SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以修改学籍信息");
         }
-    }
-
-    /**
-     * Resolves the three-tier role the actor is granted within the academic
-     * (student) sub-system, so scoped authority (an administrator granted only
-     * the library sub-system becomes a teacher here) is honoured consistently
-     * with the user module.
-     */
-    private SubSystemRole effectiveRole(UserAccount actor) {
-        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.STUDENT);
     }
 
     private void validateEmail(String email) throws BusinessException {

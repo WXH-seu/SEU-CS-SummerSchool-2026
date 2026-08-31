@@ -3,6 +3,7 @@ package edu.seu.vcampus.server.security;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
 
 import java.util.Collections;
@@ -15,24 +16,24 @@ import java.util.concurrent.ConcurrentMap;
  * Central role-based permission matrix.
  *
  * <p>Every operation is either <em>public</em> (reachable without a session),
- * restricted to one or more {@link Role}s, or open to any authenticated user.
+ * restricted to global or effective sub-system roles, or open to any
+ * authenticated user.
  * The dispatcher consults this policy before executing any request so that
  * other modules (student, course, library, store) can rely on one consistent
  * permission check instead of implementing their own.
  *
- * <p>Module owners can adjust the matrix through
- * {@link #require(Operation, Role...)}; a call with no roles means "any
- * authenticated user". The sub-system administrator
- * ({@link Role#SUBSYSADMIN}) is scoped: {@link #effectiveRole} turns it into the
- * manager ({@link Role#SUBSYSADMIN}) inside a granted sub-system and into a
- * regular user ({@link Role#TEACHER}) elsewhere, so it can use but never
- * manage un-granted sub-systems. This class is thread-safe.
+ * <p>User-module permissions use global {@link Role}s. Business-module
+ * permissions use only {@link SubSystemRole}s, after the current account has
+ * been normalised for the target sub-system. This keeps academic, course,
+ * library and store code independent from the global account hierarchy.
  */
 public final class PermissionPolicy {
     private final Set<Operation> publicOperations =
             Collections.newSetFromMap(new ConcurrentHashMap<Operation, Boolean>());
     private final ConcurrentMap<Operation, Set<Role>> requirements =
             new ConcurrentHashMap<Operation, Set<Role>>();
+    private final ConcurrentMap<Operation, Set<SubSystemRole>> subSystemRequirements =
+            new ConcurrentHashMap<Operation, Set<SubSystemRole>>();
 
     /** Creates the policy and installs the default matrix. */
     public PermissionPolicy() {
@@ -41,7 +42,7 @@ public final class PermissionPolicy {
 
     /**
      * Marks the operation as public: it may be invoked without a session token.
-     * Login, registration and health checks belong here.
+     * Login and health checks belong here.
      */
     public void markPublic(Operation operation) {
         if (operation == null) {
@@ -49,6 +50,7 @@ public final class PermissionPolicy {
         }
         publicOperations.add(operation);
         requirements.remove(operation);
+        subSystemRequirements.remove(operation);
     }
 
     /**
@@ -59,12 +61,35 @@ public final class PermissionPolicy {
         if (operation == null) {
             throw new IllegalArgumentException("operation is required");
         }
+        if (SubSystems.of(operation) != null) {
+            throw new IllegalArgumentException(
+                    "use requireSubSystem for business sub-system operations");
+        }
         if (roles == null || roles.length == 0) {
             requirements.remove(operation);
         } else {
             EnumSet<Role> allowed = EnumSet.noneOf(Role.class);
             Collections.addAll(allowed, roles);
             requirements.put(operation, Collections.unmodifiableSet(allowed));
+        }
+    }
+
+    /**
+     * Restricts a business operation to effective sub-system roles. Passing no
+     * roles makes the operation available to every authenticated sub-system
+     * role. Global roles must never be used to describe business permissions.
+     */
+    public void requireSubSystem(Operation operation, SubSystemRole... roles) {
+        if (operation == null || SubSystems.of(operation) == null) {
+            throw new IllegalArgumentException("business sub-system operation is required");
+        }
+        requirements.remove(operation);
+        if (roles == null || roles.length == 0) {
+            subSystemRequirements.remove(operation);
+        } else {
+            EnumSet<SubSystemRole> allowed = EnumSet.noneOf(SubSystemRole.class);
+            Collections.addAll(allowed, roles);
+            subSystemRequirements.put(operation, Collections.unmodifiableSet(allowed));
         }
     }
 
@@ -93,25 +118,14 @@ public final class PermissionPolicy {
         if (role == null) {
             return false;
         }
-        Role effective = effectiveRole(role, adminScopes, operation);
-        Set<Role> allowed = requirements.get(operation);
-        return allowed == null || allowed.contains(effective);
-    }
-
-    /**
-     * Resolves the role to use when checking an operation. A sub-system
-     * administrator is the manager ({@link Role#SUBSYSADMIN}) inside a granted
-     * sub-system and an ordinary user ({@link Role#TEACHER}) everywhere else.
-     * All other roles are returned unchanged.
-     */
-    public Role effectiveRole(Role role, Set<String> adminScopes, Operation operation) {
-        if (role != Role.SUBSYSADMIN) {
-            return role;
-        }
         SubSystem subSystem = SubSystems.of(operation);
-        return SubSystems.isGranted(adminScopes, subSystem)
-                ? Role.SUBSYSADMIN
-                : Role.TEACHER;
+        if (subSystem != null) {
+            SubSystemRole effective = SubSystems.effectiveRole(role, adminScopes, subSystem);
+            Set<SubSystemRole> allowed = subSystemRequirements.get(operation);
+            return allowed == null || allowed.contains(effective);
+        }
+        Set<Role> allowed = requirements.get(operation);
+        return allowed == null || allowed.contains(role);
     }
 
     /** Convenience overload: checks access with no granted sub-system scopes. */
@@ -119,9 +133,14 @@ public final class PermissionPolicy {
         return allows(operation, role, Collections.<String>emptySet());
     }
 
-    /** Returns the roles allowed for the operation, or {@code null} when unrestricted. */
+    /** Returns global roles allowed for a user operation, or {@code null}. */
     public Set<Role> requiredRoles(Operation operation) {
         return requirements.get(operation);
+    }
+
+    /** Returns effective roles allowed for a business operation, or {@code null}. */
+    public Set<SubSystemRole> requiredSubSystemRoles(Operation operation) {
+        return subSystemRequirements.get(operation);
     }
 
     private void installDefaults() {

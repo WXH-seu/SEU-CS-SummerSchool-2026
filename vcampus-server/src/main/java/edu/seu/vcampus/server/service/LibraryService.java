@@ -4,13 +4,10 @@ import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.enums.ResponseCode;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.Book;
 import edu.seu.vcampus.server.dao.BookCopy;
 import edu.seu.vcampus.server.dao.BookRepository;
-import edu.seu.vcampus.server.dao.UserAccount;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -32,7 +29,8 @@ public final class LibraryService {
         this.repository = repository;
     }
 
-    public ArrayList<BookSummary> queryBooks(UserAccount actor, BookQueryRequest query)
+    public ArrayList<BookSummary> queryBooks(String actorUserId, SubSystemRole actorRole,
+                                             BookQueryRequest query)
             throws SQLException, BusinessException {
         requireActor(actor);
         SubSystemRole effectiveRole = effectiveRole(actor);
@@ -155,8 +153,9 @@ public final class LibraryService {
                 book.getPublisher(), book.getCategory(), book.isActive());
     }
 
-    private void requireActor(UserAccount actor) throws BusinessException {
-        if (actor == null) {
+    private void requireActor(String actorUserId, SubSystemRole actorRole)
+            throws BusinessException {
+        if (actorUserId == null || actorUserId.trim().isEmpty() || actorRole == null) {
             throw new BusinessException(ResponseCode.UNAUTHORIZED, "请先登录");
         }
     }
