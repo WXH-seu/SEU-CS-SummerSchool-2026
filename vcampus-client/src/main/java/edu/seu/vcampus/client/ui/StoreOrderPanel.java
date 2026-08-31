@@ -4,6 +4,9 @@ import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.OrderItemDto;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -22,6 +25,7 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Order list page with per‑order lines and admin status management. */
@@ -32,6 +36,7 @@ public final class StoreOrderPanel extends JPanel {
     
     private final StoreClientService service;
     private final Role role;
+    private final Set<String> adminScopes;
     private final JButton refreshButton = new JButton("刷新");
     private final JButton statusButton = new JButton("更新状态");
     private final JLabel statusLabel = new JLabel("准备就绪");
@@ -44,10 +49,11 @@ public final class StoreOrderPanel extends JPanel {
 
     private List<OrderDto> orders = new ArrayList<OrderDto>();
 
-    public StoreOrderPanel(StoreClientService service, Role role) {
+    public StoreOrderPanel(StoreClientService service, Role role, Set<String> adminScopes) {
         super(new BorderLayout(0, 12));
         this.service = service;
         this.role = role;
+        this.adminScopes = adminScopes;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
 
         orderModel = new DefaultTableModel(
@@ -79,14 +85,14 @@ public final class StoreOrderPanel extends JPanel {
 
     private void buildUi() {
         JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel(role == Role.ADMIN ? "全部订单" : "我的订单");
+        JLabel title = new JLabel(effectiveRole() == SubSystemRole.ADMIN ? "全部订单" : "我的订单");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         actions.add(refreshButton);
-        statusButton.setVisible(role == Role.ADMIN);
+        statusButton.setVisible(effectiveRole() == SubSystemRole.ADMIN);
         actions.add(statusButton);
 
         JPanel north = new JPanel(new BorderLayout(0, 14));
@@ -265,6 +271,10 @@ public final class StoreOrderPanel extends JPanel {
             return null;
         }
         return orders.get(modelRow);
+    }
+
+    private SubSystemRole effectiveRole() {
+        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
     }
 
     private void setBusy(boolean busy, String status) {

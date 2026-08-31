@@ -2,6 +2,9 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
@@ -9,18 +12,19 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.util.Set;
 
 /** Tabbed entry point for the campus store module. */
 public final class StorePanel extends JPanel {
     private final JTabbedPane tabs = new JTabbedPane();
     private final int ordersIndex;
 
-    public StorePanel(StoreClientService service, Role role) {
+    public StorePanel(StoreClientService service, Role role, Set<String> adminScopes) {
         super(new BorderLayout());
-        boolean shopper = role != Role.ADMIN;
+        boolean shopper = effectiveRole(role, adminScopes) != SubSystemRole.ADMIN;
         ordersIndex = shopper ? 2 : 1;
 
-        tabs.addTab("商品", new StoreProductPanel(service, role));
+        tabs.addTab("商品", new StoreProductPanel(service, role, adminScopes));
         if (shopper) {
             tabs.addTab("购物车", new StoreCartPanel(service, new Runnable() {
                 @Override
@@ -29,7 +33,7 @@ public final class StorePanel extends JPanel {
                 }
             }));
         }
-        tabs.addTab("我的订单", new StoreOrderPanel(service, role));
+        tabs.addTab("我的订单", new StoreOrderPanel(service, role, adminScopes));
         tabs.addChangeListener(new ChangeListener() {
             @Override
             public void stateChanged(ChangeEvent event) {
@@ -37,6 +41,10 @@ public final class StorePanel extends JPanel {
             }
         });
         add(tabs, BorderLayout.CENTER);
+    }
+
+    private static SubSystemRole effectiveRole(Role role, Set<String> adminScopes) {
+        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
     }
 
     private void showOrdersTab() {

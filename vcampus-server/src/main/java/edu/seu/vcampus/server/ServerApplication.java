@@ -2,15 +2,14 @@ package edu.seu.vcampus.server;
 
 import edu.seu.vcampus.server.config.ServerConfig;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
-<<<<<<< HEAD
-import edu.seu.vcampus.server.dao.AccessStoreRepository;
-=======
 import edu.seu.vcampus.server.dao.AccessBookRepository;
+import edu.seu.vcampus.server.dao.AccessCourseRepository;
 import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
->>>>>>> develop
+import edu.seu.vcampus.server.dao.AccessStoreRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.dispatcher.AcademicRequestHandler;
+import edu.seu.vcampus.server.dispatcher.CourseRequestHandler;
 import edu.seu.vcampus.server.dispatcher.LibraryRequestHandler;
 import edu.seu.vcampus.server.dispatcher.RequestDispatcher;
 import edu.seu.vcampus.server.dispatcher.StoreRequestHandler;
@@ -20,11 +19,9 @@ import edu.seu.vcampus.server.security.PermissionPolicy;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
-<<<<<<< HEAD
-import edu.seu.vcampus.server.service.StoreService;
-=======
+import edu.seu.vcampus.server.service.CourseService;
 import edu.seu.vcampus.server.service.LibraryService;
->>>>>>> develop
+import edu.seu.vcampus.server.service.StoreService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
 import java.util.logging.Logger;
@@ -45,23 +42,24 @@ public final class ServerApplication {
                 new AccessOperationLogRepository(config.getDatabasePath());
         AuditService auditService = new AuditService(logRepository);
         AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
+        AccessCourseRepository courseRepository = new AccessCourseRepository(database);
         AccessBookRepository bookRepository = new AccessBookRepository(database);
+        AccessStoreRepository storeRepository = new AccessStoreRepository(database);
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService =
                 new AuthService(userRepository, passwordHasher, sessions, auditService);
         PermissionPolicy permissionPolicy = new PermissionPolicy();
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
+        CourseService courseService = new CourseService(courseRepository);
         LibraryService libraryService = new LibraryService(bookRepository);
-        AcademicRequestHandler academicHandler = new AcademicRequestHandler(academicService);
-        AccessStoreRepository storeRepository = new AccessStoreRepository(database);
         StoreService storeService = new StoreService(storeRepository);
+        AcademicRequestHandler academicHandler = new AcademicRequestHandler(academicService);
+        CourseRequestHandler courseHandler = new CourseRequestHandler(courseService);
+        LibraryRequestHandler libraryHandler = new LibraryRequestHandler(libraryService);
         StoreRequestHandler storeHandler = new StoreRequestHandler(storeService);
         RequestDispatcher dispatcher = new RequestDispatcher(
-                authService, sessions, academicHandler, storeHandler);
-        LibraryRequestHandler libraryHandler = new LibraryRequestHandler(libraryService);
-        RequestDispatcher dispatcher = new RequestDispatcher(
                 authService, sessions, permissionPolicy, auditService,
-                academicHandler, libraryHandler);
+                academicHandler, courseHandler, libraryHandler, storeHandler);
         final VCampusServer server = new VCampusServer(
                 config.getPort(), config.getWorkerThreads(), dispatcher);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {

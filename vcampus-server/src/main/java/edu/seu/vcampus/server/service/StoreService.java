@@ -6,7 +6,9 @@ import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
-import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.StoreRepository;
 import edu.seu.vcampus.server.dao.UserAccount;
 
@@ -31,7 +33,7 @@ public final class StoreService {
     public ArrayList<ProductDto> queryProducts(UserAccount actor, StoreQueryRequest query)
             throws BusinessException, SQLException {
         requireActor(actor);
-        boolean activeOnly = actor.getRole() == Role.ADMIN
+        boolean activeOnly = effectiveRole(actor) == SubSystemRole.ADMIN
                 ? (query != null && query.isActiveOnly()) : true;
         return new ArrayList<ProductDto>(repository.findProducts(new StoreQueryRequest(
                 query == null ? null : query.getKeyword(),
@@ -119,7 +121,8 @@ public final class StoreService {
     public ArrayList<OrderDto> queryOrders(UserAccount actor)
             throws BusinessException, SQLException {
         requireActor(actor);
-        String userId = actor.getRole() == Role.ADMIN ? null : actor.getUserId();
+        String userId = effectiveRole(actor) == SubSystemRole.ADMIN
+                ? null : actor.getUserId();
         return new ArrayList<OrderDto>(repository.findOrders(userId));
     }
 
@@ -144,16 +147,20 @@ public final class StoreService {
 
     private void requireShopper(UserAccount actor) throws BusinessException {
         requireActor(actor);
-        if (actor.getRole() == Role.ADMIN) {
+        if (effectiveRole(actor) == SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不参与购物，仅维护商品与订单");
         }
     }
 
     private void requireAdmin(UserAccount actor) throws BusinessException {
         requireActor(actor);
-        if (actor.getRole() != Role.ADMIN) {
+        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护商品与订单状态");
         }
+    }
+
+    private SubSystemRole effectiveRole(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.STORE);
     }
 
     private void requireId(String id) throws BusinessException {

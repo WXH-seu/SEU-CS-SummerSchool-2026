@@ -232,7 +232,7 @@ public class RequestDispatcherTest {
     public void unimplementedModuleOperationIsRejectedWithNotice() {
         String token = login("student", "student123");
         ResponseMessage<?> response = dispatcher.dispatch(
-                new RequestMessage<Serializable>(Operation.COURSE_QUERY, token, null));
+                new RequestMessage<Serializable>(Operation.STORE_ORDER_CREATE, token, null));
         assertEquals(ResponseCode.NOT_IMPLEMENTED, response.getCode());
         assertTrue(response.getMessage().contains("预留"));
     }

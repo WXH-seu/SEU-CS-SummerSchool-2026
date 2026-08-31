@@ -3,12 +3,10 @@ package edu.seu.vcampus.client.ui;
 import edu.seu.vcampus.client.config.ClientConfig;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.AcademicClientService;
-<<<<<<< HEAD
-import edu.seu.vcampus.client.service.StoreClientService;
-=======
+import edu.seu.vcampus.client.service.CourseClientService;
 import edu.seu.vcampus.client.service.LibraryClientService;
+import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.client.service.UserClientService;
->>>>>>> develop
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
@@ -86,17 +84,15 @@ public final class MainFrame extends JFrame {
         cards.add(new AcademicManagementPanel(
                 new AcademicClientService(connection, session.getSessionToken()),
                 session.getRole(), session.getAdminScopes()), CARD_NAMES[1]);
-        cards.add(new ModulePanel("选课系统",
-                "课程查询、选课、退课与冲突校验。"), CARD_NAMES[2]);
-        cards.add(new ModulePanel("图书馆",
-                "图书查询、借阅、归还与库存管理。"), CARD_NAMES[3]);
-        cards.add(new StorePanel(
-                new StoreClientService(connection, session.getSessionToken()),
-                session.getRole()), CARD_NAMES[4]);
+        cards.add(new CourseManagementPanel(
+                new CourseClientService(connection, session.getSessionToken()),
+                new AcademicClientService(connection, session.getSessionToken()),
+                session.getRole(), session.getAdminScopes()), CARD_NAMES[2]);
         cards.add(new LibraryPanel(
                 new LibraryClientService(connection, session.getSessionToken())), CARD_NAMES[3]);
-        cards.add(new ModulePanel("校园商店",
-                "商品、购物车、订单与库存管理。"), CARD_NAMES[4]);
+        cards.add(new StorePanel(
+                new StoreClientService(connection, session.getSessionToken()),
+                session.getRole(), session.getAdminScopes()), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
     }

@@ -4,6 +4,9 @@ import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -21,12 +24,14 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Product browsing page with a shop cart entry and admin maintenance. */
 public final class StoreProductPanel extends JPanel {
     private final StoreClientService service;
     private final Role role;
+    private final Set<String> adminScopes;
     private final JTextField keyword = new JTextField(10);
     private final JTextField category = new JTextField(8);
     private final JButton searchButton = new JButton("查询");
@@ -46,10 +51,11 @@ public final class StoreProductPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<ProductDto> rows = new ArrayList<ProductDto>();
 
-    public StoreProductPanel(StoreClientService service, Role role) {
+    public StoreProductPanel(StoreClientService service, Role role, Set<String> adminScopes) {
         super(new BorderLayout(0, 12));
         this.service = service;
         this.role = role;
+        this.adminScopes = adminScopes;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
@@ -82,7 +88,7 @@ public final class StoreProductPanel extends JPanel {
         table.setAutoCreateRowSorter(true);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        boolean administrator = role == Role.ADMIN;
+        boolean administrator = effectiveRole() == SubSystemRole.ADMIN;
         addToCartButton.setVisible(!administrator);
         addButton.setVisible(administrator);
         editButton.setVisible(administrator);
@@ -100,7 +106,7 @@ public final class StoreProductPanel extends JPanel {
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2 && role == Role.ADMIN) {
+                if (event.getClickCount() == 2 && effectiveRole() == SubSystemRole.ADMIN) {
                     editSelected();
                 }
             }
@@ -223,6 +229,10 @@ public final class StoreProductPanel extends JPanel {
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
+    }
+
+    private SubSystemRole effectiveRole() {
+        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
     }
 
     private void runMutation(String status, final IoAction action, String successMessage) {

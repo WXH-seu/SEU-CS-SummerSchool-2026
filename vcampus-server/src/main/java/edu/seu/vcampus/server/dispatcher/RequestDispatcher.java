@@ -35,9 +35,10 @@ import java.util.logging.Logger;
  * <p>Every request is checked in the same order: public operations are handled
  * directly, authenticated operations first require a valid session
  * ({@code UNAUTHORIZED}). Business sub-system operations are then delegated to
- * their module handlers (academic / library), which perform their own
- * per-module authorization; the remaining user-module operations are gated by
- * the shared {@link PermissionPolicy} and dispatched to {@link AuthService}.
+ * their module handlers (academic / store / course / library), which perform
+ * their own per-module authorization; the remaining user-module operations are
+ * gated by the shared {@link PermissionPolicy} and dispatched to
+ * {@link AuthService}.
  */
 public final class RequestDispatcher {
     private static final Logger LOGGER = Logger.getLogger(RequestDispatcher.class.getName());
@@ -48,41 +49,30 @@ public final class RequestDispatcher {
     private final AuditService auditService;
     private final AcademicRequestHandler academicHandler;
     private final StoreRequestHandler storeHandler;
-
-    public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry) {
-        this(authService, sessionRegistry, null, null);
-    }
-
-    public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
-                             AcademicRequestHandler academicHandler) {
-        this(authService, sessionRegistry, academicHandler, null);
-    }
-
-    public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
-                             AcademicRequestHandler academicHandler,
-                             StoreRequestHandler storeHandler) {
-    
-    }
+    private final CourseRequestHandler courseHandler;
     private final LibraryRequestHandler libraryHandler;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService,
                              AcademicRequestHandler academicHandler,
-                             LibraryRequestHandler libraryHandler) {
-
+                             CourseRequestHandler courseHandler,
+                             LibraryRequestHandler libraryHandler,
+                             StoreRequestHandler storeHandler) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
         this.permissionPolicy = permissionPolicy;
         this.auditService = auditService;
         this.academicHandler = academicHandler;
-        this.storeHandler = storeHandler;
+        this.courseHandler = courseHandler;
         this.libraryHandler = libraryHandler;
+        this.storeHandler = storeHandler;
     }
 
     /** Convenience constructor when no business sub-system handlers are wired. */
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService) {
-        this(authService, sessionRegistry, permissionPolicy, auditService, null, null);
+        this(authService, sessionRegistry, permissionPolicy, auditService,
+                null, null, null, null);
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -102,11 +92,12 @@ public final class RequestDispatcher {
             if (academicHandler != null && academicHandler.supports(operation)) {
                 return academicHandler.handle(request, account);
             }
-            if (storeHandler != null && storeHandler.supports(request.getOperation())) {
-                return storeHandler.handle(request, actor);
+            if (storeHandler != null && storeHandler.supports(operation)) {
+                return storeHandler.handle(request, account);
             }
-            return ResponseMessage.failure(request.getRequestId(),
-                    ResponseCode.NOT_IMPLEMENTED, "该模块接口已预留，尚未实现");
+            if (courseHandler != null && courseHandler.supports(operation)) {
+                return courseHandler.handle(request, account);
+            }
             if (libraryHandler != null && libraryHandler.supports(operation)) {
                 return libraryHandler.handle(request, account);
             }
