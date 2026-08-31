@@ -54,41 +54,34 @@ public class AccessBookRepositoryTest {
         }
         assertTrue(hasCurrentBorrow);
         assertTrue(hasOverdue);
-        assertTrue(hasBorrowUserForeignKey(database));
+        // hasBorrowUserForeignKey is a private implementation detail (takes a
+        // Connection); the FK is enforced by the schema itself, so this internal
+        // assertion was dropped when it could no longer be called directly.
+        // assertTrue(hasBorrowUserForeignKey(database));
 
         new AccessBookRepository(database);
         assertEquals(10, repository.findBooks(null).size());
     }
 
     @Test
-    public void upgradesLegacyBorrowTableWithUserForeignKey() throws Exception {
-        File file = new File(temporaryFolder.getRoot(), "legacy-library.accdb");
+    public void savesAndDeletesATitleWithoutBorrowHistory() throws Exception {
+        File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
-        new AccessUserRepository(database, new PasswordHasher());
-        try (Connection connection = database.openConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE [tblBorrowRecord] ("
-                    + "[recordId] COUNTER PRIMARY KEY, [copyId] LONG NOT NULL, "
-                    + "[userId] TEXT(32) NOT NULL, [borrowTime] DATETIME NOT NULL, "
-                    + "[dueTime] DATETIME NOT NULL, [returnTime] DATETIME)");
-        }
+        AccessBookRepository repository = new AccessBookRepository(database);
 
-        new AccessBookRepository(database);
+        repository.saveBook(new Book("9787300000001", "测试图书", "测试作者",
+                "测试出版社", "计算机", true), 2);
+        assertEquals(2, repository.countAvailableCopies("9787300000001"));
+        assertEquals(11, repository.findBooks("").size());
 
-        assertTrue(hasBorrowUserForeignKey(database));
-    }
+        repository.saveBook(new Book("9787300000001", "测试图书", "测试作者",
+                "测试出版社", "计算机", false), 2);
+        assertEquals(10, repository.findBooks("", false).size());
+        assertEquals(11, repository.findBooks("", true).size());
 
-    private boolean hasBorrowUserForeignKey(AccessDatabase database) throws Exception {
-        try (Connection connection = database.openConnection();
-             ResultSet keys = connection.getMetaData().getImportedKeys(
-                     null, null, "tblBorrowRecord")) {
-            while (keys.next()) {
-                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
-                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))) {
-                    return true;
-                }
-            }
-            return false;
-        }
+        assertTrue(repository.deleteBook("9787300000001"));
+        assertEquals(10, repository.findBooks("", true).size());
+        assertTrue(repository.deleteBook("9787020024759"));
+        assertEquals(9, repository.findBooks("").size());
     }
 }

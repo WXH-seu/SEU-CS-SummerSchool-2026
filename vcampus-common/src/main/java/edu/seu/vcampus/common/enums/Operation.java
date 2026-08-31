@@ -35,6 +35,8 @@ public enum Operation implements Serializable {
     COURSE_DELETE,
     SCHEDULE_QUERY,
     LIBRARY_BOOK_QUERY,
+    LIBRARY_BOOK_SAVE,
+    LIBRARY_BOOK_DELETE,
     LIBRARY_BORROW,
     LIBRARY_RETURN,
     STORE_PRODUCT_QUERY,

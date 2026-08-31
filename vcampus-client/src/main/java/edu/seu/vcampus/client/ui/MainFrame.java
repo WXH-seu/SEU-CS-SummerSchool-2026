@@ -87,7 +87,7 @@ public final class MainFrame extends JFrame {
                 effectiveRole(SubSystem.COURSE)), CARD_NAMES[2]);
         cards.add(new LibraryPanel(
                 new LibraryClientService(connection, session.getSessionToken()),
-                effectiveRole(SubSystem.LIBRARY)), CARD_NAMES[3]);
+                session.getRole(), session.getAdminScopes()), CARD_NAMES[3]);
         cards.add(new StorePanel(
                 new StoreClientService(connection, session.getSessionToken()),
                 session.getRole(), session.getAdminScopes()), CARD_NAMES[4]);

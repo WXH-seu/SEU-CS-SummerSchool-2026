@@ -105,6 +105,13 @@ public class PermissionPolicyTest {
         // ...but cannot manage a sub-system it was not granted.
         assertFalse(policy.allows(Operation.STUDENT_SAVE, Role.SUBSYSADMIN, scopes("library")));
         assertFalse(policy.allows(Operation.STUDENT_SAVE, Role.SUBSYSADMIN));
+
+        assertTrue(policy.allows(Operation.LIBRARY_BOOK_SAVE, Role.SUBSYSADMIN, scopes("library")));
+        assertTrue(policy.allows(Operation.LIBRARY_BOOK_DELETE, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.LIBRARY_BOOK_SAVE, Role.STUDENT));
+        assertFalse(policy.allows(Operation.LIBRARY_BOOK_SAVE, Role.TEACHER));
+        assertFalse(policy.allows(Operation.LIBRARY_BOOK_SAVE, Role.SUBSYSADMIN, scopes("student")));
+        assertFalse(policy.allows(Operation.LIBRARY_BOOK_DELETE, Role.SUBSYSADMIN, scopes("course")));
     }
 
     @Test

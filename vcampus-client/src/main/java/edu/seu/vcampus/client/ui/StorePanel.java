@@ -33,7 +33,8 @@ public final class StorePanel extends JPanel {
                 }
             }));
         }
-        tabs.addTab("我的订单", new StoreOrderPanel(service, role, adminScopes));
+        tabs.addTab(shopper ? "我的订单" : "订单管理",
+                new StoreOrderPanel(service, role, adminScopes));
         tabs.addChangeListener(new ChangeListener() {
             @Override
             public void stateChanged(ChangeEvent event) {
