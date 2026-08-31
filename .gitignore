@@ -26,3 +26,6 @@ Thumbs.db
 # Local-only configuration and secrets
 *.local.properties
 credentials.txt
+.tmp-compile/
+vcampus-common/bin/
+vcampus-server/vcampus-database/
