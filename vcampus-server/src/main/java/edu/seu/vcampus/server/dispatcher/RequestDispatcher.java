@@ -37,11 +37,11 @@ import java.util.logging.Logger;
  *
  * <p>Public operations are handled directly. Authenticated operations require a
  * valid session ({@code UNAUTHORIZED}). Business sub-system operations are then
- * delegated to their module handlers (academic / course / library), which
- * perform their own authorization; the academic and library handlers receive
- * the normalized {@link SubSystemRole} so scoped authority is honoured, while
- * the course handler keeps the account. The remaining user-module operations
- * are gated by the shared {@link PermissionPolicy}.
+ * delegated to their module handlers (academic / course / library / store),
+ * which perform their own authorization; the academic, course and library
+ * handlers receive the normalized {@link SubSystemRole} so scoped authority is
+ * honoured, while the store handler keeps the account. The remaining user-module
+ * operations are gated by the shared {@link PermissionPolicy}.
  */
 public final class RequestDispatcher {
     private static final Logger LOGGER = Logger.getLogger(RequestDispatcher.class.getName());
@@ -53,12 +53,14 @@ public final class RequestDispatcher {
     private final AcademicRequestHandler academicHandler;
     private final CourseRequestHandler courseHandler;
     private final LibraryRequestHandler libraryHandler;
+    private final StoreRequestHandler storeHandler;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService,
                              AcademicRequestHandler academicHandler,
                              CourseRequestHandler courseHandler,
-                             LibraryRequestHandler libraryHandler) {
+                             LibraryRequestHandler libraryHandler,
+                             StoreRequestHandler storeHandler) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
         this.permissionPolicy = permissionPolicy;
@@ -66,12 +68,14 @@ public final class RequestDispatcher {
         this.academicHandler = academicHandler;
         this.courseHandler = courseHandler;
         this.libraryHandler = libraryHandler;
+        this.storeHandler = storeHandler;
     }
 
     /** Convenience constructor when no business sub-system handlers are wired. */
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService) {
-        this(authService, sessionRegistry, permissionPolicy, auditService, null, null, null);
+        this(authService, sessionRegistry, permissionPolicy, auditService,
+                null, null, null, null);
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -89,8 +93,9 @@ public final class RequestDispatcher {
                         ResponseCode.UNAUTHORIZED, "请先登录");
             }
 
-            // Business sub-systems validate their own authorization; academic and
-            // library receive the normalized role for their sub-system.
+            // Business sub-systems validate their own authorization; academic,
+            // course and library receive the normalized role for their
+            // sub-system, while store keeps the account.
             SubSystem subSystem = SubSystems.of(operation);
             SubSystemRole effectiveRole = subSystem == null ? null
                     : SubSystems.effectiveRole(account.getRole(), account.getAdminScopes(), subSystem);
@@ -102,6 +107,9 @@ public final class RequestDispatcher {
             }
             if (libraryHandler != null && libraryHandler.supports(operation)) {
                 return libraryHandler.handle(request, account.getUserId(), effectiveRole);
+            }
+            if (storeHandler != null && storeHandler.supports(operation)) {
+                return storeHandler.handle(request, account);
             }
 
             // User-module operations are gated by the shared permission policy.

@@ -62,7 +62,7 @@ public class RequestDispatcherTest {
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
         dispatcher = new RequestDispatcher(authService, sessions, new PermissionPolicy(),
-                auditService, academicHandler, null, null);
+                auditService, academicHandler, null, null, null);
     }
 
     private String login(String userId, String password) {

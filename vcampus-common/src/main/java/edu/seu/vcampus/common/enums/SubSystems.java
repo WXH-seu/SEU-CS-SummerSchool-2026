@@ -100,7 +100,13 @@ public final class SubSystems {
             case LIBRARY_RETURN:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:
+            case STORE_PRODUCT_SAVE:
+            case STORE_PRODUCT_DELETE:
+            case STORE_CART_QUERY:
+            case STORE_CART_UPDATE:
             case STORE_ORDER_CREATE:
+            case STORE_ORDER_QUERY:
+            case STORE_ORDER_STATUS:
                 return SubSystem.STORE;
             default:
                 return null;

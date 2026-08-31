@@ -5,6 +5,7 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.AcademicClientService;
 import edu.seu.vcampus.client.service.CourseClientService;
 import edu.seu.vcampus.client.service.LibraryClientService;
+import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.enums.SubSystem;
@@ -87,9 +88,9 @@ public final class MainFrame extends JFrame {
         cards.add(new LibraryPanel(
                 new LibraryClientService(connection, session.getSessionToken()),
                 effectiveRole(SubSystem.LIBRARY)), CARD_NAMES[3]);
-        cards.add(new ModulePanel("校园商店",
-                "商品、购物车、订单与库存管理。",
-                effectiveRole(SubSystem.STORE)), CARD_NAMES[4]);
+        cards.add(new StorePanel(
+                new StoreClientService(connection, session.getSessionToken()),
+                session.getRole(), session.getAdminScopes()), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
     }
