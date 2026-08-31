@@ -2,6 +2,7 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.AcademicClientService;
+import edu.seu.vcampus.client.service.StoreClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.message.RequestMessage;
@@ -68,8 +69,9 @@ public final class MainFrame extends JFrame {
                 "课程查询、选课、退课与冲突校验。"), CARD_NAMES[2]);
         cards.add(new ModulePanel("图书馆",
                 "图书查询、借阅、归还与库存管理。"), CARD_NAMES[3]);
-        cards.add(new ModulePanel("校园商店",
-                "商品、购物车、订单与库存管理。"), CARD_NAMES[4]);
+        cards.add(new StorePanel(
+                new StoreClientService(connection, session.getSessionToken()),
+                session.getRole()), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
     }

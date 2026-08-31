@@ -2,14 +2,17 @@ package edu.seu.vcampus.server;
 
 import edu.seu.vcampus.server.config.ServerConfig;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
+import edu.seu.vcampus.server.dao.AccessStoreRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.dispatcher.AcademicRequestHandler;
 import edu.seu.vcampus.server.dispatcher.RequestDispatcher;
+import edu.seu.vcampus.server.dispatcher.StoreRequestHandler;
 import edu.seu.vcampus.server.network.VCampusServer;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuthService;
+import edu.seu.vcampus.server.service.StoreService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
 import java.util.logging.Logger;
@@ -31,8 +34,11 @@ public final class ServerApplication {
         AuthService authService = new AuthService(userRepository, passwordHasher, sessions);
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
         AcademicRequestHandler academicHandler = new AcademicRequestHandler(academicService);
+        AccessStoreRepository storeRepository = new AccessStoreRepository(database);
+        StoreService storeService = new StoreService(storeRepository);
+        StoreRequestHandler storeHandler = new StoreRequestHandler(storeService);
         RequestDispatcher dispatcher = new RequestDispatcher(
-                authService, sessions, academicHandler);
+                authService, sessions, academicHandler, storeHandler);
         final VCampusServer server = new VCampusServer(
                 config.getPort(), config.getWorkerThreads(), dispatcher);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {

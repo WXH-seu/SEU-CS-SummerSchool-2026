@@ -22,16 +22,24 @@ public final class RequestDispatcher {
     private final AuthService authService;
     private final SessionRegistry sessionRegistry;
     private final AcademicRequestHandler academicHandler;
+    private final StoreRequestHandler storeHandler;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry) {
-        this(authService, sessionRegistry, null);
+        this(authService, sessionRegistry, null, null);
     }
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              AcademicRequestHandler academicHandler) {
+        this(authService, sessionRegistry, academicHandler, null);
+    }
+
+    public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
+                             AcademicRequestHandler academicHandler,
+                             StoreRequestHandler storeHandler) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
         this.academicHandler = academicHandler;
+        this.storeHandler = storeHandler;
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -56,6 +64,9 @@ public final class RequestDispatcher {
             }
             if (academicHandler != null && academicHandler.supports(request.getOperation())) {
                 return academicHandler.handle(request, actor);
+            }
+            if (storeHandler != null && storeHandler.supports(request.getOperation())) {
+                return storeHandler.handle(request, actor);
             }
             return ResponseMessage.failure(request.getRequestId(),
                     ResponseCode.NOT_IMPLEMENTED, "该模块接口已预留，尚未实现");
