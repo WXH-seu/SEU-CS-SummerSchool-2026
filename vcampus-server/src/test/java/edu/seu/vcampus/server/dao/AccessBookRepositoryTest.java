@@ -1,11 +1,15 @@
 package edu.seu.vcampus.server.dao;
 
 import edu.seu.vcampus.server.database.AccessDatabase;
+import edu.seu.vcampus.server.security.PasswordHasher;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -22,6 +26,7 @@ public class AccessBookRepositoryTest {
     public void createsTablesAndSeedsDemoBooks() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
         AccessBookRepository repository = new AccessBookRepository(database);
 
         assertTrue(file.isFile());
@@ -49,8 +54,41 @@ public class AccessBookRepositoryTest {
         }
         assertTrue(hasCurrentBorrow);
         assertTrue(hasOverdue);
+        assertTrue(hasBorrowUserForeignKey(database));
 
         new AccessBookRepository(database);
         assertEquals(10, repository.findBooks(null).size());
+    }
+
+    @Test
+    public void upgradesLegacyBorrowTableWithUserForeignKey() throws Exception {
+        File file = new File(temporaryFolder.getRoot(), "legacy-library.accdb");
+        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
+        try (Connection connection = database.openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE [tblBorrowRecord] ("
+                    + "[recordId] COUNTER PRIMARY KEY, [copyId] LONG NOT NULL, "
+                    + "[userId] TEXT(32) NOT NULL, [borrowTime] DATETIME NOT NULL, "
+                    + "[dueTime] DATETIME NOT NULL, [returnTime] DATETIME)");
+        }
+
+        new AccessBookRepository(database);
+
+        assertTrue(hasBorrowUserForeignKey(database));
+    }
+
+    private boolean hasBorrowUserForeignKey(AccessDatabase database) throws Exception {
+        try (Connection connection = database.openConnection();
+             ResultSet keys = connection.getMetaData().getImportedKeys(
+                     null, null, "tblBorrowRecord")) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

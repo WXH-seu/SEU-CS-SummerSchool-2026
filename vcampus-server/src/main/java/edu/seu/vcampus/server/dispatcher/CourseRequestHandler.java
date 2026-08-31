@@ -7,9 +7,9 @@ import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
-import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.service.BusinessException;
 import edu.seu.vcampus.server.service.CourseService;
 
@@ -34,25 +34,29 @@ public final class CourseRequestHandler {
     }
 
     public ResponseMessage<? extends Serializable> handle(
-            RequestMessage<?> request, UserAccount actor) throws SQLException {
+            RequestMessage<?> request, String actorUserId, SubSystemRole actorRole)
+            throws SQLException {
         try {
             switch (request.getOperation()) {
                 case COURSE_QUERY:
-                    return success(request, service.queryCourses(actor, queryBody(request)));
+                    return success(request, service.queryCourses(
+                            actorUserId, actorRole, queryBody(request)));
                 case COURSE_SELECT:
-                    service.selectCourse(actor, body(request, CourseSelectRequest.class));
+                    service.selectCourse(actorUserId, actorRole,
+                            body(request, CourseSelectRequest.class));
                     return success(request, "OK");
                 case COURSE_DROP:
-                    service.dropCourse(actor, body(request, CourseDropRequest.class));
+                    service.dropCourse(actorUserId, actorRole,
+                            body(request, CourseDropRequest.class));
                     return success(request, "OK");
                 case COURSE_SAVE:
-                    service.saveCourse(actor, body(request, CourseDto.class));
+                    service.saveCourse(actorUserId, actorRole, body(request, CourseDto.class));
                     return success(request, body(request, CourseDto.class));
                 case COURSE_DELETE:
-                    service.deleteCourse(actor, idBody(request));
+                    service.deleteCourse(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 case SCHEDULE_QUERY:
-                    return success(request, service.querySchedule(actor));
+                    return success(request, service.querySchedule(actorUserId, actorRole));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的选课操作");

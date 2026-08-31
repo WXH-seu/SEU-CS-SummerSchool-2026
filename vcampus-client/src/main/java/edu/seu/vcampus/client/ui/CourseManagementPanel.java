@@ -62,12 +62,11 @@ public final class CourseManagementPanel extends JPanel {
 
     public CourseManagementPanel(CourseClientService service,
                                  AcademicClientService academicService,
-                                 Role role, Set<String> adminScopes) {
+                                 SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
         this.academicService = academicService;
-        this.effectiveRole = SubSystems.effectiveRole(
-                role, adminScopes, SubSystem.COURSE);
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();

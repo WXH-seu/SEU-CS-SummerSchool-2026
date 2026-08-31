@@ -77,6 +77,16 @@ public final class SubSystems {
         switch (operation) {
             case STUDENT_QUERY:
             case STUDENT_SAVE:
+            case STUDENT_DELETE:
+            case TEACHER_QUERY:
+            case TEACHER_SAVE:
+            case TEACHER_DELETE:
+            case DEPARTMENT_QUERY:
+            case DEPARTMENT_SAVE:
+            case DEPARTMENT_DELETE:
+            case CLASS_QUERY:
+            case CLASS_SAVE:
+            case CLASS_DELETE:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
             case COURSE_SELECT:

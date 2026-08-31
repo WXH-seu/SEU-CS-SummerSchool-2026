@@ -7,11 +7,8 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.CourseRepository;
-import edu.seu.vcampus.server.dao.UserAccount;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -20,7 +17,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** Business rules and permission checks for course selection. */
+/**
+ * Business rules and permission checks for course selection. The caller
+ * ({@code RequestDispatcher}) resolves the session into a normalized
+ * {@link SubSystemRole} for the course sub-system, so this class authorizes by
+ * that role instead of inspecting the raw account.
+ */
 public final class CourseService {
     private static final DateTimeFormatter ENROLL_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -31,15 +33,15 @@ public final class CourseService {
         this.repository = repository;
     }
 
-    public ArrayList<CourseDto> queryCourses(UserAccount actor, CourseQueryRequest query)
+    public ArrayList<CourseDto> queryCourses(String userId, SubSystemRole effectiveRole,
+                                             CourseQueryRequest query)
             throws SQLException, BusinessException {
-        requireActor(actor);
+        requireId(userId, "账号不能为空");
         CourseQueryRequest effective = query;
-        SubSystemRole effectiveRole = effectiveRole(actor);
         if (effectiveRole == SubSystemRole.STUDENT) {
             effective = withActiveOnly(query, true);
         } else if (effectiveRole == SubSystemRole.TEACHER) {
-            String teacherId = repository.findTeacherIdByUserId(actor.getUserId());
+            String teacherId = repository.findTeacherIdByUserId(userId);
             if (teacherId == null) {
                 return new ArrayList<CourseDto>();
             }
@@ -48,15 +50,16 @@ public final class CourseService {
         return new ArrayList<CourseDto>(repository.findCourses(effective));
     }
 
-    public ArrayList<CourseEnrollmentDto> querySchedule(UserAccount actor)
+    public ArrayList<CourseEnrollmentDto> querySchedule(String userId, SubSystemRole effectiveRole)
             throws SQLException, BusinessException {
-        String studentId = requireEnrolledStudent(actor);
+        String studentId = requireEnrolledStudent(userId, effectiveRole);
         return new ArrayList<CourseEnrollmentDto>(repository.findSchedule(studentId));
     }
 
-    public void selectCourse(UserAccount actor, CourseSelectRequest request)
+    public void selectCourse(String userId, SubSystemRole effectiveRole,
+                             CourseSelectRequest request)
             throws SQLException, BusinessException {
-        String studentId = requireEnrolledStudent(actor);
+        String studentId = requireEnrolledStudent(userId, effectiveRole);
         requireId(request == null ? null : request.getCourseId(), "课程编号不能为空");
         CourseDto course = repository.findCourseById(request.getCourseId().trim());
         if (course == null) {
@@ -79,25 +82,25 @@ public final class CourseService {
                 LocalDateTime.now().format(ENROLL_TIME_FORMAT));
     }
 
-    public void dropCourse(UserAccount actor, CourseDropRequest request)
+    public void dropCourse(String userId, SubSystemRole effectiveRole, CourseDropRequest request)
             throws SQLException, BusinessException {
-        String studentId = requireEnrolledStudent(actor);
+        String studentId = requireEnrolledStudent(userId, effectiveRole);
         requireId(request == null ? null : request.getEnrollmentId(), "选课记录编号不能为空");
         if (!repository.deleteEnrollment(studentId, request.getEnrollmentId().trim())) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "选课记录不存在");
         }
     }
 
-    public void saveCourse(UserAccount actor, CourseDto course)
+    public void saveCourse(String userId, SubSystemRole effectiveRole, CourseDto course)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(effectiveRole);
         validateCourse(course);
         repository.saveCourse(course);
     }
 
-    public void deleteCourse(UserAccount actor, String courseId)
+    public void deleteCourse(String userId, SubSystemRole effectiveRole, String courseId)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(effectiveRole);
         requireId(courseId, "课程编号不能为空");
         courseId = courseId.trim();
         if (repository.courseHasEnrollments(courseId)) {
@@ -128,13 +131,13 @@ public final class CourseService {
         }
     }
 
-    private String requireEnrolledStudent(UserAccount actor)
+    private String requireEnrolledStudent(String userId, SubSystemRole effectiveRole)
             throws SQLException, BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) != SubSystemRole.STUDENT) {
+        requireId(userId, "账号不能为空");
+        if (effectiveRole != SubSystemRole.STUDENT) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅学生可以操作选课");
         }
-        StudentDto student = repository.findStudentByUserId(actor.getUserId());
+        StudentDto student = repository.findStudentByUserId(userId);
         if (student == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "未找到该账号的学籍信息");
         }
@@ -142,6 +145,12 @@ public final class CourseService {
             throw new BusinessException(ResponseCode.CONFLICT, "仅在读学生可以选课");
         }
         return student.getStudentId();
+    }
+
+    private void requireAdmin(SubSystemRole effectiveRole) throws BusinessException {
+        if (effectiveRole != SubSystemRole.ADMIN) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护课程");
+        }
     }
 
     private CourseQueryRequest withTeacher(CourseQueryRequest query, String teacherId) {
@@ -172,23 +181,6 @@ public final class CourseService {
 
     private boolean activeOf(CourseQueryRequest query) {
         return query != null && query.isActiveOnly();
-    }
-
-    private void requireActor(UserAccount actor) throws BusinessException {
-        if (actor == null) {
-            throw new BusinessException(ResponseCode.UNAUTHORIZED, "请先登录");
-        }
-    }
-
-    private SubSystemRole effectiveRole(UserAccount actor) {
-        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.COURSE);
-    }
-
-    private void requireAdmin(UserAccount actor) throws BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护课程");
-        }
     }
 
     private void requireId(String id, String message) throws BusinessException {

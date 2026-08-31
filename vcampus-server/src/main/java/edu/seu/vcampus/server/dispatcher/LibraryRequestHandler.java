@@ -3,9 +3,9 @@ package edu.seu.vcampus.server.dispatcher;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
-import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.service.BusinessException;
 import edu.seu.vcampus.server.service.LibraryService;
 
@@ -29,11 +29,13 @@ public final class LibraryRequestHandler {
     }
 
     public ResponseMessage<? extends Serializable> handle(
-            RequestMessage<?> request, UserAccount actor) throws SQLException {
+            RequestMessage<?> request, String actorUserId, SubSystemRole actorRole)
+            throws SQLException {
         try {
             switch (request.getOperation()) {
                 case LIBRARY_BOOK_QUERY:
-                    return success(request, service.queryBooks(actor, queryBody(request)));
+                    return success(request, service.queryBooks(
+                            actorUserId, actorRole, queryBody(request)));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的图书馆操作");

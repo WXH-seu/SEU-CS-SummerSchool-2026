@@ -5,6 +5,9 @@ import edu.seu.vcampus.common.dto.CourseDropRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
 import edu.seu.vcampus.server.dao.AccessCourseRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
@@ -36,6 +39,10 @@ public class CourseServiceIntegrationTest {
     private UserAccount student;
     private UserAccount teacher;
 
+    private SubSystemRole eff(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.COURSE);
+    }
+
     @Before
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
@@ -52,19 +59,19 @@ public class CourseServiceIntegrationTest {
 
     @Test
     public void seedsDemoCoursesAndRestrictsTeacherToOwnCourses() throws Exception {
-        assertEquals(2, service.queryCourses(student, null).size());
-        assertEquals(1, service.querySchedule(student).size());
-        assertEquals("CS101", service.querySchedule(student).get(0).getCourseId());
+        assertEquals(2, service.queryCourses(student.getUserId(), eff(student),  null).size());
+        assertEquals(1, service.querySchedule(student.getUserId(), eff(student)).size());
+        assertEquals("CS101", service.querySchedule(student.getUserId(), eff(student)).get(0).getCourseId());
 
-        assertTrue(service.queryCourses(teacher, null).stream()
+        assertTrue(service.queryCourses(teacher.getUserId(), eff(teacher),  null).stream()
                 .allMatch(course -> "T0001".equals(course.getTeacherId())));
-        assertEquals(2, service.queryCourses(teacher, null).size());
+        assertEquals(2, service.queryCourses(teacher.getUserId(), eff(teacher),  null).size());
     }
 
     @Test
     public void duplicateSelectionIsRejected() throws Exception {
         try {
-            service.selectCourse(student, new CourseSelectRequest("CS101"));
+            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS101"));
             fail("Duplicate selection should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
@@ -73,16 +80,16 @@ public class CourseServiceIntegrationTest {
 
     @Test
     public void capacityLimitIsEnforced() throws Exception {
-        service.saveCourse(admin, demoCourse("CS201", "软件工程", 1));
-        service.selectCourse(student, new CourseSelectRequest("CS201"));
+        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS201", "软件工程", 1));
+        service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS201"));
 
-        academicService.saveStudent(admin, new StudentDto("20260003", null, "第二名学生",
+        academicService.saveStudent(admin.getUserId(), eff(admin),  new StudentDto("20260003", null, "第二名学生",
                 "女", "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
         courseRepository.insertEnrollment("20260003", "CS201",
                 "FILL-001", "2026-08-25 10:00:00");
 
         try {
-            service.selectCourse(student, new CourseSelectRequest("CS201"));
+            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS201"));
             fail("Full course should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
@@ -91,10 +98,10 @@ public class CourseServiceIntegrationTest {
 
     @Test
     public void timeConflictIsEnforced() throws Exception {
-        service.saveCourse(admin, demoCourse("CS202", "计算机网络",
+        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS202", "计算机网络",
                 "周一 3-4 节", 30));
         try {
-            service.selectCourse(student, new CourseSelectRequest("CS202"));
+            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS202"));
             fail("Time conflict should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
@@ -103,13 +110,13 @@ public class CourseServiceIntegrationTest {
 
     @Test
     public void studentCanDropOwnEnrollment() throws Exception {
-        assertEquals(1, service.querySchedule(student).size());
-        String enrollmentId = service.querySchedule(student).get(0).getEnrollmentId();
-        service.dropCourse(student, new CourseDropRequest(enrollmentId));
-        assertTrue(service.querySchedule(student).isEmpty());
+        assertEquals(1, service.querySchedule(student.getUserId(), eff(student)).size());
+        String enrollmentId = service.querySchedule(student.getUserId(), eff(student)).get(0).getEnrollmentId();
+        service.dropCourse(student.getUserId(), eff(student),  new CourseDropRequest(enrollmentId));
+        assertTrue(service.querySchedule(student.getUserId(), eff(student)).isEmpty());
 
         try {
-            service.dropCourse(student, new CourseDropRequest(enrollmentId));
+            service.dropCourse(student.getUserId(), eff(student),  new CourseDropRequest(enrollmentId));
             fail("Dropping the same enrollment twice should fail");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.NOT_FOUND, expected.getResponseCode());
@@ -119,7 +126,7 @@ public class CourseServiceIntegrationTest {
     @Test
     public void studentWithEnrollmentsCannotBeDeleted() throws Exception {
         try {
-            academicService.deleteStudent(admin, "20260001");
+            academicService.deleteStudent(admin.getUserId(), eff(admin),  "20260001");
             fail("Student with enrollments should be protected by the foreign key");
         } catch (SQLException expected) {
             // The tblCourseEnrollment foreign key blocks the deletion.
@@ -128,30 +135,30 @@ public class CourseServiceIntegrationTest {
 
     @Test
     public void adminMaintainsCoursesAndRolesAreEnforced() throws Exception {
-        service.saveCourse(admin, demoCourse("CS201", "软件工程", 30));
-        assertEquals(3, service.queryCourses(admin, null).size());
+        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS201", "软件工程", 30));
+        assertEquals(3, service.queryCourses(admin.getUserId(), eff(admin),  null).size());
 
         try {
-            service.selectCourse(teacher, new CourseSelectRequest("CS201"));
+            service.selectCourse(teacher.getUserId(), eff(teacher),  new CourseSelectRequest("CS201"));
             fail("Teacher should not select courses");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
         try {
-            service.saveCourse(student, demoCourse("CS203", "数据库", 30));
+            service.saveCourse(student.getUserId(), eff(student),  demoCourse("CS203", "数据库", 30));
             fail("Student should not maintain courses");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
         try {
-            service.deleteCourse(admin, "CS101");
+            service.deleteCourse(admin.getUserId(), eff(admin),  "CS101");
             fail("Course with enrollments should not be deleted");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
 
-        service.deleteCourse(admin, "CS201");
-        assertFalse(service.queryCourses(admin, null).stream()
+        service.deleteCourse(admin.getUserId(), eff(admin),  "CS201");
+        assertFalse(service.queryCourses(admin.getUserId(), eff(admin),  null).stream()
                 .anyMatch(course -> "CS201".equals(course.getCourseId())));
     }
 

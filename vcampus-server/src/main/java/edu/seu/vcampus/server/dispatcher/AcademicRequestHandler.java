@@ -8,9 +8,9 @@ import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
-import edu.seu.vcampus.server.dao.UserAccount;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.BusinessException;
 
@@ -37,42 +37,47 @@ public final class AcademicRequestHandler {
     }
 
     public ResponseMessage<? extends Serializable> handle(
-            RequestMessage<?> request, UserAccount actor) throws SQLException {
+            RequestMessage<?> request, String actorUserId, SubSystemRole actorRole)
+            throws SQLException {
         try {
             switch (request.getOperation()) {
                 case STUDENT_QUERY:
-                    return success(request, service.queryStudents(actor, queryBody(request)));
+                    return success(request, service.queryStudents(
+                            actorUserId, actorRole, queryBody(request)));
                 case STUDENT_SAVE:
-                    service.saveStudent(actor, body(request, StudentDto.class));
+                    service.saveStudent(actorUserId, actorRole, body(request, StudentDto.class));
                     return success(request, body(request, StudentDto.class));
                 case STUDENT_DELETE:
-                    service.deleteStudent(actor, idBody(request));
+                    service.deleteStudent(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 case TEACHER_QUERY:
-                    return success(request, service.queryTeachers(actor, queryBody(request)));
+                    return success(request, service.queryTeachers(
+                            actorUserId, actorRole, queryBody(request)));
                 case TEACHER_SAVE:
-                    service.saveTeacher(actor, body(request, TeacherDto.class));
+                    service.saveTeacher(actorUserId, actorRole, body(request, TeacherDto.class));
                     return success(request, body(request, TeacherDto.class));
                 case TEACHER_DELETE:
-                    service.deleteTeacher(actor, idBody(request));
+                    service.deleteTeacher(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 case DEPARTMENT_QUERY:
                     AcademicQueryRequest departmentQuery = queryBody(request);
-                    return success(request, service.queryDepartments(actor,
+                    return success(request, service.queryDepartments(actorUserId, actorRole,
                             departmentQuery != null && departmentQuery.isActiveOnly()));
                 case DEPARTMENT_SAVE:
-                    service.saveDepartment(actor, body(request, DepartmentDto.class));
+                    service.saveDepartment(
+                            actorUserId, actorRole, body(request, DepartmentDto.class));
                     return success(request, body(request, DepartmentDto.class));
                 case DEPARTMENT_DELETE:
-                    service.deleteDepartment(actor, idBody(request));
+                    service.deleteDepartment(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 case CLASS_QUERY:
-                    return success(request, service.queryClasses(actor, queryBody(request)));
+                    return success(request, service.queryClasses(
+                            actorUserId, actorRole, queryBody(request)));
                 case CLASS_SAVE:
-                    service.saveClass(actor, body(request, SchoolClassDto.class));
+                    service.saveClass(actorUserId, actorRole, body(request, SchoolClassDto.class));
                     return success(request, body(request, SchoolClassDto.class));
                 case CLASS_DELETE:
-                    service.deleteClass(actor, idBody(request));
+                    service.deleteClass(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 default:
                     return ResponseMessage.failure(request.getRequestId(),

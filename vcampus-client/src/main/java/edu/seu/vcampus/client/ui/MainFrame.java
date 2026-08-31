@@ -7,7 +7,6 @@ import edu.seu.vcampus.client.service.CourseClientService;
 import edu.seu.vcampus.client.service.LibraryClientService;
 import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
-import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
@@ -32,11 +31,9 @@ import java.io.IOException;
 
 /**
  * Main navigation shell for the five required modules. The header shows the
- * current identity together with account-management and logout actions, and
- * module buttons the current role cannot use are disabled with an explicit
- * permission hint. This mirrors the server-side {@code PermissionPolicy}:
- * a sub-system administrator may only open the business sub-systems granted in
- * his or her {@code adminScopes}.
+ * current identity together with account-management and logout actions. Each
+ * business page receives only its normalised effective role. The server-side
+ * {@code PermissionPolicy} remains authoritative for individual operations.
  */
 public final class MainFrame extends JFrame {
     private static final String[] CARD_NAMES = {
@@ -82,15 +79,17 @@ public final class MainFrame extends JFrame {
                 "统一入口已经连接到 Java 8 C/S 服务端。"), CARD_NAMES[0]);
         cards.add(new AcademicManagementPanel(
                 new AcademicClientService(connection, session.getSessionToken()),
-                session.getRole(), session.getAdminScopes()), CARD_NAMES[1]);
+                effectiveRole(SubSystem.STUDENT)), CARD_NAMES[1]);
         cards.add(new CourseManagementPanel(
                 new CourseClientService(connection, session.getSessionToken()),
                 new AcademicClientService(connection, session.getSessionToken()),
-                session.getRole(), session.getAdminScopes()), CARD_NAMES[2]);
+                effectiveRole(SubSystem.COURSE)), CARD_NAMES[2]);
         cards.add(new LibraryPanel(
-                new LibraryClientService(connection, session.getSessionToken())), CARD_NAMES[3]);
+                new LibraryClientService(connection, session.getSessionToken()),
+                effectiveRole(SubSystem.LIBRARY)), CARD_NAMES[3]);
         cards.add(new ModulePanel("校园商店",
-                "商品、购物车、订单与库存管理。"), CARD_NAMES[4]);
+                "商品、购物车、订单与库存管理。",
+                effectiveRole(SubSystem.STORE)), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
     }
@@ -110,10 +109,6 @@ public final class MainFrame extends JFrame {
             final String cardName = CARD_NAMES[i];
             JButton button = new JButton(buildModuleLabel(cardName, BUTTON_NAMES[i]));
             button.setHorizontalAlignment(SwingConstants.LEFT);
-            if (!canEnterModule(cardName, session.getRole())) {
-                button.setEnabled(false);
-                button.setToolTipText("当前角色无权访问" + BUTTON_NAMES[i] + "模块");
-            }
             button.addActionListener(event -> cardLayout.show(cards, cardName));
             menu.add(button);
         }
@@ -129,8 +124,7 @@ public final class MainFrame extends JFrame {
      */
     private String buildModuleLabel(String cardName, String baseName) {
         SubSystem subSystem = SubSystems.byKey(cardName);
-        if (subSystem != null && SubSystems.effectiveRole(
-                session.getRole(), session.getAdminScopes(), subSystem) == SubSystemRole.ADMIN) {
+        if (subSystem != null && effectiveRole(subSystem) == SubSystemRole.ADMIN) {
             return baseName + "（管理员）";
         }
         return baseName;
@@ -203,21 +197,9 @@ public final class MainFrame extends JFrame {
         }
     }
 
-    /**
-     * Client-side mirror of the module entries in the server-side permission
-     * matrix. Keep this in sync with {@code PermissionPolicy} when modules are
-     * integrated. A sub-system administrator keeps ordinary usage rights in
-     * every sub-system (it is normalized to a teacher there) and only gains
-     * management authority in its granted sub-systems, so it may enter every
-     * module.
-     */
-    private static boolean canEnterModule(String cardName, Role role) {
-        if (role == Role.SUBSYSADMIN) {
-            return true;
-        }
-        if ("student".equals(cardName)) {
-            return role == Role.TEACHER || role == Role.SUPER_ADMIN;
-        }
-        return true;
+    /** Converts the login role once, before handing control to a business UI. */
+    private SubSystemRole effectiveRole(SubSystem subSystem) {
+        return SubSystems.effectiveRole(
+                session.getRole(), session.getAdminScopes(), subSystem);
     }
 }
