@@ -8,6 +8,9 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -27,13 +30,14 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Course catalog, selection, schedule and maintenance page. */
 public final class CourseManagementPanel extends JPanel {
     private final CourseClientService service;
     private final AcademicClientService academicService;
-    private final Role role;
+    private final SubSystemRole effectiveRole;
 
     private final JTextField keyword = new JTextField(10);
     private final JTextField semester = new JTextField(8);
@@ -57,16 +61,18 @@ public final class CourseManagementPanel extends JPanel {
     private List<CourseEnrollmentDto> scheduleRows = new ArrayList<CourseEnrollmentDto>();
 
     public CourseManagementPanel(CourseClientService service,
-                                 AcademicClientService academicService, Role role) {
+                                 AcademicClientService academicService,
+                                 Role role, Set<String> adminScopes) {
         super(new BorderLayout(0, 12));
         this.service = service;
         this.academicService = academicService;
-        this.role = role;
+        this.effectiveRole = SubSystems.effectiveRole(
+                role, adminScopes, SubSystem.COURSE);
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();
         refreshCourses();
-        if (role == Role.STUDENT) {
+        if (effectiveRole == SubSystemRole.STUDENT) {
             refreshSchedule();
         }
     }
@@ -101,7 +107,7 @@ public final class CourseManagementPanel extends JPanel {
         courseTable.setFillsViewportHeight(true);
         courseTable.setAutoCreateRowSorter(true);
         tabs.addTab("课程目录", new JScrollPane(courseTable));
-        if (role == Role.STUDENT) {
+        if (effectiveRole == SubSystemRole.STUDENT) {
             JPanel schedulePage = new JPanel(new BorderLayout(0, 8));
             schedulePage.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
             JPanel scheduleToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -115,8 +121,8 @@ public final class CourseManagementPanel extends JPanel {
         }
         add(tabs, BorderLayout.CENTER);
 
-        boolean student = role == Role.STUDENT;
-        boolean administrator = role == Role.ADMIN;
+        boolean student = effectiveRole == SubSystemRole.STUDENT;
+        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
         selectButton.setVisible(student);
         dropButton.setVisible(student);
         addButton.setVisible(administrator);
@@ -351,7 +357,7 @@ public final class CourseManagementPanel extends JPanel {
                 try {
                     get();
                     refreshCourses();
-                    if (role == Role.STUDENT) {
+                    if (effectiveRole == SubSystemRole.STUDENT) {
                         refreshSchedule();
                     }
                 } catch (InterruptedException e) {

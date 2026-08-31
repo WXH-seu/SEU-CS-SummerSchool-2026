@@ -2,11 +2,9 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.config.ClientConfig;
 import edu.seu.vcampus.client.network.ClientConnection;
-import edu.seu.vcampus.common.dto.LoginRequest;
+import edu.seu.vcampus.client.service.ClientServiceException;
+import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.common.dto.LoginResponse;
-import edu.seu.vcampus.common.enums.Operation;
-import edu.seu.vcampus.common.message.RequestMessage;
-import edu.seu.vcampus.common.message.ResponseMessage;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -18,6 +16,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -77,8 +76,14 @@ public final class LoginFrame extends JFrame {
         form.add(statusLabel, constraints);
         root.add(form, BorderLayout.CENTER);
 
-        JLabel hint = new JLabel("演示账号：admin / admin123", JLabel.CENTER);
+        JLabel hint = new JLabel(
+                "<html>演示账号：superadmin / super123（超级管理员），admin / admin123（子系统管理员，可管理全部子系统），"
+                        + "student / student123（学生），teacher / teacher123（教师）。"
+                        + "账号由管理员统一创建，如需新账号请联系管理员。</html>",
+                JLabel.CENTER);
+        hint.setFont(hint.getFont().deriveFont(12f));
         root.add(hint, BorderLayout.SOUTH);
+
         setContentPane(root);
         getRootPane().setDefaultButton(loginButton);
         loginButton.addActionListener(event -> login());
@@ -101,14 +106,9 @@ public final class LoginFrame extends JFrame {
                 ClientConnection connection = ClientConnection.connect(
                         config.getHost(), config.getPort());
                 try {
-                    RequestMessage<LoginRequest> request = new RequestMessage<LoginRequest>(
-                            Operation.USER_LOGIN, null, new LoginRequest(userId, password));
-                    ResponseMessage<?> response = connection.request(request);
-                    if (!response.isSuccess() || !(response.getBody() instanceof LoginResponse)) {
-                        connection.close();
-                        throw new LoginFailureException(response.getMessage());
-                    }
-                    return new LoginResult(connection, (LoginResponse) response.getBody());
+                    UserClientService service = new UserClientService(connection);
+                    LoginResponse session = service.login(userId, password);
+                    return new LoginResult(connection, session);
                 } catch (Exception e) {
                     try {
                         connection.close();
@@ -124,13 +124,17 @@ public final class LoginFrame extends JFrame {
                 try {
                     LoginResult result = get();
                     dispose();
-                    new MainFrame(result.connection, result.session).setVisible(true);
+                    new MainFrame(config, result.connection, result.session).setVisible(true);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     showFailure("登录被中断");
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
-                    showFailure(cause == null ? "登录失败" : cause.getMessage());
+                    if (cause instanceof ClientServiceException) {
+                        showFailure(cause.getMessage());
+                    } else {
+                        showFailure(cause == null ? "登录失败" : "无法连接服务器：" + cause.getMessage());
+                    }
                 }
             }
         }.execute();
@@ -155,14 +159,6 @@ public final class LoginFrame extends JFrame {
         private LoginResult(ClientConnection connection, LoginResponse session) {
             this.connection = connection;
             this.session = session;
-        }
-    }
-
-    private static final class LoginFailureException extends Exception {
-        private static final long serialVersionUID = 1L;
-
-        private LoginFailureException(String message) {
-            super(message == null ? "账号或密码错误" : message);
         }
     }
 }

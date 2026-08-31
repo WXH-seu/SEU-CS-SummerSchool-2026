@@ -7,7 +7,9 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
-import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
 import edu.seu.vcampus.server.dao.CourseRepository;
 import edu.seu.vcampus.server.dao.UserAccount;
 
@@ -33,14 +35,15 @@ public final class CourseService {
             throws SQLException, BusinessException {
         requireActor(actor);
         CourseQueryRequest effective = query;
-        if (actor.getRole() == Role.TEACHER) {
+        SubSystemRole effectiveRole = effectiveRole(actor);
+        if (effectiveRole == SubSystemRole.STUDENT) {
+            effective = withActiveOnly(query, true);
+        } else if (effectiveRole == SubSystemRole.TEACHER) {
             String teacherId = repository.findTeacherIdByUserId(actor.getUserId());
             if (teacherId == null) {
-                throw new BusinessException(ResponseCode.NOT_FOUND, "未找到该账号的教师信息");
+                return new ArrayList<CourseDto>();
             }
             effective = withTeacher(query, teacherId);
-        } else if (actor.getRole() == Role.STUDENT) {
-            effective = withActiveOnly(query, true);
         }
         return new ArrayList<CourseDto>(repository.findCourses(effective));
     }
@@ -127,7 +130,10 @@ public final class CourseService {
 
     private String requireEnrolledStudent(UserAccount actor)
             throws SQLException, BusinessException {
-        requireRole(actor, Role.STUDENT, "仅学生可以操作选课");
+        requireActor(actor);
+        if (effectiveRole(actor) != SubSystemRole.STUDENT) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "仅学生可以操作选课");
+        }
         StudentDto student = repository.findStudentByUserId(actor.getUserId());
         if (student == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "未找到该账号的学籍信息");
@@ -174,16 +180,15 @@ public final class CourseService {
         }
     }
 
-    private void requireRole(UserAccount actor, Role expected, String message)
-            throws BusinessException {
-        requireActor(actor);
-        if (actor.getRole() != expected) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, message);
-        }
+    private SubSystemRole effectiveRole(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.COURSE);
     }
 
     private void requireAdmin(UserAccount actor) throws BusinessException {
-        requireRole(actor, Role.ADMIN, "仅管理员可以维护课程");
+        requireActor(actor);
+        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护课程");
+        }
     }
 
     private void requireId(String id, String message) throws BusinessException {

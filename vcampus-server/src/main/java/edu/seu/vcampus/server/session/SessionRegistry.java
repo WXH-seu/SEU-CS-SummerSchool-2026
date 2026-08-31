@@ -26,4 +26,17 @@ public final class SessionRegistry {
             sessions.remove(token);
         }
     }
+
+    /** Removes every session that belongs to the given user id. */
+    public void removeAllForUser(String userId) {
+        if (userId == null) {
+            return;
+        }
+        for (String token : sessions.keySet()) {
+            UserAccount account = sessions.get(token);
+            if (account != null && userId.equals(account.getUserId())) {
+                sessions.remove(token);
+            }
+        }
+    }
 }

@@ -29,7 +29,7 @@ public final class VCampusServer implements Closeable {
     public void start() throws IOException {
         serverSocket = new ServerSocket(port);
         running = true;
-        LOGGER.info("vCampus server started on port " + port);
+        LOGGER.info("vCampus server started on port " + getLocalPort());
         while (running) {
             try {
                 Socket socket = serverSocket.accept();
@@ -41,6 +41,11 @@ public final class VCampusServer implements Closeable {
                 }
             }
         }
+    }
+
+    /** Returns the actual listening port, useful when port 0 was requested. */
+    public int getLocalPort() {
+        return serverSocket == null ? port : serverSocket.getLocalPort();
     }
 
     @Override

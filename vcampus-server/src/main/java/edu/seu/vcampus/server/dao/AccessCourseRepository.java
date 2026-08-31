@@ -360,7 +360,7 @@ public final class AccessCourseRepository implements CourseRepository {
                     counts.put(result.getString(1), Integer.valueOf(result.getInt(2)));
                 }
             }
-        }h
+        }
         return counts;
     }
 

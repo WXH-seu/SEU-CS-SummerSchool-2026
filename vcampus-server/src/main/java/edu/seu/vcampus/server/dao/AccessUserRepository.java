@@ -10,6 +10,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /** Access implementation of the user repository using UCanAccess. */
 public final class AccessUserRepository implements UserRepository {
@@ -31,29 +35,149 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public UserAccount findById(String userId) throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active] FROM [tblUser] WHERE [userId] = ?";
+                + "[displayName], [roleName], [active], [adminScopes] "
+                + "FROM [tblUser] WHERE [userId] = ?";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) {
-                    return null;
-                }
-                return new UserAccount(
-                        result.getString("userId"),
-                        result.getString("passwordHash"),
-                        result.getString("passwordSalt"),
-                        result.getString("displayName"),
-                        Role.valueOf(result.getString("roleName")),
-                        result.getBoolean("active"));
+                return result.next() ? mapRow(result) : null;
             }
         }
+    }
+
+    @Override
+    public List<UserAccount> findAll() throws SQLException {
+        String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
+                + "[displayName], [roleName], [active], [adminScopes] "
+                + "FROM [tblUser] ORDER BY [userId]";
+        List<UserAccount> users = new ArrayList<UserAccount>();
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                users.add(mapRow(result));
+            }
+        }
+        return users;
+    }
+
+    @Override
+    public void insert(UserAccount account) throws SQLException {
+        String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
+                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, account.getUserId());
+            statement.setString(2, account.getPasswordHash());
+            statement.setString(3, account.getPasswordSalt());
+            statement.setString(4, account.getDisplayName());
+            statement.setString(5, account.getRole().name());
+            statement.setBoolean(6, account.isActive());
+            statement.setString(7, serializeScopes(account.getAdminScopes()));
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updateDisplayName(String userId, String displayName) throws SQLException {
+        String sql = "UPDATE [tblUser] SET [displayName] = ? WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, displayName);
+            statement.setString(2, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updatePassword(String userId, String passwordHash, String passwordSalt)
+            throws SQLException {
+        String sql = "UPDATE [tblUser] SET [passwordHash] = ?, [passwordSalt] = ? "
+                + "WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, passwordHash);
+            statement.setString(2, passwordSalt);
+            statement.setString(3, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updateActive(String userId, boolean active) throws SQLException {
+        String sql = "UPDATE [tblUser] SET [active] = ? WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, active);
+            statement.setString(2, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void delete(String userId) throws SQLException {
+        String sql = "DELETE FROM [tblUser] WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    private UserAccount mapRow(ResultSet result) throws SQLException {
+        return new UserAccount(
+                result.getString("userId"),
+                result.getString("passwordHash"),
+                result.getString("passwordSalt"),
+                result.getString("displayName"),
+                parseRole(result.getString("roleName")),
+                result.getBoolean("active"),
+                parseScopes(result.getString("adminScopes")));
+    }
+
+    /** Maps a stored role name, tolerating the legacy {@code ADMIN} value. */
+    private Role parseRole(String roleName) {
+        if ("ADMIN".equalsIgnoreCase(roleName)) {
+            return Role.SUBSYSADMIN;
+        }
+        return Role.valueOf(roleName);
+    }
+
+    private Set<String> parseScopes(String raw) {
+        Set<String> scopes = new LinkedHashSet<String>();
+        if (raw == null || raw.trim().isEmpty()) {
+            return scopes;
+        }
+        for (String token : raw.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                scopes.add(trimmed);
+            }
+        }
+        return scopes;
+    }
+
+    private String serializeScopes(Set<String> scopes) {
+        if (scopes == null || scopes.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String scope : scopes) {
+            if (builder.length() > 0) {
+                builder.append(',');
+            }
+            builder.append(scope);
+        }
+        return builder.toString();
     }
 
     private void initializeDatabase() throws SQLException {
         try (Connection connection = database.openConnection()) {
             if (!tableExists(connection, "tblUser")) {
                 createUserTable(connection);
+            } else {
+                ensureScopeColumn(connection);
             }
             if (countUsers(connection) == 0) {
                 insertDemoUsers(connection);
@@ -80,9 +204,29 @@ public final class AccessUserRepository implements UserRepository {
                 + "[passwordSalt] TEXT(64) NOT NULL, "
                 + "[displayName] TEXT(64) NOT NULL, "
                 + "[roleName] TEXT(16) NOT NULL, "
-                + "[active] YESNO NOT NULL)";
+                + "[active] YESNO NOT NULL, "
+                + "[adminScopes] TEXT(64))";
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);
+        }
+    }
+
+    /** Migrates databases created before the scoped-subsystem-admin feature. */
+    private void ensureScopeColumn(Connection connection) throws SQLException {
+        boolean present = false;
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, "tblUser", "%")) {
+            while (columns.next()) {
+                if ("adminScopes".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+        if (!present) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE [tblUser] ADD COLUMN [adminScopes] TEXT(64)");
+            }
         }
     }
 
@@ -94,16 +238,18 @@ public final class AccessUserRepository implements UserRepository {
     }
 
     private void insertDemoUsers(Connection connection) throws SQLException {
-        insertUser(connection, "admin", "admin123", "系统管理员", Role.ADMIN);
-        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT);
-        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER);
+        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN, null);
+        insertUser(connection, "admin", "admin123", "子系统管理员", Role.SUBSYSADMIN,
+                "student,course,library,store");
+        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT, null);
+        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER, null);
     }
 
     private void insertUser(Connection connection, String userId, String password,
-                            String displayName, Role role) throws SQLException {
+                            String displayName, Role role, String adminScopes) throws SQLException {
         String salt = passwordHasher.newSalt();
         String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active]) VALUES (?, ?, ?, ?, ?, ?)";
+                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             statement.setString(2, passwordHasher.hash(password, salt));
@@ -111,6 +257,7 @@ public final class AccessUserRepository implements UserRepository {
             statement.setString(4, displayName);
             statement.setString(5, role.name());
             statement.setBoolean(6, true);
+            statement.setString(7, adminScopes == null ? "" : adminScopes);
             statement.executeUpdate();
         }
     }
