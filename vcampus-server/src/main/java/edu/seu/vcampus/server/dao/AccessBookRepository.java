@@ -28,11 +28,12 @@ public final class AccessBookRepository implements BookRepository {
     }
 
     @Override
-    public List<Book> findBooks(String keyword) throws SQLException {
+    public List<Book> findBooks(String keyword, boolean includeInactive) throws SQLException {
         String pattern = toLikePattern(keyword);
         String sql = "SELECT [isbn], [title], [author], [publisher], [category], [active] "
-                + "FROM [tblBook] WHERE [active] = true "
-                + "AND ([isbn] LIKE ? OR [title] LIKE ? OR [author] LIKE ?) "
+                + "FROM [tblBook] WHERE "
+                + (includeInactive ? "" : "[active] = true AND ")
+                + "([isbn] LIKE ? OR [title] LIKE ? OR [author] LIKE ?) "
                 + "ORDER BY [title]";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -84,14 +85,78 @@ public final class AccessBookRepository implements BookRepository {
 
     @Override
     public int countAvailableCopies(String isbn) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM [tblBookCopy] "
-                + "WHERE [isbn] = ? AND [copyStatus] = ?";
+        return countCopiesByStatus(isbn, BookCopy.STATUS_AVAILABLE);
+    }
+
+    @Override
+    public int countBorrowedCopies(String isbn) throws SQLException {
+        return countCopiesByStatus(isbn, BookCopy.STATUS_BORROWED);
+    }
+
+    @Override
+    public int countBorrowRecordsByIsbn(String isbn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBorrowRecord] AS r "
+                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
+                + "WHERE c.[isbn] = ?";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, isbn);
-            statement.setString(2, BookCopy.STATUS_AVAILABLE);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    @Override
+    public int countRemovableCopies(String isbn) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            return countRemovableCopies(connection, isbn);
+        }
+    }
+
+    @Override
+    public void saveBook(Book book, int desiredCopies) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                if (updateBook(connection, book) == 0) {
+                    insertBook(connection, book.getIsbn(), book.getTitle(), book.getAuthor(),
+                            book.getPublisher(), book.getCategory(), book.isActive());
+                }
+                int total = countCopies(connection, book.getIsbn());
+                for (int i = total; i < desiredCopies; i++) {
+                    insertCopy(connection, book.getIsbn(), BookCopy.STATUS_AVAILABLE);
+                }
+                int toRemove = total - desiredCopies;
+                for (int i = 0; i < toRemove; i++) {
+                    if (!deleteOneRemovableCopy(connection, book.getIsbn())) {
+                        throw new SQLException("No removable copy left for ISBN " + book.getIsbn());
+                    }
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public boolean deleteBook(String isbn) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                deleteCopies(connection, isbn);
+                boolean deleted = deleteBookRow(connection, isbn);
+                connection.commit();
+                return deleted;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
             }
         }
     }
@@ -213,14 +278,29 @@ public final class AccessBookRepository implements BookRepository {
     private void insertBookWithCopies(Connection connection, String isbn, String title,
                                       String author, String publisher, String category,
                                       int copyCount) throws SQLException {
-        insertBook(connection, isbn, title, author, publisher, category);
+        insertBook(connection, isbn, title, author, publisher, category, true);
         for (int i = 0; i < copyCount; i++) {
             insertCopy(connection, isbn, BookCopy.STATUS_AVAILABLE);
         }
     }
 
+    private int updateBook(Connection connection, Book book) throws SQLException {
+        String sql = "UPDATE [tblBook] SET [title]=?, [author]=?, [publisher]=?, "
+                + "[category]=?, [active]=? WHERE [isbn]=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, book.getTitle());
+            statement.setString(2, book.getAuthor());
+            statement.setString(3, book.getPublisher());
+            statement.setString(4, book.getCategory());
+            statement.setBoolean(5, book.isActive());
+            statement.setString(6, book.getIsbn());
+            return statement.executeUpdate();
+        }
+    }
+
     private void insertBook(Connection connection, String isbn, String title, String author,
-                            String publisher, String category) throws SQLException {
+                            String publisher, String category, boolean active)
+            throws SQLException {
         String sql = "INSERT INTO [tblBook] ([isbn], [title], [author], [publisher], "
                 + "[category], [active]) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -229,8 +309,90 @@ public final class AccessBookRepository implements BookRepository {
             statement.setString(3, author);
             statement.setString(4, publisher);
             statement.setString(5, category);
-            statement.setBoolean(6, true);
+            statement.setBoolean(6, active);
             statement.executeUpdate();
+        }
+    }
+
+    private int countCopiesByStatus(String isbn, String copyStatus) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBookCopy] "
+                + "WHERE [isbn] = ? AND [copyStatus] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            statement.setString(2, copyStatus);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private int countCopies(Connection connection, String isbn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBookCopy] WHERE [isbn] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private int countRemovableCopies(Connection connection, String isbn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBookCopy] AS c "
+                + "WHERE c.[isbn] = ? AND c.[copyStatus] = ? "
+                + "AND NOT EXISTS (SELECT 1 FROM [tblBorrowRecord] AS r "
+                + "WHERE r.[copyId] = c.[copyId])";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            statement.setString(2, BookCopy.STATUS_AVAILABLE);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private boolean deleteOneRemovableCopy(Connection connection, String isbn)
+            throws SQLException {
+        String findSql = "SELECT MIN(c.[copyId]) FROM [tblBookCopy] AS c "
+                + "WHERE c.[isbn] = ? AND c.[copyStatus] = ? "
+                + "AND NOT EXISTS (SELECT 1 FROM [tblBorrowRecord] AS r "
+                + "WHERE r.[copyId] = c.[copyId])";
+        Integer copyId = null;
+        try (PreparedStatement statement = connection.prepareStatement(findSql)) {
+            statement.setString(1, isbn);
+            statement.setString(2, BookCopy.STATUS_AVAILABLE);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) {
+                    int value = result.getInt(1);
+                    if (!result.wasNull()) {
+                        copyId = Integer.valueOf(value);
+                    }
+                }
+            }
+        }
+        if (copyId == null) {
+            return false;
+        }
+        String deleteSql = "DELETE FROM [tblBookCopy] WHERE [copyId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(deleteSql)) {
+            statement.setInt(1, copyId.intValue());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    private void deleteCopies(Connection connection, String isbn) throws SQLException {
+        String sql = "DELETE FROM [tblBookCopy] WHERE [isbn] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            statement.executeUpdate();
+        }
+    }
+
+    private boolean deleteBookRow(Connection connection, String isbn) throws SQLException {
+        String sql = "DELETE FROM [tblBook] WHERE [isbn] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            return statement.executeUpdate() > 0;
         }
     }
 

@@ -2,8 +2,8 @@ package edu.seu.vcampus.common.dto;
 
 import java.io.Serializable;
 
-/** Book title plus inventory counts shared by client and server. */
-public final class BookSummary implements Serializable {
+/** Catalog and inventory payload used to create or update a library title. */
+public final class BookDto implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String isbn;
@@ -11,23 +11,16 @@ public final class BookSummary implements Serializable {
     private final String author;
     private final String publisher;
     private final String category;
-    private final int availableCopies;
     private final int totalCopies;
     private final boolean active;
 
-    public BookSummary(String isbn, String title, String author, String publisher,
-                       String category, int availableCopies, int totalCopies) {
-        this(isbn, title, author, publisher, category, availableCopies, totalCopies, true);
-    }
-
-    public BookSummary(String isbn, String title, String author, String publisher,
-                       String category, int availableCopies, int totalCopies, boolean active) {
+    public BookDto(String isbn, String title, String author, String publisher,
+                   String category, int totalCopies, boolean active) {
         this.isbn = isbn;
         this.title = title;
         this.author = author;
         this.publisher = publisher;
         this.category = category;
-        this.availableCopies = availableCopies;
         this.totalCopies = totalCopies;
         this.active = active;
     }
@@ -50,10 +43,6 @@ public final class BookSummary implements Serializable {
 
     public String getCategory() {
         return category;
-    }
-
-    public int getAvailableCopies() {
-        return availableCopies;
     }
 
     public int getTotalCopies() {

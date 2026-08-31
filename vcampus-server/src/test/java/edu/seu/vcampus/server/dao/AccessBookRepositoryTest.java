@@ -53,4 +53,26 @@ public class AccessBookRepositoryTest {
         new AccessBookRepository(database);
         assertEquals(10, repository.findBooks(null).size());
     }
+
+    @Test
+    public void savesAndDeletesATitleWithoutBorrowHistory() throws Exception {
+        File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
+        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        AccessBookRepository repository = new AccessBookRepository(database);
+
+        repository.saveBook(new Book("9787300000001", "测试图书", "测试作者",
+                "测试出版社", "计算机", true), 2);
+        assertEquals(2, repository.countAvailableCopies("9787300000001"));
+        assertEquals(11, repository.findBooks("").size());
+
+        repository.saveBook(new Book("9787300000001", "测试图书", "测试作者",
+                "测试出版社", "计算机", false), 2);
+        assertEquals(10, repository.findBooks("", false).size());
+        assertEquals(11, repository.findBooks("", true).size());
+
+        assertTrue(repository.deleteBook("9787300000001"));
+        assertEquals(10, repository.findBooks("", true).size());
+        assertTrue(repository.deleteBook("9787020024759"));
+        assertEquals(9, repository.findBooks("").size());
+    }
 }

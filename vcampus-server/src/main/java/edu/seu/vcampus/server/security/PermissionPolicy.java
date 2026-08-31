@@ -159,6 +159,8 @@ public final class PermissionPolicy {
         require(Operation.COURSE_SELECT, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.COURSE_DROP, Role.STUDENT, Role.SUPER_ADMIN);
         require(Operation.LIBRARY_BOOK_QUERY);
+        require(Operation.LIBRARY_BOOK_SAVE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
+        require(Operation.LIBRARY_BOOK_DELETE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
         require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
                 Role.SUPER_ADMIN);
         require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,

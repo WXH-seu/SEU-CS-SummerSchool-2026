@@ -88,7 +88,8 @@ public final class MainFrame extends JFrame {
                 new AcademicClientService(connection, session.getSessionToken()),
                 session.getRole(), session.getAdminScopes()), CARD_NAMES[2]);
         cards.add(new LibraryPanel(
-                new LibraryClientService(connection, session.getSessionToken())), CARD_NAMES[3]);
+                new LibraryClientService(connection, session.getSessionToken()),
+                session.getRole(), session.getAdminScopes()), CARD_NAMES[3]);
         cards.add(new ModulePanel("校园商店",
                 "商品、购物车、订单与库存管理。"), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
