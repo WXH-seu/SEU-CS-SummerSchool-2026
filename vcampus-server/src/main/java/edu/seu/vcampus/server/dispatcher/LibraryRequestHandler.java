@@ -37,11 +37,13 @@ public final class LibraryRequestHandler {
         try {
             switch (request.getOperation()) {
                 case LIBRARY_BOOK_QUERY:
-                    return success(request, service.queryBooks(actor, queryBody(request)));
+                    return success(request, service.queryBooks(
+                            actorUserId, actorRole, queryBody(request)));
                 case LIBRARY_BOOK_SAVE:
-                    return success(request, service.saveBook(actor, body(request, BookDto.class)));
+                    return success(request, service.saveBook(
+                            actorUserId, actorRole, body(request, BookDto.class)));
                 case LIBRARY_BOOK_DELETE:
-                    service.deleteBook(actor, idBody(request));
+                    service.deleteBook(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 default:
                     return ResponseMessage.failure(request.getRequestId(),

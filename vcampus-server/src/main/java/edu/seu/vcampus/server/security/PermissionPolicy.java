@@ -163,29 +163,26 @@ public final class PermissionPolicy {
         require(Operation.USER_PASSWORD_CHANGE);
         require(Operation.USER_DELETE);
 
-        // Default matrix for the remaining modules. Owners may adjust these
-        // entries with require(...) while integrating their features. The
-        // matrix is expressed in the three roles a sub-system management
-        // operation actually needs: management/write operations are restricted
-        // to the sub-system and super administrators, while usage operations
-        // are open to ordinary users (student/teacher) as well as both
-        // administrators. A sub-system administrator (SUBSYSADMIN) outside its
-        // granted sub-systems is normalized to TEACHER by effectiveRole(...),
-        // so it can use but never manage an un-granted sub-system.
-        require(Operation.STUDENT_QUERY, Role.TEACHER, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
-        require(Operation.STUDENT_SAVE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
-        require(Operation.COURSE_QUERY);
-        require(Operation.COURSE_SELECT, Role.STUDENT, Role.SUPER_ADMIN);
-        require(Operation.COURSE_DROP, Role.STUDENT, Role.SUPER_ADMIN);
-        require(Operation.LIBRARY_BOOK_QUERY);
-        require(Operation.LIBRARY_BOOK_SAVE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
-        require(Operation.LIBRARY_BOOK_DELETE, Role.SUBSYSADMIN, Role.SUPER_ADMIN);
-        require(Operation.LIBRARY_BORROW, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
-                Role.SUPER_ADMIN);
-        require(Operation.LIBRARY_RETURN, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
-                Role.SUPER_ADMIN);
-        require(Operation.STORE_PRODUCT_QUERY);
-        require(Operation.STORE_ORDER_CREATE, Role.STUDENT, Role.TEACHER, Role.SUBSYSADMIN,
-                Role.SUPER_ADMIN);
+        // Default matrix for business modules. Entries use SubSystemRole because
+        // RequestDispatcher normalises the global account into STUDENT / TEACHER /
+        // ADMIN before the handler runs. Empty role lists mean every authenticated
+        // effective role may call the operation. Management operations stay
+        // ADMIN-only; a SUBSYSADMIN outside its granted scopes is normalised to
+        // TEACHER and therefore cannot manage that sub-system.
+        requireSubSystem(Operation.STUDENT_QUERY);
+        requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.COURSE_QUERY);
+        requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BOOK_QUERY);
+        requireSubSystem(Operation.LIBRARY_BOOK_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BOOK_DELETE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BORROW,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RETURN,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STORE_PRODUCT_QUERY);
+        requireSubSystem(Operation.STORE_ORDER_CREATE,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
     }
 }

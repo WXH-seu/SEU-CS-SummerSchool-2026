@@ -32,14 +32,10 @@ public final class LibraryService {
     public ArrayList<BookSummary> queryBooks(String actorUserId, SubSystemRole actorRole,
                                              BookQueryRequest query)
             throws SQLException, BusinessException {
-        requireActor(actor);
-        SubSystemRole effectiveRole = effectiveRole(actor);
-        if (effectiveRole == null) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, "无法识别的用户角色");
-        }
+        requireActor(actorUserId, actorRole);
         String keyword = query == null ? null : query.getKeyword();
         boolean includeInactive = query != null && query.isIncludeInactive()
-                && effectiveRole == SubSystemRole.ADMIN;
+                && actorRole == SubSystemRole.ADMIN;
         List<Book> books = repository.findBooks(keyword, includeInactive);
         ArrayList<BookSummary> result = new ArrayList<BookSummary>();
         for (Book book : books) {
@@ -48,9 +44,9 @@ public final class LibraryService {
         return result;
     }
 
-    public BookDto saveBook(UserAccount actor, BookDto book)
+    public BookDto saveBook(String actorUserId, SubSystemRole actorRole, BookDto book)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         BookDto normalized = validateBook(book);
         int borrowed = repository.countBorrowedCopies(normalized.getIsbn());
         if (normalized.getTotalCopies() < borrowed) {
@@ -68,9 +64,9 @@ public final class LibraryService {
         return toDto(repository.findByIsbn(normalized.getIsbn()));
     }
 
-    public void deleteBook(UserAccount actor, String isbn)
+    public void deleteBook(String actorUserId, SubSystemRole actorRole, String isbn)
             throws SQLException, BusinessException {
-        requireAdmin(actor);
+        requireAdmin(actorUserId, actorRole);
         String normalizedIsbn = requireIsbn(isbn);
         if (repository.findByIsbn(normalizedIsbn) == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "图书不存在");
@@ -84,11 +80,6 @@ public final class LibraryService {
         if (!repository.deleteBook(normalizedIsbn)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "图书不存在");
         }
-    }
-
-    /** Resolves the three-tier role the actor is granted within the library. */
-    private SubSystemRole effectiveRole(UserAccount actor) {
-        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.LIBRARY);
     }
 
     private BookDto validateBook(BookDto book) throws BusinessException {
@@ -160,9 +151,10 @@ public final class LibraryService {
         }
     }
 
-    private void requireAdmin(UserAccount actor) throws BusinessException {
-        requireActor(actor);
-        if (effectiveRole(actor) != SubSystemRole.ADMIN) {
+    private void requireAdmin(String actorUserId, SubSystemRole actorRole)
+            throws BusinessException {
+        requireActor(actorUserId, actorRole);
+        if (actorRole != SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护图书");
         }
     }
