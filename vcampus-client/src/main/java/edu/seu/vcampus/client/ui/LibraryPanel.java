@@ -3,10 +3,7 @@ package edu.seu.vcampus.client.ui;
 import edu.seu.vcampus.client.service.LibraryClientService;
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookSummary;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -25,7 +22,6 @@ import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 /** Search and maintenance page for library titles and inventory. */
@@ -50,10 +46,13 @@ public final class LibraryPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private List<BookSummary> rows = new ArrayList<BookSummary>();
 
-    public LibraryPanel(LibraryClientService service, Role role, Set<String> adminScopes) {
+    public LibraryPanel(LibraryClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, 12));
         this.service = service;
-        this.effectiveRole = SubSystems.effectiveRole(role, adminScopes, SubSystem.LIBRARY);
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
         setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
         buildUi();
         bindActions();

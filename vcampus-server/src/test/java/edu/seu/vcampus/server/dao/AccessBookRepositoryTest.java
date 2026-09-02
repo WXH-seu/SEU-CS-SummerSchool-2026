@@ -63,6 +63,21 @@ public class AccessBookRepositoryTest {
         assertEquals(10, repository.findBooks(null).size());
     }
 
+    private static boolean hasBorrowUserForeignKey(AccessDatabase database) throws Exception {
+        try (Connection connection = database.openConnection();
+             ResultSet keys = connection.getMetaData().getImportedKeys(
+                     null, null, "tblBorrowRecord")) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     @Test
     public void savesAndDeletesATitleWithoutBorrowHistory() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
