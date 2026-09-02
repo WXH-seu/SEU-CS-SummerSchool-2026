@@ -98,10 +98,10 @@ public final class MainFrame extends JFrame {
                 effectiveRole(SubSystem.COURSE)), CARD_NAMES[2]);
         cards.add(new LibraryPanel(
                 new LibraryClientService(connection, session.getSessionToken()),
-                session.getRole(), session.getAdminScopes()), CARD_NAMES[3]);
+                effectiveRole(SubSystem.LIBRARY)), CARD_NAMES[3]);
         cards.add(new StorePanel(
                 new StoreClientService(connection, session.getSessionToken()),
-                session.getRole(), session.getAdminScopes()), CARD_NAMES[4]);
+                effectiveRole(SubSystem.STORE)), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
         showCard(CARD_NAMES[0]);

@@ -1,9 +1,11 @@
 package edu.seu.vcampus.client.ui;
 
+import edu.seu.vcampus.client.ui.components.SeuFields;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.ProductDto;
 
 import javax.swing.JCheckBox;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
@@ -11,7 +13,7 @@ import java.awt.Component;
 import java.awt.GridLayout;
 import java.math.BigDecimal;
 
-/** Small form dialog used by the store product page. */
+/** 商店商品新增 / 编辑对话框，输入控件统一使用公共组件。 */
 final class StoreEditors {
     private StoreEditors() {
     }
@@ -24,6 +26,9 @@ final class StoreEditors {
         JTextField price = field(value == null ? "" : String.valueOf(value.getPrice()), true);
         JTextField stock = field(value == null ? "" : String.valueOf(value.getStock()), true);
         JCheckBox active = new JCheckBox("上架", value == null || value.isActive());
+        active.setFont(SeuTheme.bodyFont());
+        active.setForeground(SeuTheme.TEXT);
+
         JPanel form = form(new String[]{"商品编号*", "商品名称*", "分类", "描述",
                         "单价*", "库存*", "状态"},
                 new Component[]{id, name, category, description, price, stock, active});
@@ -36,8 +41,9 @@ final class StoreEditors {
 
     private static JPanel form(String[] labels, Component[] components) {
         JPanel panel = new JPanel(new GridLayout(labels.length, 2, 8, 8));
+        panel.setBorder(SeuTheme.empty(SeuTheme.SPACE_SM, 0, SeuTheme.SPACE_SM, 0));
         for (int i = 0; i < labels.length; i++) {
-            panel.add(new JLabel(labels[i]));
+            panel.add(SeuLabels.field(labels[i]));
             panel.add(components[i]);
         }
         return panel;
@@ -50,7 +56,7 @@ final class StoreEditors {
     }
 
     private static JTextField field(String value, boolean editable) {
-        JTextField field = new JTextField(value == null ? "" : value, 18);
+        JTextField field = SeuFields.text(value == null ? "" : value, 18);
         field.setEditable(editable);
         return field;
     }

@@ -1,76 +1,77 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.StoreClientService;
+import edu.seu.vcampus.client.ui.components.SeuButtons;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuMessages;
+import edu.seu.vcampus.client.ui.components.SeuPanels;
+import edu.seu.vcampus.client.ui.components.SeuTables;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.OrderDto;
 
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/** Shopping cart page: change quantity, remove lines and check out. */
+/**
+ * 购物车页：修改数量、移除与整单结算。布局与控件统一使用公共组件。
+ */
 public final class StoreCartPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
+
     private final StoreClientService service;
     private final Runnable onOrderCreated;
-    private final JButton changeButton = new JButton("修改数量");
-    private final JButton removeButton = new JButton("移除");
-    private final JButton checkoutButton = new JButton("结算下单");
-    private final JLabel statusLabel = new JLabel("准备就绪");
+    private final JButton changeButton = SeuButtons.secondary("修改数量");
+    private final JButton removeButton = SeuButtons.danger("移除");
+    private final JButton checkoutButton = SeuButtons.primary("结算下单");
+    private final JLabel statusLabel = SeuLabels.status("准备就绪");
     private final JLabel totalLabel = new JLabel("合计：¥0.00");
-    private final DefaultTableModel tableModel = new DefaultTableModel() {
-        private static final long serialVersionUID = 1L;
-
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(tableModel);
+    private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[]{
+            "商品编号", "名称", "单价", "数量", "小计", "剩余库存"});
+    private final JTable table = SeuTables.create(tableModel);
     private List<CartItemDto> rows = new ArrayList<CartItemDto>();
 
     public StoreCartPanel(StoreClientService service, Runnable onOrderCreated) {
-        super(new BorderLayout(0, 12));
+        super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
         this.onOrderCreated = onOrderCreated;
-        setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
         buildUi();
         bindActions();
         refresh();
     }
 
     private void buildUi() {
-        JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("我的购物车");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        heading.add(title, BorderLayout.WEST);
-        heading.add(totalLabel, BorderLayout.EAST);
+        totalLabel.setFont(SeuTheme.bodyFont());
+        totalLabel.setForeground(SeuTheme.TEXT);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel actions = SeuPanels.toolbar();
         actions.add(changeButton);
         actions.add(removeButton);
         actions.add(checkoutButton);
-        actions.add(statusLabel);
+        actions.add(totalLabel);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
-        north.add(heading, BorderLayout.NORTH);
+        JPanel north = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        north.setOpaque(false);
+        north.add(SeuPanels.heading("我的购物车", statusLabel), BorderLayout.NORTH);
         north.add(actions, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
-        table.setFillsViewportHeight(true);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+
+        JPanel card = SeuPanels.card();
+        card.add(SeuTables.scroll(table), BorderLayout.CENTER);
+        add(card, BorderLayout.CENTER);
     }
 
     private void bindActions() {
@@ -115,14 +116,17 @@ public final class StoreCartPanel extends JPanel {
 
     private void renderRows() {
         tableModel.setRowCount(0);
-        tableModel.setColumnIdentifiers(new String[]{
-                "商品编号", "名称", "单价", "数量", "小计", "剩余库存"});
         BigDecimal total = BigDecimal.ZERO;
         for (CartItemDto item : rows) {
             total = total.add(item.getSubtotal());
-            tableModel.addRow(new Object[]{item.getProductId(), item.getProductName(),
-                    StoreFormat.money(item.getUnitPrice()), item.getQuantity(),
-                    StoreFormat.money(item.getSubtotal()), item.getStock()});
+            tableModel.addRow(new Object[]{
+                    item.getProductId(),
+                    item.getProductName(),
+                    StoreFormat.money(item.getUnitPrice()),
+                    Integer.valueOf(item.getQuantity()),
+                    StoreFormat.money(item.getSubtotal()),
+                    Integer.valueOf(item.getStock())
+            });
         }
         totalLabel.setText("合计：¥" + StoreFormat.money(total));
     }
@@ -133,7 +137,8 @@ public final class StoreCartPanel extends JPanel {
             return;
         }
         String input = JOptionPane.showInputDialog(this,
-                "请输入新数量（1-" + Math.max(1, item.getStock()) + "，输入 0 表示移除）：",
+                "请输入新数量（1-" + Math.max(1, item.getStock())
+                        + "，输入 0 表示移除）：",
                 String.valueOf(item.getQuantity()));
         if (input == null) {
             return;
@@ -159,9 +164,8 @@ public final class StoreCartPanel extends JPanel {
 
     private void removeSelected() {
         final CartItemDto item = selectedItem();
-        if (item == null || JOptionPane.showConfirmDialog(this,
-                "确定将「" + item.getProductName() + "」移出购物车吗？",
-                "确认移除", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (item == null || !SeuMessages.confirm(this,
+                "确定将「" + item.getProductName() + "」移出购物车吗？")) {
             return;
         }
         runMutation("正在移除……", new IoAction() {
@@ -174,13 +178,12 @@ public final class StoreCartPanel extends JPanel {
 
     private void checkOut() {
         if (rows.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "购物车为空，请先添加商品", "提示",
-                    JOptionPane.INFORMATION_MESSAGE);
+            SeuMessages.info(this, "购物车为空，请先添加商品");
             return;
         }
-        if (JOptionPane.showConfirmDialog(this, "确认对购物车中的 " + rows.size()
-                + " 种商品下单吗？下单后将扣减库存。", "确认下单",
-                JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (!SeuMessages.confirm(this,
+                "确认对购物车中的 " + rows.size()
+                        + " 种商品下单吗？下单后将扣减库存。")) {
             return;
         }
         setBusy(true, "正在创建订单……");
@@ -194,10 +197,9 @@ public final class StoreCartPanel extends JPanel {
             protected void done() {
                 try {
                     OrderDto order = get();
-                    JOptionPane.showMessageDialog(StoreCartPanel.this,
-                            "下单成功！订单号：" + order.getOrderId()
-                                    + "\n金额：¥" + StoreFormat.money(order.getTotalAmount()),
-                            "下单成功", JOptionPane.INFORMATION_MESSAGE);
+                    SeuMessages.info(StoreCartPanel.this, "下单成功",
+                            "订单号：" + order.getOrderId()
+                                    + "\n金额：¥" + StoreFormat.money(order.getTotalAmount()));
                     onOrderCreated.run();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -214,8 +216,7 @@ public final class StoreCartPanel extends JPanel {
     private CartItemDto selectedItem() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
-            JOptionPane.showMessageDialog(this, "请先选择一件商品", "提示",
-                    JOptionPane.INFORMATION_MESSAGE);
+            SeuMessages.info(this, "请先选择一件商品");
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
@@ -260,7 +261,7 @@ public final class StoreCartPanel extends JPanel {
     }
 
     private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
+        SeuMessages.error(this, message);
     }
 
     private interface IoAction {

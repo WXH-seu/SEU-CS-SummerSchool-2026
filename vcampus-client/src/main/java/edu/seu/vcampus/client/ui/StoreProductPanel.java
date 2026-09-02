@@ -1,94 +1,100 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.StoreClientService;
+import edu.seu.vcampus.client.ui.components.SeuButtons;
+import edu.seu.vcampus.client.ui.components.SeuFields;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuMessages;
+import edu.seu.vcampus.client.ui.components.SeuPanels;
+import edu.seu.vcampus.client.ui.components.SeuTables;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
-/** Product browsing page with a shop cart entry and admin maintenance. */
+/**
+ * 商品浏览与维护页：学生 / 教师可检索并加入购物车，管理员可维护商品。
+ * 布局与控件统一使用 {@code ui.components} 公共组件。
+ */
 public final class StoreProductPanel extends JPanel {
-    private final StoreClientService service;
-    private final Role role;
-    private final Set<String> adminScopes;
-    private final JTextField keyword = new JTextField(10);
-    private final JTextField category = new JTextField(8);
-    private final JButton searchButton = new JButton("查询");
-    private final JButton addToCartButton = new JButton("加入购物车");
-    private final JButton addButton = new JButton("新增");
-    private final JButton editButton = new JButton("编辑");
-    private final JButton deleteButton = new JButton("删除");
-    private final JLabel statusLabel = new JLabel("准备就绪");
-    private final DefaultTableModel tableModel = new DefaultTableModel() {
-        private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(tableModel);
+    private final StoreClientService service;
+    private final SubSystemRole effectiveRole;
+    private final JTextField keyword = SeuFields.text(18);
+    private final JTextField category = SeuFields.text(10);
+    private final JCheckBox includeInactive = new JCheckBox("含已下架");
+    private final JButton searchButton = SeuButtons.primary("查询");
+    private final JButton addToCartButton = SeuButtons.secondary("加入购物车");
+    private final JButton addButton = SeuButtons.secondary("新增");
+    private final JButton editButton = SeuButtons.secondary("编辑");
+    private final JButton deleteButton = SeuButtons.danger("删除");
+    private final JLabel statusLabel = SeuLabels.status("准备就绪");
+    private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[]{
+            "商品编号", "名称", "分类", "描述", "单价", "库存", "上架"});
+    private final JTable table = SeuTables.create(tableModel);
     private List<ProductDto> rows = new ArrayList<ProductDto>();
 
-    public StoreProductPanel(StoreClientService service, Role role, Set<String> adminScopes) {
-        super(new BorderLayout(0, 12));
+    public StoreProductPanel(StoreClientService service, SubSystemRole effectiveRole) {
+        super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
-        this.role = role;
-        this.adminScopes = adminScopes;
-        setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
         buildUi();
         bindActions();
         refresh();
     }
 
     private void buildUi() {
-        JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("校园商店 · 商品");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        heading.add(title, BorderLayout.WEST);
-        heading.add(statusLabel, BorderLayout.EAST);
+        SeuFields.setPlaceholder(keyword, "编号 / 名称");
+        SeuFields.setPlaceholder(category, "如：文具");
+        includeInactive.setFont(SeuTheme.bodyFont());
+        includeInactive.setForeground(SeuTheme.TEXT);
+        includeInactive.setOpaque(false);
 
-        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filters.add(new JLabel("关键字"));
+        JPanel filters = SeuPanels.toolbar();
+        filters.add(SeuLabels.field("关键字"));
         filters.add(keyword);
-        filters.add(new JLabel("分类"));
+        filters.add(SeuLabels.field("分类"));
         filters.add(category);
+        filters.add(includeInactive);
         filters.add(searchButton);
         filters.add(addToCartButton);
         filters.add(addButton);
         filters.add(editButton);
         filters.add(deleteButton);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
-        north.add(heading, BorderLayout.NORTH);
+        JPanel north = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        north.setOpaque(false);
+        north.add(SeuPanels.heading("校园商店 · 商品", statusLabel), BorderLayout.NORTH);
         north.add(filters, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
-        table.setFillsViewportHeight(true);
-        table.setAutoCreateRowSorter(true);
-        add(new JScrollPane(table), BorderLayout.CENTER);
 
-        boolean administrator = effectiveRole() == SubSystemRole.ADMIN;
+        JPanel card = SeuPanels.card();
+        card.add(SeuTables.scroll(table), BorderLayout.CENTER);
+        add(card, BorderLayout.CENTER);
+
+        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
+        includeInactive.setVisible(administrator);
         addToCartButton.setVisible(!administrator);
         addButton.setVisible(administrator);
         editButton.setVisible(administrator);
@@ -99,6 +105,7 @@ public final class StoreProductPanel extends JPanel {
         searchButton.addActionListener(event -> refresh());
         keyword.addActionListener(event -> refresh());
         category.addActionListener(event -> refresh());
+        includeInactive.addActionListener(event -> refresh());
         addToCartButton.addActionListener(event -> addSelectedToCart());
         addButton.addActionListener(event -> editProduct(null));
         editButton.addActionListener(event -> editSelected());
@@ -106,7 +113,8 @@ public final class StoreProductPanel extends JPanel {
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2 && effectiveRole() == SubSystemRole.ADMIN) {
+                if (event.getClickCount() == 2
+                        && effectiveRole == SubSystemRole.ADMIN) {
                     editSelected();
                 }
             }
@@ -116,7 +124,7 @@ public final class StoreProductPanel extends JPanel {
     public void refresh() {
         setBusy(true, "正在加载商品……");
         final StoreQueryRequest query = new StoreQueryRequest(
-                keyword.getText(), category.getText(), true);
+                keyword.getText(), category.getText(), !includeInactive.isSelected());
         new SwingWorker<List<ProductDto>, Void>() {
             @Override
             protected List<ProductDto> doInBackground() throws Exception {
@@ -143,18 +151,21 @@ public final class StoreProductPanel extends JPanel {
 
     private void renderRows() {
         tableModel.setRowCount(0);
-        tableModel.setColumnIdentifiers(new String[]{
-                "商品编号", "名称", "分类", "描述", "单价", "库存", "上架"});
         for (ProductDto product : rows) {
-            tableModel.addRow(new Object[]{product.getProductId(), product.getProductName(),
-                    product.getCategory(), product.getDescription(),
-                    StoreFormat.money(product.getPrice()), product.getStock(),
-                    product.isActive() ? "是" : "否"});
+            tableModel.addRow(new Object[]{
+                    product.getProductId(),
+                    product.getProductName(),
+                    product.getCategory(),
+                    product.getDescription(),
+                    StoreFormat.money(product.getPrice()),
+                    Integer.valueOf(product.getStock()),
+                    product.isActive() ? "在架" : "已下架"
+            });
         }
     }
 
     private void addSelectedToCart() {
-        ProductDto product = selectedProduct();
+        final ProductDto product = selectedProduct();
         if (product == null) {
             return;
         }
@@ -208,9 +219,8 @@ public final class StoreProductPanel extends JPanel {
 
     private void deleteSelected() {
         final ProductDto selected = selectedProduct();
-        if (selected == null || JOptionPane.showConfirmDialog(this,
-                "确定删除商品「" + selected.getProductName() + "」吗？",
-                "确认删除", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (selected == null || !SeuMessages.confirm(this,
+                "确定删除商品「" + selected.getProductName() + "」吗？")) {
             return;
         }
         runMutation("正在删除……", new IoAction() {
@@ -224,15 +234,10 @@ public final class StoreProductPanel extends JPanel {
     private ProductDto selectedProduct() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
-            JOptionPane.showMessageDialog(this, "请先选择一件商品", "提示",
-                    JOptionPane.INFORMATION_MESSAGE);
+            SeuMessages.info(this, "请先选择一件商品");
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
-    }
-
-    private SubSystemRole effectiveRole() {
-        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
     }
 
     private void runMutation(String status, final IoAction action, String successMessage) {
@@ -249,8 +254,7 @@ public final class StoreProductPanel extends JPanel {
                 try {
                     get();
                     refresh();
-                    JOptionPane.showMessageDialog(StoreProductPanel.this,
-                            successMessage, "操作成功", JOptionPane.INFORMATION_MESSAGE);
+                    SeuMessages.info(StoreProductPanel.this, successMessage);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     showError("操作被中断");
@@ -266,6 +270,9 @@ public final class StoreProductPanel extends JPanel {
     private void setBusy(boolean busy, String status) {
         statusLabel.setText(status);
         searchButton.setEnabled(!busy);
+        keyword.setEnabled(!busy);
+        category.setEnabled(!busy);
+        includeInactive.setEnabled(!busy);
         addToCartButton.setEnabled(!busy);
         addButton.setEnabled(!busy);
         editButton.setEnabled(!busy);
@@ -278,7 +285,7 @@ public final class StoreProductPanel extends JPanel {
     }
 
     private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
+        SeuMessages.error(this, message);
     }
 
     private interface IoAction {

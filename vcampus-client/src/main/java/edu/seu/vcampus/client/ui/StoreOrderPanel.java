@@ -1,133 +1,95 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.StoreClientService;
+import edu.seu.vcampus.client.ui.components.SeuButtons;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuMessages;
+import edu.seu.vcampus.client.ui.components.SeuPanels;
+import edu.seu.vcampus.client.ui.components.SeuTables;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.OrderItemDto;
-import edu.seu.vcampus.common.enums.Role;
-import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
-import edu.seu.vcampus.common.enums.SubSystems;
 
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
-import javax.swing.ListSelectionModel;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
-/** Order list page with per‑order lines and admin status management. */
+/**
+ * 订单页：上方订单列表 + 下方选中订单的明细，管理员可更新订单状态。
+ * 布局与控件统一使用 {@code ui.components} 公共组件。
+ */
 public final class StoreOrderPanel extends JPanel {
-    private static final long serialVersionUID = 1L;  // 【添加】修复序列化警告
-    
-    private static final String[] STATUSES = {"待付款", "已付款", "已发货", "已完成", "已取消"};  // 【修复】大括号改成小括号
-    
+    private static final long serialVersionUID = 1L;
+
+    private static final String[] STATUSES = {"待付款", "已付款", "已发货", "已完成", "已取消"};
+
     private final StoreClientService service;
-    private final Role role;
-    private final Set<String> adminScopes;
-    private final JButton refreshButton = new JButton("刷新");
-    private final JButton statusButton = new JButton("更新状态");
-    private final JLabel statusLabel = new JLabel("准备就绪");
-
-    private final DefaultTableModel orderModel;
-    private final JTable orderTable;
-
-    private final DefaultTableModel itemModel;
-    private final JTable itemTable;
-
+    private final SubSystemRole effectiveRole;
+    private final JButton refreshButton = SeuButtons.secondary("刷新");
+    private final JButton statusButton = SeuButtons.primary("更新状态");
+    private final JLabel statusLabel = SeuLabels.status("准备就绪");
+    private final DefaultTableModel orderModel = SeuTables.readOnlyModel(new String[]{
+            "订单号", "下单账号", "总金额", "状态", "下单时间"});
+    private final JTable orderTable = SeuTables.create(orderModel);
+    private final DefaultTableModel itemModel = SeuTables.readOnlyModel(new String[]{
+            "商品", "单价", "数量", "小计"});
+    private final JTable itemTable = SeuTables.create(itemModel);
     private List<OrderDto> orders = new ArrayList<OrderDto>();
 
-    public StoreOrderPanel(StoreClientService service, Role role, Set<String> adminScopes) {
-        super(new BorderLayout(0, 12));
+    public StoreOrderPanel(StoreClientService service, SubSystemRole effectiveRole) {
+        super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
-        this.role = role;
-        this.adminScopes = adminScopes;
-        setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
-
-        orderModel = new DefaultTableModel(
-            new String[]{"订单号", "下单账号", "总金额", "状态", "下单时间"}, 0
-        ) {
-            private static final long serialVersionUID = 1L;
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        orderTable = new JTable(orderModel);
-
-        itemModel = new DefaultTableModel(
-            new String[]{"商品", "单价", "数量", "小计"}, 0
-        ) {
-            private static final long serialVersionUID = 1L;
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        itemTable = new JTable(itemModel);
-
+        if (effectiveRole == null) {
+            throw new IllegalArgumentException("effectiveRole is required");
+        }
+        this.effectiveRole = effectiveRole;
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
         buildUi();
         bindActions();
         refresh();
     }
 
     private void buildUi() {
-        JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel(effectiveRole() == SubSystemRole.ADMIN ? "全部订单" : "我的订单");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        heading.add(title, BorderLayout.WEST);
-        heading.add(statusLabel, BorderLayout.EAST);
+        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel actions = SeuPanels.toolbar();
         actions.add(refreshButton);
-        statusButton.setVisible(effectiveRole() == SubSystemRole.ADMIN);
+        statusButton.setVisible(administrator);
         actions.add(statusButton);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
-        north.add(heading, BorderLayout.NORTH);
+        JPanel north = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        north.setOpaque(false);
+        north.add(SeuPanels.heading(administrator ? "全部订单" : "我的订单", statusLabel),
+                BorderLayout.NORTH);
         north.add(actions, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new BorderLayout(0, 10));
+        JPanel center = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        center.setOpaque(false);
 
-        JPanel orderContainer = new JPanel();
-        orderContainer.setLayout(new BorderLayout());
-        orderContainer.setPreferredSize(new Dimension(100, 240));
+        JPanel orderCard = SeuPanels.card();
+        orderCard.add(SeuTables.scroll(orderTable), BorderLayout.CENTER);
+        center.add(orderCard, BorderLayout.CENTER);
 
-        orderTable.setFillsViewportHeight(true);
-        orderTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        orderTable.setRowHeight(26);
-        orderTable.setFont(orderTable.getFont().deriveFont(14f));
-
-        JScrollPane orderScroll = new JScrollPane(orderTable);
-        orderScroll.setViewportView(orderTable);
-        orderContainer.add(orderScroll, BorderLayout.CENTER);
-
-        center.add(orderContainer, BorderLayout.CENTER);
-
-        JPanel items = new JPanel(new BorderLayout(0, 6));
-        items.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
-        JLabel itemsTitle = new JLabel("订单明细");
-        itemsTitle.setFont(itemsTitle.getFont().deriveFont(Font.BOLD, 14f));
-        items.add(itemsTitle, BorderLayout.NORTH);
-
-        itemTable.setFillsViewportHeight(true);
-        itemTable.setRowHeight(24);
-        itemTable.setFont(itemTable.getFont().deriveFont(14f));
-        items.add(new JScrollPane(itemTable), BorderLayout.CENTER);
-        center.add(items, BorderLayout.SOUTH);
+        // 明细卡片：限制高度，避免 BorderLayout 将订单表挤没。
+        JPanel detailCard = SeuPanels.card();
+        detailCard.setPreferredSize(new Dimension(100, 240));
+        detailCard.setMinimumSize(new Dimension(100, 180));
+        detailCard.add(SeuLabels.subtitle("订单明细"), BorderLayout.NORTH);
+        detailCard.add(SeuTables.scroll(itemTable), BorderLayout.CENTER);
+        center.add(detailCard, BorderLayout.SOUTH);
 
         add(center, BorderLayout.CENTER);
     }
@@ -180,12 +142,8 @@ public final class StoreOrderPanel extends JPanel {
                     order.getOrderTime()
             };
         }
-        orderModel.setDataVector(data, new String[]{"订单号", "下单账号", "总金额", "状态", "下单时间"});
-
-        orderTable.revalidate();
-        orderTable.repaint();
-        orderTable.updateUI();
-
+        orderModel.setDataVector(data, new String[]{
+                "订单号", "下单账号", "总金额", "状态", "下单时间"});
         if (!orders.isEmpty()) {
             orderTable.clearSelection();
             orderTable.setRowSelectionInterval(0, 0);
@@ -193,8 +151,6 @@ public final class StoreOrderPanel extends JPanel {
         } else {
             orderTable.clearSelection();
             itemModel.setRowCount(0);
-            itemTable.revalidate();
-            itemTable.repaint();
         }
     }
 
@@ -202,26 +158,16 @@ public final class StoreOrderPanel extends JPanel {
         itemModel.setRowCount(0);
         OrderDto order = selectedOrder();
         if (order == null) {
-            itemTable.revalidate();
-            itemTable.repaint();
             return;
         }
-
-        Object[][] data = new Object[order.getItems().size()][4];
-        for (int i = 0; i < order.getItems().size(); i++) {
-            OrderItemDto item = order.getItems().get(i);
-            data[i] = new Object[]{
+        for (OrderItemDto item : order.getItems()) {
+            itemModel.addRow(new Object[]{
                     item.getProductName(),
                     StoreFormat.money(item.getUnitPrice()),
-                    item.getQuantity(),
+                    Integer.valueOf(item.getQuantity()),
                     StoreFormat.money(item.getSubtotal())
-            };
+            });
         }
-        itemModel.setDataVector(data, new String[]{"商品", "单价", "数量", "小计"});
-
-        itemTable.revalidate();
-        itemTable.repaint();
-        itemTable.updateUI();
     }
 
     private void updateSelectedStatus() {
@@ -273,10 +219,6 @@ public final class StoreOrderPanel extends JPanel {
         return orders.get(modelRow);
     }
 
-    private SubSystemRole effectiveRole() {
-        return SubSystems.effectiveRole(role, adminScopes, SubSystem.STORE);
-    }
-
     private void setBusy(boolean busy, String status) {
         statusLabel.setText(status);
         refreshButton.setEnabled(!busy);
@@ -289,6 +231,6 @@ public final class StoreOrderPanel extends JPanel {
     }
 
     private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
+        SeuMessages.error(this, message);
     }
 }

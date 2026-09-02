@@ -82,6 +82,7 @@ public class AccessBookRepositoryTest {
     public void savesAndDeletesATitleWithoutBorrowHistory() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
         AccessBookRepository repository = new AccessBookRepository(database);
 
         repository.saveBook(new Book("9787300000001", "测试图书", "测试作者",
