@@ -1,8 +1,12 @@
 package edu.seu.vcampus.client.ui.components;
 
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
+import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Insets;
 
@@ -15,7 +19,7 @@ public final class SeuFields {
 
     public static JTextField text(int columns) {
         JTextField field = new JTextField(columns);
-        styleTextField(field);
+        styleTextField(field, 34);
         return field;
     }
 
@@ -27,8 +31,54 @@ public final class SeuFields {
 
     public static JPasswordField password(int columns) {
         JPasswordField field = new JPasswordField(columns);
-        styleTextField(field);
+        styleTextField(field, 34);
         return field;
+    }
+
+    /** 身份认证页用的大号圆角输入框。 */
+    public static JTextField pillText(int columns) {
+        JTextField field = new JTextField(columns);
+        stylePillField(field);
+        return field;
+    }
+
+    /** 身份认证页用的大号圆角密码框。 */
+    public static JPasswordField pillPassword(int columns) {
+        JPasswordField field = new JPasswordField(columns);
+        stylePillField(field);
+        return field;
+    }
+
+    /**
+     * 密码框右侧附带显示/隐藏切换，整体仍呈圆角条。
+     */
+    public static JPanel pillPasswordWithToggle(final JPasswordField field) {
+        stylePillField(field);
+        field.setBorder(BorderFactory.createEmptyBorder(10, 18, 10, 8));
+
+        final JButton toggle = SeuButtons.link("显示");
+        toggle.setForeground(SeuTheme.TEXT_MUTED);
+        toggle.addActionListener(event -> {
+            if (field.getEchoChar() == 0) {
+                field.setEchoChar('\u2022');
+                toggle.setText("显示");
+            } else {
+                field.setEchoChar((char) 0);
+                toggle.setText("隐藏");
+            }
+        });
+
+        JPanel wrap = new JPanel(new BorderLayout(4, 0));
+        wrap.setOpaque(true);
+        wrap.setBackground(SeuTheme.SURFACE);
+        wrap.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(SeuTheme.FIELD_BORDER, 1),
+                BorderFactory.createEmptyBorder(2, 4, 2, 8)));
+        wrap.setPreferredSize(new Dimension(320, 48));
+        wrap.putClientProperty("JComponent.roundRect", Boolean.TRUE);
+        wrap.add(field, BorderLayout.CENTER);
+        wrap.add(toggle, BorderLayout.EAST);
+        return wrap;
     }
 
     public static <T> JComboBox<T> combo(T[] items) {
@@ -40,14 +90,26 @@ public final class SeuFields {
         return combo;
     }
 
-    private static void styleTextField(JTextField field) {
+    private static void styleTextField(JTextField field, int height) {
         field.setFont(SeuTheme.bodyFont());
         field.setForeground(SeuTheme.TEXT);
         field.setBackground(SeuTheme.SURFACE);
         field.setCaretColor(SeuTheme.PRIMARY);
         field.setMargin(new Insets(6, 10, 6, 10));
-        field.setPreferredSize(new Dimension(field.getPreferredSize().width, 34));
+        field.setPreferredSize(new Dimension(field.getPreferredSize().width, height));
         field.putClientProperty("JTextField.placeholderText", null);
+    }
+
+    private static void stylePillField(JTextField field) {
+        styleTextField(field, 48);
+        field.setFont(SeuTheme.font(java.awt.Font.PLAIN, 15f));
+        field.setMargin(new Insets(10, 18, 10, 18));
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(SeuTheme.FIELD_BORDER, 1),
+                BorderFactory.createEmptyBorder(10, 18, 10, 18)));
+        field.putClientProperty("JComponent.roundRect", Boolean.TRUE);
+        field.setPreferredSize(new Dimension(320, 48));
+        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
     }
 
     /**

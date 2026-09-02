@@ -15,7 +15,13 @@ public final class SeuMessages {
     }
 
     public static void info(Component parent, String message) {
-        JOptionPane.showMessageDialog(parent, message, TITLE_INFO, JOptionPane.INFORMATION_MESSAGE);
+        info(parent, TITLE_INFO, message);
+    }
+
+    public static void info(Component parent, String title, String message) {
+        JOptionPane.showMessageDialog(parent, message,
+                title == null || title.trim().isEmpty() ? TITLE_INFO : title,
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     public static void error(Component parent, String message) {

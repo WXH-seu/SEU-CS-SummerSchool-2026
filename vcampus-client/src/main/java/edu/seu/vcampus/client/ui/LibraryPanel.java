@@ -1,73 +1,71 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.LibraryClientService;
+import edu.seu.vcampus.client.ui.components.SeuButtons;
+import edu.seu.vcampus.client.ui.components.SeuFields;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuMessages;
+import edu.seu.vcampus.client.ui.components.SeuPanels;
+import edu.seu.vcampus.client.ui.components.SeuTables;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/** Search and maintenance page for library titles and inventory. */
+/**
+ * 图书馆检索与维护页面。布局与控件统一使用 {@code ui.components} 公共组件。
+ */
 public final class LibraryPanel extends JPanel {
     private final LibraryClientService service;
     private final SubSystemRole effectiveRole;
-    private final JTextField keyword = new JTextField(18);
+    private final JTextField keyword = SeuFields.text(18);
     private final JCheckBox includeInactive = new JCheckBox("含已下架");
-    private final JButton searchButton = new JButton("查询");
-    private final JButton addButton = new JButton("新增");
-    private final JButton editButton = new JButton("编辑");
-    private final JButton deleteButton = new JButton("删除");
-    private final JLabel statusLabel = new JLabel("准备就绪");
-    private final DefaultTableModel tableModel = new DefaultTableModel() {
-        private static final long serialVersionUID = 1L;
-
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(tableModel);
+    private final JButton searchButton = SeuButtons.primary("查询");
+    private final JButton addButton = SeuButtons.secondary("新增");
+    private final JButton editButton = SeuButtons.secondary("编辑");
+    private final JButton deleteButton = SeuButtons.danger("删除");
+    private final JLabel statusLabel = SeuLabels.status("准备就绪");
+    private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[]{
+            "ISBN", "书名", "作者", "出版社", "分类", "可借", "馆藏", "状态"});
+    private final JTable table = SeuTables.create(tableModel);
     private List<BookSummary> rows = new ArrayList<BookSummary>();
 
     public LibraryPanel(LibraryClientService service, SubSystemRole effectiveRole) {
-        super(new BorderLayout(0, 12));
+        super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
         if (effectiveRole == null) {
             throw new IllegalArgumentException("effectiveRole is required");
         }
         this.effectiveRole = effectiveRole;
-        setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
         buildUi();
         bindActions();
         refreshRows();
     }
 
     private void buildUi() {
-        JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("图书馆（" + effectiveRole.getDisplayName() + "）");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        heading.add(title, BorderLayout.WEST);
-        heading.add(statusLabel, BorderLayout.EAST);
+        SeuFields.setPlaceholder(keyword, "书名 / ISBN / 作者");
+        includeInactive.setFont(SeuTheme.bodyFont());
+        includeInactive.setForeground(SeuTheme.TEXT);
+        includeInactive.setOpaque(false);
 
-        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filters.add(new JLabel("关键字"));
+        JPanel filters = SeuPanels.toolbar();
+        filters.add(SeuLabels.field("关键字"));
         filters.add(keyword);
         filters.add(includeInactive);
         filters.add(searchButton);
@@ -75,16 +73,17 @@ public final class LibraryPanel extends JPanel {
         filters.add(editButton);
         filters.add(deleteButton);
 
-        JPanel north = new JPanel(new BorderLayout(0, 14));
-        north.add(heading, BorderLayout.NORTH);
+        JPanel north = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        north.setOpaque(false);
+        north.add(SeuPanels.heading(
+                "图书馆（" + effectiveRole.getDisplayName() + "）", statusLabel),
+                BorderLayout.NORTH);
         north.add(filters, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
-        tableModel.setColumnIdentifiers(new String[]{
-                "ISBN", "书名", "作者", "出版社", "分类", "可借", "馆藏", "状态"});
-        table.setFillsViewportHeight(true);
-        table.setAutoCreateRowSorter(true);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JPanel card = SeuPanels.card();
+        card.add(SeuTables.scroll(table), BorderLayout.CENTER);
+        add(card, BorderLayout.CENTER);
 
         boolean administrator = effectiveRole == SubSystemRole.ADMIN;
         includeInactive.setVisible(administrator);
@@ -186,9 +185,8 @@ public final class LibraryPanel extends JPanel {
 
     private void deleteSelectedBook() {
         final BookSummary book = selectedBook();
-        if (book == null || JOptionPane.showConfirmDialog(this,
-                "确定删除图书「" + book.getTitle() + "」吗？仍有借阅记录时请改用下架。",
-                "确认删除", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+        if (book == null || !SeuMessages.confirm(this,
+                "确定删除图书「" + book.getTitle() + "」吗？仍有借阅记录时请改用下架。")) {
             return;
         }
         runMutation("正在删除图书……", new IoAction() {
@@ -202,8 +200,7 @@ public final class LibraryPanel extends JPanel {
     private BookSummary selectedBook() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
-            JOptionPane.showMessageDialog(this, "请先选择一种图书", "提示",
-                    JOptionPane.INFORMATION_MESSAGE);
+            SeuMessages.info(this, "请先选择一种图书");
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
@@ -221,8 +218,7 @@ public final class LibraryPanel extends JPanel {
                 + "\n分类：" + nullToEmpty(book.getCategory())
                 + "\n可借 / 馆藏：" + book.getAvailableCopies() + " / " + book.getTotalCopies()
                 + "\n状态：" + (book.isActive() ? "在架" : "已下架");
-        JOptionPane.showMessageDialog(this, details, "图书详情",
-                JOptionPane.INFORMATION_MESSAGE);
+        SeuMessages.info(this, "图书详情", details);
     }
 
     private void runMutation(final String status, final IoAction action) {
@@ -267,7 +263,7 @@ public final class LibraryPanel extends JPanel {
     }
 
     private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
+        SeuMessages.error(this, message);
     }
 
     private String nullToEmpty(String value) {

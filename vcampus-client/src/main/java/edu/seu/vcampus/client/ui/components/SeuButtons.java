@@ -49,6 +49,25 @@ public final class SeuButtons {
         return button;
     }
 
+    /** 深绿顶栏上的浅色文字按钮（账号管理 / 退出登录）。 */
+    public static JButton headerLink(String text) {
+        JButton button = link(text);
+        button.setForeground(Color.WHITE);
+        button.setBackground(SeuTheme.PRIMARY);
+        return button;
+    }
+
+    /** 身份认证页大号圆角登录按钮。 */
+    public static JButton pillPrimary(String text) {
+        JButton button = styled(text, SeuTheme.LOGIN_GREEN, Color.WHITE,
+                SeuTheme.LOGIN_GREEN_HOVER, true);
+        button.setFont(SeuTheme.font(java.awt.Font.BOLD, 18f));
+        button.setPreferredSize(new Dimension(320, 48));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        button.setMargin(new Insets(10, 24, 10, 24));
+        return button;
+    }
+
     private static JButton styled(String text, Color background, Color foreground,
                                   Color hover, boolean makeDefault) {
         JButton button = new JButton(text);

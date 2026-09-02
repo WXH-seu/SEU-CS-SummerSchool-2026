@@ -22,6 +22,12 @@ public final class SeuTheme {
     public static final Color PRIMARY_HOVER = new Color(0x4A7C43);
     /** 图标与次级强调绿。 */
     public static final Color PRIMARY_SOFT = new Color(0x5C7E4E);
+    /** 身份认证页大号登录按钮绿。 */
+    public static final Color LOGIN_GREEN = new Color(0x4FAE45);
+    /** 登录按钮悬停。 */
+    public static final Color LOGIN_GREEN_HOVER = new Color(0x449B3B);
+    /** 认证页输入框浅边框。 */
+    public static final Color FIELD_BORDER = new Color(0xE8E8E8);
     /** 导航激活块金黄（门户「应用中心」）。 */
     public static final Color ACCENT = new Color(0xE8C84A);
     /** 金黄悬停。 */
