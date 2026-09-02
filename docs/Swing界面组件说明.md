@@ -29,6 +29,15 @@ SeuTheme.install();
 | `SeuLabels` | 标题、字段、状态、辅助文字 |
 | `SeuPanels` | 页面根、卡片、工具条、标题行、品牌条 |
 | `SeuMessages` | 统一「提示 / 操作失败 / 确认」对话框 |
+| `SeuNavBar` | 门户二级导航（深绿底 + 金黄激活项） |
+| `SeuAppTile` | 应用中心入口卡片 |
+| `SeuButtons.headerLink` | 顶栏白字链接按钮 |
+| `SeuButtons.pillPrimary` | 身份认证页大号登录按钮 |
+| `SeuFields.pillText` / `pillPasswordWithToggle` | 认证页大号圆角输入框 |
+| `SeuBrandHeader` | 校徽示意 + 校名品牌区 |
+
+门户壳：`MainFrame`（深绿顶栏 + `SeuNavBar` + 内容区），首页为 `HomePanel` 应用中心卡片。  
+登录页：`LoginFrame` 已按身份认证中心版式接入公共组件。
 
 ## 4. 推荐页面骨架
 
@@ -80,15 +89,42 @@ page.add(SeuTables.scroll(table), BorderLayout.CENTER);
 
 完整列表见 `SeuTheme` 源码。
 
-## 7. 协作注意
+## 7. 协作说明（全组）
 
-- 网络请求仍须放在 `SwingWorker` 中，本包不包含网络逻辑。
-- 子系统角色展示继续使用各模块已有的 `SubSystemRole`，不要在组件里判断全局 `Role`。
-- 需要新增公共控件时，先改本包并在本说明补一行，再让各模块引用。
-- 窗口最小尺寸建议保持 `MainFrame` 现有约定（约 1000×650），机房分辨率下检查无遮挡。
+### 谁做什么
+
+| 角色 | 职责 |
+| --- | --- |
+| 成员 D（赵言） | 维护公共组件与本说明；提供示范页；答疑；集成前做界面抽查 |
+| 各模块负责人 | **自己改本模块页面**，接入公共组件；不私自改门户壳与 `ui.components` |
+| 成员 A | 登录 / 账号相关页 |
+| 成员 B | 学籍页 |
+| 成员 C | 选课页 |
+| 成员 E | 商店页 |
+| 成员 D | 图书馆页（示范）+ 公共组件 |
+
+### 各模块怎么改（最少做到）
+
+1. 读本说明，对照 `LibraryPanel`。
+2. 页面根布局用 `SeuPanels.page()` / `heading()` / `toolbar()` / `card()`。
+3. 查询/保存 → `SeuButtons.primary`；编辑 → `secondary`；删除 → `danger` + `SeuMessages.confirm`。
+4. 表格用 `SeuTables`；输入框用 `SeuFields`；提示用 `SeuMessages`。
+5. **不要**再写 `new Color(...)` 或随意字号；缺控件先找 D 加进公共包。
+
+### 不要动
+
+- `MainFrame` / `HomePanel` / `SeuNavBar`（门户壳由 D 维护）
+- `ui.components` 包内类（需要扩展提需求给 D）
+
+### 技术底线（与样式无关也要遵守）
+
+- 网络请求放在 `SwingWorker` 中。
+- 业务页只使用 `SubSystemRole`，不要直接判断全局 `Role` / `adminScopes`。
+- 窗口按现有 `MainFrame` 尺寸约定自测，避免机房分辨率下遮挡。
 
 ## 8. 后续计划
 
-- 第二周：主题与基础控件（本说明对应内容）。
-- 第三周：门户壳（顶栏 / 侧栏 / 模块导航）与各业务页统一改版。
-- 第四周：易用性检查与系统使用说明截图。
+- [x] 主题与基础控件。
+- [x] 门户壳（顶栏 / 模块导航 / 应用中心首页）；`LibraryPanel` 已示范接入。
+- [ ] 其余业务页由各负责人接入公共组件。
+- [ ] 易用性检查与系统使用说明截图。
