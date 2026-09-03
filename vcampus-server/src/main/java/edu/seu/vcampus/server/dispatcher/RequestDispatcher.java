@@ -93,6 +93,15 @@ public final class RequestDispatcher {
                         ResponseCode.UNAUTHORIZED, "请先登录");
             }
 
+            // Central permission gate first: out-of-scope requests must be
+            // rejected with FORBIDDEN before any module handler parses the
+            // request body.
+            if (!permissionPolicy.allows(operation, account.getRole(),
+                    account.getAdminScopes())) {
+                return ResponseMessage.failure(request.getRequestId(),
+                        ResponseCode.FORBIDDEN, "您没有权限执行该操作");
+            }
+
             // Business sub-systems validate their own authorization; academic,
             // course and library receive the normalized role for their
             // sub-system, while store keeps the account.
@@ -112,12 +121,6 @@ public final class RequestDispatcher {
                 return storeHandler.handle(request, account);
             }
 
-            // User-module operations are gated by the shared permission policy.
-            if (!permissionPolicy.allows(operation, account.getRole(),
-                    account.getAdminScopes())) {
-                return ResponseMessage.failure(request.getRequestId(),
-                        ResponseCode.FORBIDDEN, "您没有权限执行该操作");
-            }
             return dispatchAuthenticated(request, operation, account);
         } catch (AuthException e) {
             return ResponseMessage.failure(request.getRequestId(), e.getCode(), e.getMessage());
