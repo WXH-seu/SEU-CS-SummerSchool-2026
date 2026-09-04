@@ -100,6 +100,7 @@ public final class SubSystems {
             case LIBRARY_BOOK_DELETE:
             case LIBRARY_BORROW:
             case LIBRARY_RETURN:
+            case LIBRARY_BORROW_QUERY:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:
             case STORE_PRODUCT_SAVE:

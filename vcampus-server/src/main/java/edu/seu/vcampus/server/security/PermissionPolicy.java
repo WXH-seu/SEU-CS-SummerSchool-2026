@@ -178,9 +178,13 @@ public final class PermissionPolicy {
         requireSubSystem(Operation.LIBRARY_BOOK_SAVE, SubSystemRole.ADMIN);
         requireSubSystem(Operation.LIBRARY_BOOK_DELETE, SubSystemRole.ADMIN);
         requireSubSystem(Operation.LIBRARY_BORROW,
-                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         requireSubSystem(Operation.LIBRARY_RETURN,
-                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        // Query is open to every authenticated role so a client that preloads
+        // 「我的借阅」on login does not pop FORBIDDEN for administrators.
+        // LibraryService still returns an empty list for ADMIN.
+        requireSubSystem(Operation.LIBRARY_BORROW_QUERY);
         requireSubSystem(Operation.STORE_PRODUCT_QUERY);
         requireSubSystem(Operation.STORE_ORDER_CREATE,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);

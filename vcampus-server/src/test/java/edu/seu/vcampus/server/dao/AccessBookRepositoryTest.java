@@ -41,6 +41,8 @@ public class AccessBookRepositoryTest {
 
         List<BorrowRecord> records = repository.findBorrowRecordsByUser("student");
         assertEquals(2, records.size());
+        assertNotNull(records.get(0).getIsbn());
+        assertNotNull(records.get(0).getTitle());
         boolean hasCurrentBorrow = false;
         boolean hasOverdue = false;
         for (int i = 0; i < records.size(); i++) {

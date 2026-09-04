@@ -3,21 +3,27 @@ package edu.seu.vcampus.server.service;
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.common.dto.BorrowRecordDto;
+import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.Book;
 import edu.seu.vcampus.server.dao.BookCopy;
 import edu.seu.vcampus.server.dao.BookRepository;
+import edu.seu.vcampus.server.dao.BorrowRecord;
 
 import java.sql.SQLException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
- * Business rules and permission checks for library queries and catalog
- * maintenance. The caller ({@code RequestDispatcher}) resolves the session into
- * a normalized {@link SubSystemRole} for the library, so this class authorizes
- * by that role instead of inspecting the raw account.
+ * Business rules and permission checks for library queries, borrowing and
+ * catalog maintenance. The caller ({@code RequestDispatcher}) resolves the
+ * session into a normalized {@link SubSystemRole} for the library, so this
+ * class authorizes by that role instead of inspecting the raw account.
  */
 public final class LibraryService {
     private static final int MIN_COPIES = 1;
@@ -27,6 +33,8 @@ public final class LibraryService {
     private static final int AUTHOR_MAX = 64;
     private static final int PUBLISHER_MAX = 64;
     private static final int CATEGORY_MAX = 32;
+    private static final long LOAN_PERIOD_MILLIS = 30L * 24 * 60 * 60 * 1000;
+    private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
     private final BookRepository repository;
 
@@ -87,6 +95,67 @@ public final class LibraryService {
         }
     }
 
+    public ArrayList<BorrowRecordDto> queryBorrows(String actorUserId, SubSystemRole actorRole)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        if (actorRole == SubSystemRole.ADMIN) {
+            return new ArrayList<BorrowRecordDto>();
+        }
+        List<BorrowRecord> records = repository.findBorrowRecordsByUser(actorUserId.trim());
+        ArrayList<BorrowRecordDto> result = new ArrayList<BorrowRecordDto>();
+        for (BorrowRecord record : records) {
+            result.add(toRecordDto(record));
+        }
+        return result;
+    }
+
+    public BorrowRecordDto borrowBook(String actorUserId, SubSystemRole actorRole,
+                                      BorrowRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requirePatron(actorRole);
+        String isbn = requireIsbn(request == null ? null : request.getIsbn());
+        Book book = repository.findByIsbn(isbn);
+        if (book == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "图书不存在");
+        }
+        if (!book.isActive()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "图书已下架，无法借阅");
+        }
+        if (repository.hasActiveBorrow(actorUserId.trim(), isbn)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "不能重复借阅同一图书");
+        }
+        Date now = new Date();
+        BorrowRecord created = repository.borrowAvailableCopy(
+                actorUserId.trim(), isbn, now, new Date(now.getTime() + LOAN_PERIOD_MILLIS));
+        if (created == null) {
+            throw new BusinessException(ResponseCode.CONFLICT, "暂无可借副本");
+        }
+        return toRecordDto(created);
+    }
+
+    public void returnBook(String actorUserId, SubSystemRole actorRole, ReturnRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requirePatron(actorRole);
+        if (request == null || request.getRecordId() <= 0) {
+            throw invalid("借阅记录编号无效");
+        }
+        BorrowRecord record = repository.findBorrowRecordById(request.getRecordId());
+        if (record == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "借阅记录不存在");
+        }
+        if (!actorUserId.trim().equals(record.getUserId())) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "只能归还本人的借阅记录");
+        }
+        if (record.isReturned()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该记录已归还");
+        }
+        if (!repository.returnBorrow(record.getRecordId(), new Date())) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该记录已归还");
+        }
+    }
+
     private BookDto validateBook(BookDto book) throws BusinessException {
         if (book == null) {
             throw invalid("图书资料不能为空");
@@ -144,6 +213,26 @@ public final class LibraryService {
                 book.getPublisher(), book.getCategory(), total, book.isActive());
     }
 
+    private BorrowRecordDto toRecordDto(BorrowRecord record) {
+        return new BorrowRecordDto(
+                record.getRecordId(),
+                record.getIsbn(),
+                record.getTitle(),
+                record.getAuthor(),
+                formatTime(record.getBorrowTime()),
+                formatTime(record.getDueTime()),
+                formatTime(record.getReturnTime()),
+                record.isOverdue(),
+                record.isReturned());
+    }
+
+    private String formatTime(Date date) {
+        if (date == null) {
+            return "";
+        }
+        return new SimpleDateFormat(TIME_PATTERN).format(date);
+    }
+
     private Book toBook(BookDto book) {
         return new Book(book.getIsbn(), book.getTitle(), book.getAuthor(),
                 book.getPublisher(), book.getCategory(), book.isActive());
@@ -159,6 +248,12 @@ public final class LibraryService {
     private void requireAdmin(SubSystemRole actorRole) throws BusinessException {
         if (actorRole != SubSystemRole.ADMIN) {
             throw new BusinessException(ResponseCode.FORBIDDEN, "仅管理员可以维护图书");
+        }
+    }
+
+    private void requirePatron(SubSystemRole actorRole) throws BusinessException {
+        if (actorRole == SubSystemRole.ADMIN) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅或归还图书");
         }
     }
 

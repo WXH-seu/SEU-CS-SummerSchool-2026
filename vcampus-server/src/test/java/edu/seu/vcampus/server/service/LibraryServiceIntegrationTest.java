@@ -3,6 +3,9 @@ package edu.seu.vcampus.server.service;
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.common.dto.BorrowRecordDto;
+import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -21,6 +24,7 @@ import java.io.File;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -153,6 +157,127 @@ public class LibraryServiceIntegrationTest {
         assertEquals(1, reduced.getTotalCopies());
         service.deleteBook(adminAccount.getUserId(), eff(adminAccount),  "9787020024759");
         assertEquals(9, service.queryBooks(studentAccount.getUserId(), eff(studentAccount),  null).size());
+    }
+
+    @Test
+    public void studentSeesDemoBorrowsAndCanReturnOverdueCopy() throws Exception {
+        List<BorrowRecordDto> records = service.queryBorrows("student", SubSystemRole.STUDENT);
+        assertEquals(2, records.size());
+        BorrowRecordDto overdue = findRecordByIsbn(records, "9787020008735");
+        assertTrue(overdue.isOverdue());
+        assertFalse(overdue.isReturned());
+        assertEquals("逾期", overdue.getStatusName());
+
+        int availableBefore = findByIsbn(service.queryBooks(
+                "student", SubSystemRole.STUDENT, null), "9787020008735").getAvailableCopies();
+        service.returnBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(overdue.getRecordId()));
+        BorrowRecordDto returned = findRecordByIsbn(
+                service.queryBorrows("student", SubSystemRole.STUDENT), "9787020008735");
+        assertTrue(returned.isReturned());
+        assertFalse(returned.isOverdue());
+        assertEquals(availableBefore + 1, findByIsbn(service.queryBooks(
+                "student", SubSystemRole.STUDENT, null), "9787020008735").getAvailableCopies());
+    }
+
+    @Test
+    public void studentBorrowsThenCannotBorrowSameTitleAgain() throws Exception {
+        String isbn = "9787040202489";
+        int available = findByIsbn(service.queryBooks(
+                "student", SubSystemRole.STUDENT, null), isbn).getAvailableCopies();
+        BorrowRecordDto created = service.borrowBook(
+                "student", SubSystemRole.STUDENT, new BorrowRequest(isbn));
+        assertEquals(isbn, created.getIsbn());
+        assertFalse(created.isReturned());
+        assertEquals(available - 1, findByIsbn(service.queryBooks(
+                "student", SubSystemRole.STUDENT, null), isbn).getAvailableCopies());
+        try {
+            service.borrowBook("student", SubSystemRole.STUDENT, new BorrowRequest(isbn));
+            fail("Duplicate borrow should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+        service.returnBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(created.getRecordId()));
+        assertEquals(available, findByIsbn(service.queryBooks(
+                "student", SubSystemRole.STUDENT, null), isbn).getAvailableCopies());
+    }
+
+    @Test
+    public void teacherCanBorrowAndStudentCannotReturnOthersRecord() throws Exception {
+        BorrowRecordDto teachers = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787040202489"));
+        assertEquals("9787040202489", teachers.getIsbn());
+        assertEquals(1, service.queryBorrows("teacher", SubSystemRole.TEACHER).size());
+        try {
+            service.returnBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(teachers.getRecordId()));
+            fail("Student should not return another user's record");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+        service.returnBook("teacher", SubSystemRole.TEACHER,
+                new ReturnRequest(teachers.getRecordId()));
+    }
+
+    @Test
+    public void adminCannotBorrowOrQueryPersonalRecords() throws Exception {
+        try {
+            service.borrowBook(adminAccount.getUserId(), eff(adminAccount),
+                    new BorrowRequest("9787040202489"));
+            fail("Administrator should not borrow");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+        assertTrue(service.queryBorrows(adminAccount.getUserId(), eff(adminAccount)).isEmpty());
+        BorrowRecordDto created = service.borrowBook(
+                "student", SubSystemRole.STUDENT, new BorrowRequest("9787040202489"));
+        try {
+            service.returnBook(adminAccount.getUserId(), eff(adminAccount),
+                    new ReturnRequest(created.getRecordId()));
+            fail("Administrator should not return books");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+    }
+
+    @Test
+    public void rejectsInactiveMissingAndEmptyStockBorrows() throws Exception {
+        try {
+            service.borrowBook("student", SubSystemRole.STUDENT, new BorrowRequest("no-such"));
+            fail("Missing book should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.NOT_FOUND, expected.getResponseCode());
+        }
+
+        service.saveBook(adminAccount.getUserId(), eff(adminAccount), new BookDto(
+                "9787040202489", "线性代数", "同济大学数学系", "高等教育出版社", "教材", 2, false));
+        try {
+            service.borrowBook("student", SubSystemRole.STUDENT, new BorrowRequest("9787040202489"));
+            fail("Inactive book should not be borrowed");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        BorrowRecordDto first = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
+        try {
+            service.borrowBook("student", SubSystemRole.STUDENT, new BorrowRequest("9787020024759"));
+            fail("Empty stock should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+        service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(first.getRecordId()));
+    }
+
+    private BorrowRecordDto findRecordByIsbn(List<BorrowRecordDto> records, String isbn) {
+        for (BorrowRecordDto record : records) {
+            if (isbn.equals(record.getIsbn())) {
+                return record;
+            }
+        }
+        fail("Missing borrow record for ISBN " + isbn);
+        return null;
     }
 
     private BookSummary findByIsbn(List<BookSummary> books, String isbn) {

@@ -1,6 +1,7 @@
 package edu.seu.vcampus.server.dao;
 
 import java.sql.SQLException;
+import java.util.Date;
 import java.util.List;
 
 /** Persistence boundary for library books, copies and borrow records. */
@@ -43,4 +44,22 @@ public interface BookRepository {
     boolean deleteBook(String isbn) throws SQLException;
 
     List<BorrowRecord> findBorrowRecordsByUser(String userId) throws SQLException;
+
+    BorrowRecord findBorrowRecordById(int recordId) throws SQLException;
+
+    /** Whether the user already has an unreturned copy of this ISBN. */
+    boolean hasActiveBorrow(String userId, String isbn) throws SQLException;
+
+    /**
+     * Borrows one available copy in a short transaction.
+     * Returns {@code null} when no available copy exists.
+     */
+    BorrowRecord borrowAvailableCopy(String userId, String isbn, Date borrowTime, Date dueTime)
+            throws SQLException;
+
+    /**
+     * Marks the record returned and frees the copy. Returns {@code false} when
+     * the record is missing or already returned.
+     */
+    boolean returnBorrow(int recordId, Date returnTime) throws SQLException;
 }

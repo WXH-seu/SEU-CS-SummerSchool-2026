@@ -7,8 +7,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.sql.Types;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -20,6 +21,7 @@ public final class AccessBookRepository implements BookRepository {
     private static final String MATH_ISBN = "9787040396621";
     private static final String NOVEL_ISBN = "9787020008735";
     private static final long DAY_MILLIS = 24L * 60 * 60 * 1000;
+    private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
     private final AccessDatabase database;
 
@@ -164,9 +166,7 @@ public final class AccessBookRepository implements BookRepository {
 
     @Override
     public List<BorrowRecord> findBorrowRecordsByUser(String userId) throws SQLException {
-        String sql = "SELECT [recordId], [copyId], [userId], [borrowTime], [dueTime], "
-                + "[returnTime] FROM [tblBorrowRecord] WHERE [userId] = ? "
-                + "ORDER BY [borrowTime] DESC";
+        String sql = borrowSelectSql() + " WHERE r.[userId] = ? ORDER BY r.[borrowTime] DESC";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
@@ -176,6 +176,126 @@ public final class AccessBookRepository implements BookRepository {
                     records.add(mapRecord(result));
                 }
                 return records;
+            }
+        }
+    }
+
+    @Override
+    public BorrowRecord findBorrowRecordById(int recordId) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            return findBorrowRecordById(connection, recordId);
+        }
+    }
+
+    private BorrowRecord findBorrowRecordById(Connection connection, int recordId)
+            throws SQLException {
+        String sql = borrowSelectSql() + " WHERE r.[recordId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, recordId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? mapRecord(result) : null;
+            }
+        }
+    }
+
+    @Override
+    public boolean hasActiveBorrow(String userId, String isbn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBorrowRecord] AS r "
+                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
+                + "WHERE r.[userId] = ? AND c.[isbn] = ? "
+                + "AND (r.[returnTime] IS NULL OR r.[returnTime] = '')";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.setString(2, isbn);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
+    }
+
+    @Override
+    public BorrowRecord borrowAvailableCopy(String userId, String isbn, Date borrowTime,
+                                            Date dueTime) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int copyId = findFirstCopyId(connection, isbn, BookCopy.STATUS_AVAILABLE);
+                if (copyId < 0) {
+                    connection.rollback();
+                    return null;
+                }
+                updateCopyStatus(connection, copyId, BookCopy.STATUS_BORROWED);
+                int recordId = insertBorrowRecord(connection, copyId, userId,
+                        formatTime(borrowTime), formatTime(dueTime));
+                BorrowRecord created = findBorrowRecordById(connection, recordId);
+                if (created == null) {
+                    throw new SQLException("Inserted borrow record was not found: " + recordId);
+                }
+                connection.commit();
+                return created;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public boolean returnBorrow(int recordId, Date returnTime) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                Integer copyId = findCopyIdForOpenRecord(connection, recordId);
+                if (copyId == null) {
+                    connection.rollback();
+                    return false;
+                }
+                String sql = "UPDATE [tblBorrowRecord] SET [returnTime] = ? "
+                        + "WHERE [recordId] = ? AND ([returnTime] IS NULL OR [returnTime] = '')";
+                int updated;
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setString(1, formatTime(returnTime));
+                    statement.setInt(2, recordId);
+                    updated = statement.executeUpdate();
+                }
+                if (updated == 0) {
+                    connection.rollback();
+                    return false;
+                }
+                updateCopyStatus(connection, copyId.intValue(), BookCopy.STATUS_AVAILABLE);
+                connection.commit();
+                return true;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private String borrowSelectSql() {
+        return "SELECT r.[recordId], r.[copyId], r.[userId], r.[borrowTime], r.[dueTime], "
+                + "r.[returnTime], c.[isbn], b.[title], b.[author] "
+                + "FROM [tblBorrowRecord] AS r "
+                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
+                + "INNER JOIN [tblBook] AS b ON c.[isbn] = b.[isbn]";
+    }
+
+    private Integer findCopyIdForOpenRecord(Connection connection, int recordId)
+            throws SQLException {
+        String sql = "SELECT [copyId] FROM [tblBorrowRecord] "
+                + "WHERE [recordId] = ? AND ([returnTime] IS NULL OR [returnTime] = '')";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, recordId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return null;
+                }
+                return Integer.valueOf(result.getInt(1));
             }
         }
     }
@@ -195,9 +315,65 @@ public final class AccessBookRepository implements BookRepository {
             if (!tableExists(connection, "tblBorrowRecord")) {
                 createBorrowRecordTable(connection);
             }
+            migrateBorrowTimesToText(connection);
             ensureBorrowUserForeignKey(connection);
             if (countBooks(connection) == 0) {
                 insertDemoData(connection);
+            }
+        }
+    }
+
+    /**
+     * UCanAccess 5 cannot reliably UPDATE Access DATETIME columns, so borrow
+     * times use the same controlled TEXT format as enrollment timestamps.
+     * Existing DATETIME tables are rebuilt and demo borrows are re-seeded.
+     */
+    private void migrateBorrowTimesToText(Connection connection) throws SQLException {
+        if (!tableExists(connection, "tblBorrowRecord") || borrowTimesAreText(connection)) {
+            return;
+        }
+        if (hasBorrowUserForeignKey(connection)) {
+            execute(connection, "ALTER TABLE [tblBorrowRecord] DROP CONSTRAINT ["
+                    + BORROW_USER_FOREIGN_KEY + "]");
+        }
+        execute(connection, "DROP TABLE [tblBorrowRecord]");
+        createBorrowRecordTable(connection);
+        resetBorrowedCopies(connection);
+        if (bookExists(connection, MATH_ISBN) && bookExists(connection, NOVEL_ISBN)) {
+            insertDemoBorrows(connection);
+        }
+    }
+
+    private boolean borrowTimesAreText(Connection connection) throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, null, null)) {
+            while (columns.next()) {
+                if ("tblBorrowRecord".equalsIgnoreCase(columns.getString("TABLE_NAME"))
+                        && "borrowTime".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    int dataType = columns.getInt("DATA_TYPE");
+                    return dataType == Types.VARCHAR || dataType == Types.CHAR
+                            || dataType == Types.LONGVARCHAR || dataType == Types.NVARCHAR
+                            || dataType == Types.CLOB;
+                }
+            }
+        }
+        return true;
+    }
+
+    private void resetBorrowedCopies(Connection connection) throws SQLException {
+        String sql = "UPDATE [tblBookCopy] SET [copyStatus] = ? WHERE [copyStatus] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookCopy.STATUS_AVAILABLE);
+            statement.setString(2, BookCopy.STATUS_BORROWED);
+            statement.executeUpdate();
+        }
+    }
+
+    private boolean bookExists(Connection connection, String isbn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblBook] WHERE [isbn] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
             }
         }
     }
@@ -238,9 +414,9 @@ public final class AccessBookRepository implements BookRepository {
                 + "[recordId] COUNTER PRIMARY KEY, "
                 + "[copyId] LONG NOT NULL, "
                 + "[userId] TEXT(32) NOT NULL, "
-                + "[borrowTime] DATETIME NOT NULL, "
-                + "[dueTime] DATETIME NOT NULL, "
-                + "[returnTime] DATETIME, "
+                + "[borrowTime] TEXT(19) NOT NULL, "
+                + "[dueTime] TEXT(19) NOT NULL, "
+                + "[returnTime] TEXT(19), "
                 + "CONSTRAINT [" + BORROW_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
                 + "REFERENCES [tblUser] ([userId]))";
         execute(connection, sql);
@@ -298,13 +474,16 @@ public final class AccessBookRepository implements BookRepository {
                 "浙江大学", "高等教育出版社", "教材", 2);
         insertBookWithCopies(connection, "9787020024759", "围城",
                 "钱钟书", "人民文学出版社", "文学", 1);
+        insertDemoBorrows(connection);
+    }
 
-        Timestamp now = new Timestamp(System.currentTimeMillis());
-        borrowCopy(connection, MATH_ISBN, DEMO_STUDENT_ID, now,
-                new Timestamp(now.getTime() + 14 * DAY_MILLIS));
+    private void insertDemoBorrows(Connection connection) throws SQLException {
+        Date now = new Date();
+        borrowCopy(connection, MATH_ISBN, DEMO_STUDENT_ID,
+                formatTime(now), formatTime(new Date(now.getTime() + 30 * DAY_MILLIS)));
         borrowCopy(connection, NOVEL_ISBN, DEMO_STUDENT_ID,
-                new Timestamp(now.getTime() - 40 * DAY_MILLIS),
-                new Timestamp(now.getTime() - 20 * DAY_MILLIS));
+                formatTime(new Date(now.getTime() - 40 * DAY_MILLIS)),
+                formatTime(new Date(now.getTime() - 20 * DAY_MILLIS)));
     }
 
     private void insertBookWithCopies(Connection connection, String isbn, String title,
@@ -439,8 +618,11 @@ public final class AccessBookRepository implements BookRepository {
     }
 
     private void borrowCopy(Connection connection, String isbn, String userId,
-                            Timestamp borrowTime, Timestamp dueTime) throws SQLException {
+                            String borrowTime, String dueTime) throws SQLException {
         int copyId = findFirstCopyId(connection, isbn, BookCopy.STATUS_AVAILABLE);
+        if (copyId < 0) {
+            throw new SQLException("No available copy for ISBN " + isbn);
+        }
         updateCopyStatus(connection, copyId, BookCopy.STATUS_BORROWED);
         insertBorrowRecord(connection, copyId, userId, borrowTime, dueTime);
     }
@@ -454,13 +636,10 @@ public final class AccessBookRepository implements BookRepository {
             statement.setString(2, copyStatus);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
-                    throw new SQLException("No copy found for ISBN " + isbn);
+                    return -1;
                 }
                 int copyId = result.getInt(1);
-                if (result.wasNull()) {
-                    throw new SQLException("No available copy for ISBN " + isbn);
-                }
-                return copyId;
+                return result.wasNull() ? -1 : copyId;
             }
         }
     }
@@ -475,18 +654,48 @@ public final class AccessBookRepository implements BookRepository {
         }
     }
 
-    private void insertBorrowRecord(Connection connection, int copyId, String userId,
-                                    Timestamp borrowTime, Timestamp dueTime)
+    private int insertBorrowRecord(Connection connection, int copyId, String userId,
+                                   String borrowTime, String dueTime)
             throws SQLException {
         String sql = "INSERT INTO [tblBorrowRecord] ([copyId], [userId], [borrowTime], "
                 + "[dueTime], [returnTime]) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql,
+                Statement.RETURN_GENERATED_KEYS)) {
+            statement.setInt(1, copyId);
+            statement.setString(2, userId);
+            statement.setString(3, borrowTime);
+            statement.setString(4, dueTime);
+            statement.setNull(5, Types.VARCHAR);
+            statement.executeUpdate();
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                if (keys.next()) {
+                    int generated = keys.getInt(1);
+                    if (!keys.wasNull() && generated > 0) {
+                        return generated;
+                    }
+                }
+            }
+        }
+        return lookupLatestRecordId(connection, copyId, userId);
+    }
+
+    private int lookupLatestRecordId(Connection connection, int copyId, String userId)
+            throws SQLException {
+        String sql = "SELECT MAX([recordId]) FROM [tblBorrowRecord] "
+                + "WHERE [copyId] = ? AND [userId] = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, copyId);
             statement.setString(2, userId);
-            statement.setTimestamp(3, borrowTime);
-            statement.setTimestamp(4, dueTime);
-            statement.setNull(5, Types.TIMESTAMP);
-            statement.executeUpdate();
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new SQLException("Inserted borrow record was not found");
+                }
+                int recordId = result.getInt(1);
+                if (result.wasNull()) {
+                    throw new SQLException("Inserted borrow record was not found");
+                }
+                return recordId;
+            }
         }
     }
 
@@ -514,20 +723,34 @@ public final class AccessBookRepository implements BookRepository {
     }
 
     private BorrowRecord mapRecord(ResultSet result) throws SQLException {
-        Timestamp borrowTime = result.getTimestamp("borrowTime");
-        Timestamp dueTime = result.getTimestamp("dueTime");
-        Timestamp returnTime = result.getTimestamp("returnTime");
         return new BorrowRecord(
                 result.getInt("recordId"),
                 result.getInt("copyId"),
                 result.getString("userId"),
-                toDate(borrowTime),
-                toDate(dueTime),
-                toDate(returnTime));
+                parseTime(result.getString("borrowTime")),
+                parseTime(result.getString("dueTime")),
+                parseTime(result.getString("returnTime")),
+                result.getString("isbn"),
+                result.getString("title"),
+                result.getString("author"));
     }
 
-    private Date toDate(Timestamp timestamp) {
-        return timestamp == null ? null : new Date(timestamp.getTime());
+    private String formatTime(Date date) {
+        if (date == null) {
+            return null;
+        }
+        return new SimpleDateFormat(TIME_PATTERN).format(date);
+    }
+
+    private Date parseTime(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return new SimpleDateFormat(TIME_PATTERN).parse(value.trim());
+        } catch (ParseException e) {
+            return null;
+        }
     }
 
     private String toLikePattern(String keyword) {
