@@ -93,7 +93,8 @@ public class LibraryMessageSerializationTest {
         assertEquals("9787040202489", ((BorrowRequest) restored.getBody()).getIsbn());
 
         BorrowRecordDto record = new BorrowRecordDto(3, "9787040202489", "线性代数",
-                "同济大学数学系", "2026-09-04 12:00:00", "2026-09-18 12:00:00",
+                "同济大学数学系", "student", "演示学生",
+                "2026-09-04 12:00:00", "2026-09-18 12:00:00",
                 "", false, false);
         ResponseMessage<BorrowRecordDto> response =
                 ResponseMessage.success("req-2", "操作成功", record);
@@ -103,6 +104,8 @@ public class LibraryMessageSerializationTest {
         ResponseMessage<?> restoredResponse = (ResponseMessage<?>) input.readObject();
         BorrowRecordDto restoredRecord = (BorrowRecordDto) restoredResponse.getBody();
         assertEquals(3, restoredRecord.getRecordId());
+        assertEquals("student", restoredRecord.getUserId());
+        assertEquals("演示学生（student）", restoredRecord.getBorrowerLabel());
         assertEquals("在借", restoredRecord.getStatusName());
         assertEquals(false, restoredRecord.isReturned());
     }

@@ -221,7 +221,7 @@ public class LibraryServiceIntegrationTest {
     }
 
     @Test
-    public void adminCannotBorrowOrQueryPersonalRecords() throws Exception {
+    public void adminCannotBorrowOrReturnButCanSeeAllActiveBorrows() throws Exception {
         try {
             service.borrowBook(adminAccount.getUserId(), eff(adminAccount),
                     new BorrowRequest("9787040202489"));
@@ -229,9 +229,26 @@ public class LibraryServiceIntegrationTest {
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
-        assertTrue(service.queryBorrows(adminAccount.getUserId(), eff(adminAccount)).isEmpty());
+
+        List<BorrowRecordDto> demo = service.queryBorrows(adminAccount.getUserId(), eff(adminAccount));
+        assertEquals(2, demo.size());
+        for (BorrowRecordDto record : demo) {
+            assertFalse(record.isReturned());
+            assertEquals("student", record.getUserId());
+            assertEquals("演示学生", record.getDisplayName());
+        }
+        assertEquals("高等数学（上册）", findRecordByIsbn(demo, "9787040396621").getTitle());
+        assertTrue(findRecordByIsbn(demo, "9787020008735").isOverdue());
+
         BorrowRecordDto created = service.borrowBook(
-                "student", SubSystemRole.STUDENT, new BorrowRequest("9787040202489"));
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787040202489"));
+        List<BorrowRecordDto> afterBorrow = service.queryBorrows(
+                adminAccount.getUserId(), eff(adminAccount));
+        assertEquals(3, afterBorrow.size());
+        BorrowRecordDto seen = findRecordByIsbn(afterBorrow, "9787040202489");
+        assertEquals("teacher", seen.getUserId());
+        assertEquals("演示教师（teacher）", seen.getBorrowerLabel());
+
         try {
             service.returnBook(adminAccount.getUserId(), eff(adminAccount),
                     new ReturnRequest(created.getRecordId()));
@@ -239,6 +256,11 @@ public class LibraryServiceIntegrationTest {
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
+
+        service.returnBook("teacher", SubSystemRole.TEACHER,
+                new ReturnRequest(created.getRecordId()));
+        assertEquals(2, service.queryBorrows(adminAccount.getUserId(), eff(adminAccount)).size());
+        assertEquals(1, service.queryBorrows("teacher", SubSystemRole.TEACHER).size());
     }
 
     @Test

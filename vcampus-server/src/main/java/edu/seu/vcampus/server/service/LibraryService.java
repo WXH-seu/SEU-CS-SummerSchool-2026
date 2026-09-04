@@ -95,13 +95,16 @@ public final class LibraryService {
         }
     }
 
+    /**
+     * Patrons receive their own history (including returned copies).
+     * Administrators receive every currently borrowed copy with borrower identity.
+     */
     public ArrayList<BorrowRecordDto> queryBorrows(String actorUserId, SubSystemRole actorRole)
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
-        if (actorRole == SubSystemRole.ADMIN) {
-            return new ArrayList<BorrowRecordDto>();
-        }
-        List<BorrowRecord> records = repository.findBorrowRecordsByUser(actorUserId.trim());
+        List<BorrowRecord> records = actorRole == SubSystemRole.ADMIN
+                ? repository.findActiveBorrowRecords()
+                : repository.findBorrowRecordsByUser(actorUserId.trim());
         ArrayList<BorrowRecordDto> result = new ArrayList<BorrowRecordDto>();
         for (BorrowRecord record : records) {
             result.add(toRecordDto(record));
@@ -219,6 +222,8 @@ public final class LibraryService {
                 record.getIsbn(),
                 record.getTitle(),
                 record.getAuthor(),
+                record.getUserId(),
+                record.getDisplayName(),
                 formatTime(record.getBorrowTime()),
                 formatTime(record.getDueTime()),
                 formatTime(record.getReturnTime()),

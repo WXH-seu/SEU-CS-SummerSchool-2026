@@ -45,6 +45,9 @@ public interface BookRepository {
 
     List<BorrowRecord> findBorrowRecordsByUser(String userId) throws SQLException;
 
+    /** Every copy that has not been returned, newest borrow first. */
+    List<BorrowRecord> findActiveBorrowRecords() throws SQLException;
+
     BorrowRecord findBorrowRecordById(int recordId) throws SQLException;
 
     /** Whether the user already has an unreturned copy of this ISBN. */

@@ -21,6 +21,8 @@ public final class AccessBookRepository implements BookRepository {
     private static final String MATH_ISBN = "9787040396621";
     private static final String NOVEL_ISBN = "9787020008735";
     private static final long DAY_MILLIS = 24L * 60 * 60 * 1000;
+    private static final int LOAN_PERIOD_DAYS = 30;
+    private static final int DEMO_OVERDUE_BORROW_DAYS_AGO = 40;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
     private final AccessDatabase database;
@@ -170,13 +172,18 @@ public final class AccessBookRepository implements BookRepository {
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
-            try (ResultSet result = statement.executeQuery()) {
-                List<BorrowRecord> records = new ArrayList<BorrowRecord>();
-                while (result.next()) {
-                    records.add(mapRecord(result));
-                }
-                return records;
-            }
+            return mapRecords(statement);
+        }
+    }
+
+    @Override
+    public List<BorrowRecord> findActiveBorrowRecords() throws SQLException {
+        String sql = borrowSelectSql()
+                + " WHERE (r.[returnTime] IS NULL OR r.[returnTime] = '')"
+                + " ORDER BY r.[borrowTime] DESC";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            return mapRecords(statement);
         }
     }
 
@@ -279,10 +286,21 @@ public final class AccessBookRepository implements BookRepository {
 
     private String borrowSelectSql() {
         return "SELECT r.[recordId], r.[copyId], r.[userId], r.[borrowTime], r.[dueTime], "
-                + "r.[returnTime], c.[isbn], b.[title], b.[author] "
-                + "FROM [tblBorrowRecord] AS r "
-                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
-                + "INNER JOIN [tblBook] AS b ON c.[isbn] = b.[isbn]";
+                + "r.[returnTime], c.[isbn], b.[title], b.[author], u.[displayName] "
+                + "FROM (([tblBorrowRecord] AS r "
+                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId]) "
+                + "INNER JOIN [tblBook] AS b ON c.[isbn] = b.[isbn]) "
+                + "INNER JOIN [tblUser] AS u ON r.[userId] = u.[userId]";
+    }
+
+    private List<BorrowRecord> mapRecords(PreparedStatement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery()) {
+            List<BorrowRecord> records = new ArrayList<BorrowRecord>();
+            while (result.next()) {
+                records.add(mapRecord(result));
+            }
+            return records;
+        }
     }
 
     private Integer findCopyIdForOpenRecord(Connection connection, int recordId)
@@ -320,6 +338,7 @@ public final class AccessBookRepository implements BookRepository {
             if (countBooks(connection) == 0) {
                 insertDemoData(connection);
             }
+            alignDemoLoanPeriods(connection);
         }
     }
 
@@ -332,10 +351,8 @@ public final class AccessBookRepository implements BookRepository {
         if (!tableExists(connection, "tblBorrowRecord") || borrowTimesAreText(connection)) {
             return;
         }
-        if (hasBorrowUserForeignKey(connection)) {
-            execute(connection, "ALTER TABLE [tblBorrowRecord] DROP CONSTRAINT ["
-                    + BORROW_USER_FOREIGN_KEY + "]");
-        }
+        // UCanAccess 5 rejects DROP CONSTRAINT outside Hibernate create mode.
+        // tblBorrowRecord is the referencing table, so DROP TABLE removes the FK.
         execute(connection, "DROP TABLE [tblBorrowRecord]");
         createBorrowRecordTable(connection);
         resetBorrowedCopies(connection);
@@ -479,11 +496,57 @@ public final class AccessBookRepository implements BookRepository {
 
     private void insertDemoBorrows(Connection connection) throws SQLException {
         Date now = new Date();
+        long loanMillis = loanPeriodMillis();
         borrowCopy(connection, MATH_ISBN, DEMO_STUDENT_ID,
-                formatTime(now), formatTime(new Date(now.getTime() + 30 * DAY_MILLIS)));
+                formatTime(now), formatTime(new Date(now.getTime() + loanMillis)));
+        Date overdueBorrowed = new Date(now.getTime() - DEMO_OVERDUE_BORROW_DAYS_AGO * DAY_MILLIS);
         borrowCopy(connection, NOVEL_ISBN, DEMO_STUDENT_ID,
-                formatTime(new Date(now.getTime() - 40 * DAY_MILLIS)),
-                formatTime(new Date(now.getTime() - 20 * DAY_MILLIS)));
+                formatTime(overdueBorrowed),
+                formatTime(new Date(overdueBorrowed.getTime() + loanMillis)));
+    }
+
+    /**
+     * Older seeds used a 20-day loan. Rewrite the two demo student's open
+     * records so dueTime is always borrowTime plus {@value #LOAN_PERIOD_DAYS} days.
+     */
+    private void alignDemoLoanPeriods(Connection connection) throws SQLException {
+        if (!tableExists(connection, "tblBorrowRecord")) {
+            return;
+        }
+        String sql = "SELECT r.[recordId], r.[borrowTime], r.[dueTime] "
+                + "FROM [tblBorrowRecord] AS r "
+                + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
+                + "WHERE r.[userId] = ? AND (c.[isbn] = ? OR c.[isbn] = ?) "
+                + "AND (r.[returnTime] IS NULL OR r.[returnTime] = '')";
+        List<Integer> recordIds = new ArrayList<Integer>();
+        List<String> dueTimes = new ArrayList<String>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, DEMO_STUDENT_ID);
+            statement.setString(2, MATH_ISBN);
+            statement.setString(3, NOVEL_ISBN);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    Date borrowTime = parseTime(result.getString("borrowTime"));
+                    if (borrowTime == null) {
+                        continue;
+                    }
+                    String expectedDue = formatTime(new Date(borrowTime.getTime() + loanPeriodMillis()));
+                    String actualDue = result.getString("dueTime");
+                    if (expectedDue.equals(actualDue)) {
+                        continue;
+                    }
+                    recordIds.add(Integer.valueOf(result.getInt("recordId")));
+                    dueTimes.add(expectedDue);
+                }
+            }
+        }
+        for (int i = 0; i < recordIds.size(); i++) {
+            updateBorrowDueTime(connection, recordIds.get(i).intValue(), dueTimes.get(i));
+        }
+    }
+
+    private long loanPeriodMillis() {
+        return LOAN_PERIOD_DAYS * DAY_MILLIS;
     }
 
     private void insertBookWithCopies(Connection connection, String isbn, String title,
@@ -654,6 +717,16 @@ public final class AccessBookRepository implements BookRepository {
         }
     }
 
+    private void updateBorrowDueTime(Connection connection, int recordId, String dueTime)
+            throws SQLException {
+        String sql = "UPDATE [tblBorrowRecord] SET [dueTime] = ? WHERE [recordId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, dueTime);
+            statement.setInt(2, recordId);
+            statement.executeUpdate();
+        }
+    }
+
     private int insertBorrowRecord(Connection connection, int copyId, String userId,
                                    String borrowTime, String dueTime)
             throws SQLException {
@@ -732,7 +805,8 @@ public final class AccessBookRepository implements BookRepository {
                 parseTime(result.getString("returnTime")),
                 result.getString("isbn"),
                 result.getString("title"),
-                result.getString("author"));
+                result.getString("author"),
+                result.getString("displayName"));
     }
 
     private String formatTime(Date date) {

@@ -11,7 +11,7 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 
 /**
- * 图书馆入口：书目检索；学生和教师另有「我的借阅」。
+ * 图书馆入口：书目检索；学生和教师看「我的借阅」，管理员看「全部借阅」。
  */
 public final class LibraryPanel extends JPanel {
     private static final long serialVersionUID = 1L;
@@ -26,7 +26,7 @@ public final class LibraryPanel extends JPanel {
             throw new IllegalArgumentException("effectiveRole is required");
         }
         setOpaque(false);
-        boolean patron = effectiveRole != SubSystemRole.ADMIN;
+        boolean admin = effectiveRole == SubSystemRole.ADMIN;
         catalogPanel = new LibraryCatalogPanel(service, effectiveRole, new Runnable() {
             @Override
             public void run() {
@@ -34,17 +34,13 @@ public final class LibraryPanel extends JPanel {
             }
         });
         tabs.addTab("书目", catalogPanel);
-        if (patron) {
-            borrowPanel = new LibraryBorrowPanel(service, new Runnable() {
-                @Override
-                public void run() {
-                    catalogPanel.refresh();
-                }
-            });
-            tabs.addTab("我的借阅", borrowPanel);
-        } else {
-            borrowPanel = null;
-        }
+        borrowPanel = new LibraryBorrowPanel(service, new Runnable() {
+            @Override
+            public void run() {
+                catalogPanel.refresh();
+            }
+        }, admin);
+        tabs.addTab(admin ? "全部借阅" : "我的借阅", borrowPanel);
         add(tabs, BorderLayout.CENTER);
         tabs.addChangeListener(new ChangeListener() {
             @Override
@@ -55,9 +51,6 @@ public final class LibraryPanel extends JPanel {
     }
 
     private void showBorrowTab() {
-        if (borrowPanel == null) {
-            return;
-        }
         tabs.setSelectedIndex(1);
         borrowPanel.refresh();
     }

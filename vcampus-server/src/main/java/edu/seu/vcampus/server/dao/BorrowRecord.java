@@ -13,10 +13,11 @@ public final class BorrowRecord {
     private final String isbn;
     private final String title;
     private final String author;
+    private final String displayName;
 
     public BorrowRecord(int recordId, int copyId, String userId,
                         Date borrowTime, Date dueTime, Date returnTime,
-                        String isbn, String title, String author) {
+                        String isbn, String title, String author, String displayName) {
         this.recordId = recordId;
         this.copyId = copyId;
         this.userId = userId;
@@ -26,6 +27,7 @@ public final class BorrowRecord {
         this.isbn = isbn;
         this.title = title;
         this.author = author;
+        this.displayName = displayName;
     }
 
     public int getRecordId() {
@@ -62,6 +64,10 @@ public final class BorrowRecord {
 
     public String getAuthor() {
         return author;
+    }
+
+    public String getDisplayName() {
+        return displayName;
     }
 
     public boolean isReturned() {

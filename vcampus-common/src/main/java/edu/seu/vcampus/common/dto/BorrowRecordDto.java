@@ -4,12 +4,14 @@ import java.io.Serializable;
 
 /** One borrow / return row shared by client and server. */
 public final class BorrowRecordDto implements Serializable {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
     private final int recordId;
     private final String isbn;
     private final String title;
     private final String author;
+    private final String userId;
+    private final String displayName;
     private final String borrowTime;
     private final String dueTime;
     private final String returnTime;
@@ -17,12 +19,15 @@ public final class BorrowRecordDto implements Serializable {
     private final boolean returned;
 
     public BorrowRecordDto(int recordId, String isbn, String title, String author,
+                           String userId, String displayName,
                            String borrowTime, String dueTime, String returnTime,
                            boolean overdue, boolean returned) {
         this.recordId = recordId;
         this.isbn = isbn;
         this.title = title;
         this.author = author;
+        this.userId = userId;
+        this.displayName = displayName;
         this.borrowTime = borrowTime;
         this.dueTime = dueTime;
         this.returnTime = returnTime;
@@ -44,6 +49,24 @@ public final class BorrowRecordDto implements Serializable {
 
     public String getAuthor() {
         return author;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    /** Name plus login id, or whichever of the two is present. */
+    public String getBorrowerLabel() {
+        String name = displayName == null ? "" : displayName.trim();
+        String id = userId == null ? "" : userId.trim();
+        if (!name.isEmpty() && !id.isEmpty()) {
+            return name + "（" + id + "）";
+        }
+        return !name.isEmpty() ? name : id;
     }
 
     public String getBorrowTime() {
