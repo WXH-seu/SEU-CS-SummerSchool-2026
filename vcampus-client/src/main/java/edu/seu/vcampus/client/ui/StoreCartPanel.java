@@ -8,6 +8,7 @@ import edu.seu.vcampus.client.ui.components.SeuPanels;
 import edu.seu.vcampus.client.ui.components.SeuTables;
 import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.CartItemDto;
+import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 
 import javax.swing.JButton;
@@ -25,20 +26,34 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * 购物车页：修改数量、移除与整单结算。布局与控件统一使用公共组件。
+ * 购物车页：勾选商品、修改数量、移除与结算下单。
+ * 结算前先弹收银台确认支付，取消则不发请求、不生成订单、不扣库存。
  */
 public final class StoreCartPanel extends JPanel {
     private static final long serialVersionUID = 1L;
 
     private final StoreClientService service;
     private final Runnable onOrderCreated;
+    private final JButton selectAllButton = SeuButtons.link("全选 / 全不选");
     private final JButton changeButton = SeuButtons.secondary("修改数量");
     private final JButton removeButton = SeuButtons.danger("移除");
     private final JButton checkoutButton = SeuButtons.primary("结算下单");
     private final JLabel statusLabel = SeuLabels.status("准备就绪");
-    private final JLabel totalLabel = new JLabel("合计：¥0.00");
-    private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[]{
-            "商品编号", "名称", "单价", "数量", "小计", "剩余库存"});
+    private final JLabel totalLabel = new JLabel("合计（已选 0 种）：¥0.00");
+    private final DefaultTableModel tableModel = new DefaultTableModel(
+            new String[]{"选择", "商品编号", "名称", "单价", "数量", "小计", "剩余库存"}, 0) {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return column == 0;
+        }
+
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            return columnIndex == 0 ? Boolean.class : Object.class;
+        }
+    };
     private final JTable table = SeuTables.create(tableModel);
     private List<CartItemDto> rows = new ArrayList<CartItemDto>();
 
@@ -58,6 +73,7 @@ public final class StoreCartPanel extends JPanel {
         totalLabel.setForeground(SeuTheme.TEXT);
 
         JPanel actions = SeuPanels.toolbar();
+        actions.add(selectAllButton);
         actions.add(changeButton);
         actions.add(removeButton);
         actions.add(checkoutButton);
@@ -75,9 +91,11 @@ public final class StoreCartPanel extends JPanel {
     }
 
     private void bindActions() {
+        selectAllButton.addActionListener(event -> toggleSelectAll());
         changeButton.addActionListener(event -> changeSelectedQuantity());
         removeButton.addActionListener(event -> removeSelected());
         checkoutButton.addActionListener(event -> checkOut());
+        tableModel.addTableModelListener(event -> updateTotal());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
@@ -116,10 +134,9 @@ public final class StoreCartPanel extends JPanel {
 
     private void renderRows() {
         tableModel.setRowCount(0);
-        BigDecimal total = BigDecimal.ZERO;
         for (CartItemDto item : rows) {
-            total = total.add(item.getSubtotal());
             tableModel.addRow(new Object[]{
+                    Boolean.TRUE,
                     item.getProductId(),
                     item.getProductName(),
                     StoreFormat.money(item.getUnitPrice()),
@@ -128,7 +145,36 @@ public final class StoreCartPanel extends JPanel {
                     Integer.valueOf(item.getStock())
             });
         }
-        totalLabel.setText("合计：¥" + StoreFormat.money(total));
+        updateTotal();
+    }
+
+    private void updateTotal() {
+        if (tableModel.getRowCount() != rows.size()) {
+            return;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        int selected = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
+                total = total.add(rows.get(i).getSubtotal());
+                selected++;
+            }
+        }
+        totalLabel.setText("合计（已选 " + selected + " 种）：¥" + StoreFormat.money(total));
+    }
+
+    private void toggleSelectAll() {
+        boolean allSelected = true;
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            if (!Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
+                allSelected = false;
+                break;
+            }
+        }
+        boolean next = !allSelected;
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            tableModel.setValueAt(Boolean.valueOf(next), i, 0);
+        }
     }
 
     private void changeSelectedQuantity() {
@@ -181,36 +227,59 @@ public final class StoreCartPanel extends JPanel {
             SeuMessages.info(this, "购物车为空，请先添加商品");
             return;
         }
-        if (!SeuMessages.confirm(this,
-                "确认对购物车中的 " + rows.size()
-                        + " 种商品下单吗？下单后将扣减库存。")) {
+        final List<String> selectedProductIds = new ArrayList<String>();
+        BigDecimal amount = BigDecimal.ZERO;
+        for (int i = 0; i < rows.size(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
+                selectedProductIds.add(rows.get(i).getProductId());
+                amount = amount.add(rows.get(i).getSubtotal());
+            }
+        }
+        if (selectedProductIds.isEmpty()) {
+            SeuMessages.info(this, "请先勾选要结算的商品");
             return;
         }
-        setBusy(true, "正在创建订单……");
+        // 收银台确认：取消 / 关闭则不发请求，购物车不变，不生成订单、不扣库存。
+        if (!confirmPayment(amount)) {
+            return;
+        }
+        setBusy(true, "正在支付并创建订单……");
         new SwingWorker<OrderDto, Void>() {
             @Override
             protected OrderDto doInBackground() throws Exception {
-                return service.createOrder();
+                return service.createOrder(new OrderCreateRequest(selectedProductIds));
             }
 
             @Override
             protected void done() {
                 try {
                     OrderDto order = get();
-                    SeuMessages.info(StoreCartPanel.this, "下单成功",
+                    SeuMessages.info(StoreCartPanel.this, "支付成功",
                             "订单号：" + order.getOrderId()
+                                    + "\n状态：已付款"
                                     + "\n金额：¥" + StoreFormat.money(order.getTotalAmount()));
                     onOrderCreated.run();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    showError("下单被中断");
-                    setBusy(false, "下单失败");
+                    showError("支付被中断");
+                    setBusy(false, "支付失败");
                 } catch (ExecutionException e) {
                     showError(messageOf(e));
-                    setBusy(false, "下单失败");
+                    setBusy(false, "支付失败");
                 }
             }
         }.execute();
+    }
+
+    private boolean confirmPayment(BigDecimal amount) {
+        Object[] message = {
+                "应付金额：¥" + StoreFormat.money(amount),
+                "支付方式：校园卡余额（演示）",
+                "点击「确定」完成支付并生成订单；取消将返回购物车，不生成订单、不扣减库存。"
+        };
+        return JOptionPane.showConfirmDialog(this, message,
+                "收银台 - 确认支付", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.INFORMATION_MESSAGE) == JOptionPane.OK_OPTION;
     }
 
     private CartItemDto selectedItem() {
@@ -250,6 +319,7 @@ public final class StoreCartPanel extends JPanel {
 
     private void setBusy(boolean busy, String status) {
         statusLabel.setText(status);
+        selectAllButton.setEnabled(!busy);
         changeButton.setEnabled(!busy);
         removeButton.setEnabled(!busy);
         checkoutButton.setEnabled(!busy);

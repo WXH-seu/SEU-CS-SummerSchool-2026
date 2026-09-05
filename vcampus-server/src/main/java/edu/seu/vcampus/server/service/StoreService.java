@@ -2,6 +2,7 @@ package edu.seu.vcampus.server.service;
 
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
+import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
@@ -16,6 +17,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -101,13 +103,23 @@ public final class StoreService {
                 request.getQuantity());
     }
 
-    public OrderDto createOrder(UserAccount actor) throws BusinessException, SQLException {
+    public OrderDto createOrder(UserAccount actor, OrderCreateRequest request)
+            throws BusinessException, SQLException {
         requireShopper(actor);
+        Set<String> selected = new LinkedHashSet<String>();
+        if (request != null && request.getProductIds() != null) {
+            for (String productId : request.getProductIds()) {
+                if (!isBlank(productId)) {
+                    selected.add(productId.trim());
+                }
+            }
+        }
         try {
-            return repository.createOrder(actor.getUserId());
+            return repository.createOrder(actor.getUserId(), selected);
         } catch (SQLException e) {
             String message = e.getMessage();
-            if (message != null && message.contains("购物车为空")) {
+            if (message != null && (message.contains("购物车为空")
+                    || message.contains("勾选"))) {
                 throw new BusinessException(ResponseCode.INVALID_REQUEST, message);
             }
             if (message != null && (message.contains("库存不足")

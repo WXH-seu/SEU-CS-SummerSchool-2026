@@ -7,6 +7,7 @@ import edu.seu.vcampus.common.dto.StoreQueryRequest;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Set;
 
 /** Persistence contract for the campus store. */
 public interface StoreRepository {
@@ -21,7 +22,8 @@ public interface StoreRepository {
     void upsertCartItem(String userId, String productId, int quantity) throws SQLException;
     void removeCartItem(String userId, String productId) throws SQLException;
 
-    OrderDto createOrder(String userId) throws SQLException;
+    /** 对购物车中指定的商品结算；productIds 为空集合表示没有可结算项。 */
+    OrderDto createOrder(String userId, Set<String> productIds) throws SQLException;
     List<OrderDto> findOrders(String userId) throws SQLException;
     boolean orderExists(String orderId) throws SQLException;
     void updateOrderStatus(String orderId, String statusName) throws SQLException;

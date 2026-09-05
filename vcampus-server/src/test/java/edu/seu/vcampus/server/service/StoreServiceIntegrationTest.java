@@ -1,6 +1,7 @@
 package edu.seu.vcampus.server.service;
 
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
+import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
@@ -17,6 +18,8 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -55,13 +58,14 @@ public class StoreServiceIntegrationTest {
     }
 
     @Test
-    public void shopperCreatesOrderAndStockIsDeducted() throws Exception {
+    public void shopperCreatesPaidOrderAndStockIsDeducted() throws Exception {
         service.updateCart(studentAccount, new CartUpdateRequest("P001", 2));
         service.updateCart(studentAccount, new CartUpdateRequest("P002", 1));
         assertEquals(2, service.queryCart(studentAccount).size());
 
-        OrderDto order = service.createOrder(studentAccount);
-        assertEquals("待付款", order.getStatusName());
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Arrays.asList("P001", "P002")));
+        assertEquals("已付款", order.getStatusName());
         assertEquals(2, order.getItems().size());
         assertEquals(0, new BigDecimal("50.00").compareTo(order.getTotalAmount()));
 
@@ -69,6 +73,39 @@ public class StoreServiceIntegrationTest {
         assertEquals(98, findProduct("P001").getStock());
         assertEquals(49, findProduct("P002").getStock());
         assertEquals(1, service.queryOrders(studentAccount).size());
+    }
+
+    @Test
+    public void partialSelectionOrdersOnlyCheckedItems() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 2));
+        service.updateCart(studentAccount, new CartUpdateRequest("P002", 1));
+        service.updateCart(studentAccount, new CartUpdateRequest("P003", 1));
+
+        // 只勾选 P001：订单只有 1 行，只扣 P001 库存，其余商品留在购物车。
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P001")));
+        assertEquals("已付款", order.getStatusName());
+        assertEquals(1, order.getItems().size());
+        assertEquals("P001", order.getItems().get(0).getProductId());
+        assertEquals(0, new BigDecimal("25.00").compareTo(order.getTotalAmount()));
+
+        assertEquals(98, findProduct("P001").getStock());
+        assertEquals(50, findProduct("P002").getStock());
+        assertEquals(2, service.queryCart(studentAccount).size());
+    }
+
+    @Test
+    public void emptySelectionIsRejectedWithoutSideEffects() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 1));
+        try {
+            service.createOrder(studentAccount, new OrderCreateRequest(
+                    Collections.<String>emptyList()));
+            fail("Empty selection should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
+        assertEquals(1, service.queryCart(studentAccount).size());
+        assertEquals(100, findProduct("P001").getStock());
     }
 
     @Test
@@ -81,7 +118,8 @@ public class StoreServiceIntegrationTest {
                 current.getProductName(), current.getCategory(), current.getDescription(),
                 current.getPrice(), 0, true));
         try {
-            service.createOrder(studentAccount);
+            service.createOrder(studentAccount,
+                    new OrderCreateRequest(Arrays.asList("P001", "P002")));
             fail("Order should be rejected when stock becomes insufficient");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
@@ -92,7 +130,8 @@ public class StoreServiceIntegrationTest {
     @Test
     public void adminManagesOrdersAndStatuses() throws Exception {
         service.updateCart(studentAccount, new CartUpdateRequest("P004", 3));
-        OrderDto order = service.createOrder(studentAccount);
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P004")));
 
         assertEquals(1, service.queryOrders(admin).size());
         service.updateOrderStatus(admin, order.getOrderId(), "已发货");

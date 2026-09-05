@@ -17,7 +17,9 @@ import java.sql.Types;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /** Access-backed implementation of the store repository. */
@@ -156,7 +158,7 @@ public final class AccessStoreRepository implements StoreRepository {
     }
 
     @Override
-    public OrderDto createOrder(String userId) throws SQLException {
+    public OrderDto createOrder(String userId, Set<String> productIds) throws SQLException {
         String orderId = newId("ORD");
         try (Connection connection = database.openConnection()) {
             connection.setAutoCommit(false);
@@ -165,9 +167,15 @@ public final class AccessStoreRepository implements StoreRepository {
                 if (cart.isEmpty()) {
                     throw new SQLException("购物车为空，无法下单");
                 }
+                Set<String> selected = productIds == null
+                        ? new LinkedHashSet<String>() : new LinkedHashSet<String>(productIds);
                 BigDecimal total = BigDecimal.ZERO;
                 List<OrderItemDto> items = new ArrayList<OrderItemDto>();
+                List<String> settledProducts = new ArrayList<String>();
                 for (CartItemDto item : cart) {
+                    if (!selected.contains(item.getProductId())) {
+                        continue;
+                    }
                     if (!item.isActive()) {
                         throw new SQLException("商品已下架：" + item.getProductName());
                     }
@@ -180,17 +188,21 @@ public final class AccessStoreRepository implements StoreRepository {
                     items.add(new OrderItemDto(newId("ODI"), orderId,
                             item.getProductId(), item.getProductName(),
                             money(item.getUnitPrice()), item.getQuantity(), subtotal));
+                    settledProducts.add(item.getProductId());
                     total = total.add(subtotal);
                 }
+                if (items.isEmpty()) {
+                    throw new SQLException("请先勾选要结算的商品");
+                }
                 String now = LocalDateTime.now().format(ORDER_TIME_FORMAT);
-                insertOrder(connection, orderId, userId, money(total), "待付款", now);
+                insertOrder(connection, orderId, userId, money(total), "已付款", now);
                 for (OrderItemDto item : items) {
                     insertOrderItem(connection, item);
                     deductStock(connection, item.getProductId(), item.getQuantity());
                 }
-                clearCart(connection, userId);
+                clearCartItems(connection, userId, settledProducts);
                 connection.commit();
-                return new OrderDto(orderId, userId, money(total), "待付款", now, items);
+                return new OrderDto(orderId, userId, money(total), "已付款", now, items);
             } catch (SQLException e) {
                 rollbackQuietly(connection);
                 throw e;
@@ -368,10 +380,22 @@ public final class AccessStoreRepository implements StoreRepository {
         }
     }
 
-    private void clearCart(Connection connection, String userId) throws SQLException {
-        String sql = "DELETE FROM [tblCartItem] WHERE [userId] = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+    private void clearCartItems(Connection connection, String userId, List<String> productIds)
+            throws SQLException {
+        if (productIds == null || productIds.isEmpty()) {
+            return;
+        }
+        StringBuilder sql = new StringBuilder(
+                "DELETE FROM [tblCartItem] WHERE [userId] = ? AND [productId] IN (");
+        for (int i = 0; i < productIds.size(); i++) {
+            sql.append(i == 0 ? "?" : ", ?");
+        }
+        sql.append(")");
+        try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             statement.setString(1, userId);
+            for (int i = 0; i < productIds.size(); i++) {
+                statement.setString(i + 2, productIds.get(i));
+            }
             statement.executeUpdate();
         }
     }

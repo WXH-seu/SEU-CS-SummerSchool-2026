@@ -4,6 +4,7 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.OrderStatusRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
@@ -47,8 +48,8 @@ public final class StoreClientService {
         request(Operation.STORE_CART_UPDATE, new CartUpdateRequest(productId, quantity));
     }
 
-    public OrderDto createOrder() throws IOException {
-        Object body = request(Operation.STORE_ORDER_CREATE, null).getBody();
+    public OrderDto createOrder(OrderCreateRequest request) throws IOException {
+        Object body = request(Operation.STORE_ORDER_CREATE, request).getBody();
         if (!(body instanceof OrderDto)) {
             throw new IOException("服务器返回的数据格式不正确");
         }
