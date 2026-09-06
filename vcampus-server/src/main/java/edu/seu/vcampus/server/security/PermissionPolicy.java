@@ -163,28 +163,28 @@ public final class PermissionPolicy {
         require(Operation.USER_PASSWORD_CHANGE);
         require(Operation.USER_DELETE);
 
-        // Academic queries are read operations. A student may enter the module,
-        // but AcademicService limits STUDENT_QUERY to that student's own row.
+        // Default matrix for business modules. Entries use SubSystemRole because
+        // RequestDispatcher normalises the global account into STUDENT / TEACHER /
+        // ADMIN before the handler runs. Empty role lists mean every authenticated
+        // effective role may call the operation. Management operations stay
+        // ADMIN-only; a SUBSYSADMIN outside its granted scopes is normalised to
+        // TEACHER and therefore cannot manage that sub-system.
         requireSubSystem(Operation.STUDENT_QUERY);
-        requireSubSystem(Operation.TEACHER_QUERY, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.DEPARTMENT_QUERY);
-        requireSubSystem(Operation.CLASS_QUERY);
         requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.STUDENT_DELETE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.TEACHER_SAVE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.TEACHER_DELETE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.DEPARTMENT_SAVE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.DEPARTMENT_DELETE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.CLASS_SAVE, SubSystemRole.ADMIN);
-        requireSubSystem(Operation.CLASS_DELETE, SubSystemRole.ADMIN);
-
         requireSubSystem(Operation.COURSE_QUERY);
         requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
         requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
         requireSubSystem(Operation.LIBRARY_BOOK_QUERY);
-        requireSubSystem(Operation.LIBRARY_BORROW);
-        requireSubSystem(Operation.LIBRARY_RETURN);
+        requireSubSystem(Operation.LIBRARY_BOOK_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BOOK_DELETE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BORROW,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RETURN,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        // Patrons see their own records; administrators see every unreturned copy.
+        requireSubSystem(Operation.LIBRARY_BORROW_QUERY);
         requireSubSystem(Operation.STORE_PRODUCT_QUERY);
-        requireSubSystem(Operation.STORE_ORDER_CREATE);
+        requireSubSystem(Operation.STORE_ORDER_CREATE,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
     }
 }

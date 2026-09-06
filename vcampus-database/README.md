@@ -19,7 +19,7 @@ vcampus-database/vCampus.accdb
 - `tblOperationLog`：登录与管理员操作审计日志。
 - `tblCatalogSource`：院系、专业和课程快照的官方来源。
 - `tblMajor`：本科专业目录。
-- `tblCourse`：培养方案课程目录。
+- `tblCatalogCourse`：培养方案课程目录，与实际开课的 `tblCourse` 分离。
 - `tblMajorCourse`：专业与课程的建议学年、学期及必修关系。
 
 数据库包含超级管理员、子系统管理员、学生和教师四个演示账号；与学生、教师账号关联的演示学籍，以及 10 种演示图书。演示学生账号有一条在借记录和一条逾期未还记录。密码以 PBKDF2 加盐哈希保存，不保存明文密码。

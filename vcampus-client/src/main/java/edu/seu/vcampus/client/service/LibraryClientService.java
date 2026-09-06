@@ -1,8 +1,13 @@
 package edu.seu.vcampus.client.service;
 
 import edu.seu.vcampus.client.network.ClientConnection;
+import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.common.dto.BorrowRecordDto;
+import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
@@ -23,8 +28,37 @@ public final class LibraryClientService {
     }
 
     public List<BookSummary> queryBooks(String keyword) throws IOException {
+        return queryBooks(keyword, false);
+    }
+
+    public List<BookSummary> queryBooks(String keyword, boolean includeInactive)
+            throws IOException {
         return listRequest(Operation.LIBRARY_BOOK_QUERY,
-                new BookQueryRequest(keyword), BookSummary.class);
+                new BookQueryRequest(keyword, includeInactive), BookSummary.class);
+    }
+
+    public void saveBook(BookDto book) throws IOException {
+        request(Operation.LIBRARY_BOOK_SAVE, book);
+    }
+
+    public void deleteBook(String isbn) throws IOException {
+        request(Operation.LIBRARY_BOOK_DELETE, new EntityIdRequest(isbn));
+    }
+
+    public List<BorrowRecordDto> queryBorrows() throws IOException {
+        return listRequest(Operation.LIBRARY_BORROW_QUERY, null, BorrowRecordDto.class);
+    }
+
+    public BorrowRecordDto borrowBook(String isbn) throws IOException {
+        Object body = request(Operation.LIBRARY_BORROW, new BorrowRequest(isbn)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
+    }
+
+    public void returnBook(int recordId) throws IOException {
+        request(Operation.LIBRARY_RETURN, new ReturnRequest(recordId));
     }
 
     private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)

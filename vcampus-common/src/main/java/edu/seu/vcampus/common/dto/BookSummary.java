@@ -13,9 +13,15 @@ public final class BookSummary implements Serializable {
     private final String category;
     private final int availableCopies;
     private final int totalCopies;
+    private final boolean active;
 
     public BookSummary(String isbn, String title, String author, String publisher,
                        String category, int availableCopies, int totalCopies) {
+        this(isbn, title, author, publisher, category, availableCopies, totalCopies, true);
+    }
+
+    public BookSummary(String isbn, String title, String author, String publisher,
+                       String category, int availableCopies, int totalCopies, boolean active) {
         this.isbn = isbn;
         this.title = title;
         this.author = author;
@@ -23,6 +29,7 @@ public final class BookSummary implements Serializable {
         this.category = category;
         this.availableCopies = availableCopies;
         this.totalCopies = totalCopies;
+        this.active = active;
     }
 
     public String getIsbn() {
@@ -51,5 +58,9 @@ public final class BookSummary implements Serializable {
 
     public int getTotalCopies() {
         return totalCopies;
+    }
+
+    public boolean isActive() {
+        return active;
     }
 }

@@ -89,15 +89,27 @@ public final class SubSystems {
             case CLASS_DELETE:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
+            case COURSE_SAVE:
+            case COURSE_DELETE:
             case COURSE_SELECT:
             case COURSE_DROP:
+            case SCHEDULE_QUERY:
                 return SubSystem.COURSE;
             case LIBRARY_BOOK_QUERY:
+            case LIBRARY_BOOK_SAVE:
+            case LIBRARY_BOOK_DELETE:
             case LIBRARY_BORROW:
             case LIBRARY_RETURN:
+            case LIBRARY_BORROW_QUERY:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:
+            case STORE_PRODUCT_SAVE:
+            case STORE_PRODUCT_DELETE:
+            case STORE_CART_QUERY:
+            case STORE_CART_UPDATE:
             case STORE_ORDER_CREATE:
+            case STORE_ORDER_QUERY:
+            case STORE_ORDER_STATUS:
                 return SubSystem.STORE;
             default:
                 return null;

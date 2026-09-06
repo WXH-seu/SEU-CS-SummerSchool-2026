@@ -10,15 +10,24 @@ public final class BorrowRecord {
     private final Date borrowTime;
     private final Date dueTime;
     private final Date returnTime;
+    private final String isbn;
+    private final String title;
+    private final String author;
+    private final String displayName;
 
     public BorrowRecord(int recordId, int copyId, String userId,
-                        Date borrowTime, Date dueTime, Date returnTime) {
+                        Date borrowTime, Date dueTime, Date returnTime,
+                        String isbn, String title, String author, String displayName) {
         this.recordId = recordId;
         this.copyId = copyId;
         this.userId = userId;
         this.borrowTime = borrowTime;
         this.dueTime = dueTime;
         this.returnTime = returnTime;
+        this.isbn = isbn;
+        this.title = title;
+        this.author = author;
+        this.displayName = displayName;
     }
 
     public int getRecordId() {
@@ -43,6 +52,22 @@ public final class BorrowRecord {
 
     public Date getReturnTime() {
         return returnTime;
+    }
+
+    public String getIsbn() {
+        return isbn;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public String getDisplayName() {
+        return displayName;
     }
 
     public boolean isReturned() {

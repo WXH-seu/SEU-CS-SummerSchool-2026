@@ -35,12 +35,13 @@ import java.util.logging.Logger;
 /**
  * Routes protocol operations to small, testable services.
  *
- * <p>Every request is checked in the same order: public operations are handled
- * directly, authenticated operations first require a valid session
- * ({@code UNAUTHORIZED}) and then pass the shared permission policy. For a
- * business operation, this dispatcher is the single boundary that converts a
- * global account role into the effective role of the current sub-system.
- * Business handlers receive only that role and the authenticated user id.
+ * <p>Public operations are handled directly. Authenticated operations require a
+ * valid session ({@code UNAUTHORIZED}). Business sub-system operations are then
+ * delegated to their module handlers (academic / course / library / store),
+ * which perform their own authorization; the academic, course and library
+ * handlers receive the normalized {@link SubSystemRole} so scoped authority is
+ * honoured, while the store handler keeps the account. The remaining user-module
+ * operations are gated by the shared {@link PermissionPolicy}.
  */
 public final class RequestDispatcher {
     private static final Logger LOGGER = Logger.getLogger(RequestDispatcher.class.getName());
@@ -50,24 +51,31 @@ public final class RequestDispatcher {
     private final PermissionPolicy permissionPolicy;
     private final AuditService auditService;
     private final AcademicRequestHandler academicHandler;
+    private final CourseRequestHandler courseHandler;
     private final LibraryRequestHandler libraryHandler;
+    private final StoreRequestHandler storeHandler;
 
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService,
                              AcademicRequestHandler academicHandler,
-                             LibraryRequestHandler libraryHandler) {
+                             CourseRequestHandler courseHandler,
+                             LibraryRequestHandler libraryHandler,
+                             StoreRequestHandler storeHandler) {
         this.authService = authService;
         this.sessionRegistry = sessionRegistry;
         this.permissionPolicy = permissionPolicy;
         this.auditService = auditService;
         this.academicHandler = academicHandler;
+        this.courseHandler = courseHandler;
         this.libraryHandler = libraryHandler;
+        this.storeHandler = storeHandler;
     }
 
     /** Convenience constructor when no business sub-system handlers are wired. */
     public RequestDispatcher(AuthService authService, SessionRegistry sessionRegistry,
                              PermissionPolicy permissionPolicy, AuditService auditService) {
-        this(authService, sessionRegistry, permissionPolicy, auditService, null, null);
+        this(authService, sessionRegistry, permissionPolicy, auditService,
+                null, null, null, null);
     }
 
     public ResponseMessage<? extends Serializable> dispatch(RequestMessage<?> request) {
@@ -84,24 +92,35 @@ public final class RequestDispatcher {
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.UNAUTHORIZED, "请先登录");
             }
+
+            // Central permission gate first: out-of-scope requests must be
+            // rejected with FORBIDDEN before any module handler parses the
+            // request body.
             if (!permissionPolicy.allows(operation, account.getRole(),
                     account.getAdminScopes())) {
                 return ResponseMessage.failure(request.getRequestId(),
                         ResponseCode.FORBIDDEN, "您没有权限执行该操作");
             }
+
+            // Business sub-systems validate their own authorization; academic,
+            // course and library receive the normalized role for their
+            // sub-system, while store keeps the account.
             SubSystem subSystem = SubSystems.of(operation);
-            if (subSystem != null) {
-                SubSystemRole effectiveRole = SubSystems.effectiveRole(
-                        account.getRole(), account.getAdminScopes(), subSystem);
-                if (academicHandler != null && academicHandler.supports(operation)) {
-                    return academicHandler.handle(
-                            request, account.getUserId(), effectiveRole);
-                }
-                if (libraryHandler != null && libraryHandler.supports(operation)) {
-                    return libraryHandler.handle(
-                            request, account.getUserId(), effectiveRole);
-                }
+            SubSystemRole effectiveRole = subSystem == null ? null
+                    : SubSystems.effectiveRole(account.getRole(), account.getAdminScopes(), subSystem);
+            if (academicHandler != null && academicHandler.supports(operation)) {
+                return academicHandler.handle(request, account.getUserId(), effectiveRole);
             }
+            if (courseHandler != null && courseHandler.supports(operation)) {
+                return courseHandler.handle(request, account.getUserId(), effectiveRole);
+            }
+            if (libraryHandler != null && libraryHandler.supports(operation)) {
+                return libraryHandler.handle(request, account.getUserId(), effectiveRole);
+            }
+            if (storeHandler != null && storeHandler.supports(operation)) {
+                return storeHandler.handle(request, account);
+            }
+
             return dispatchAuthenticated(request, operation, account);
         } catch (AuthException e) {
             return ResponseMessage.failure(request.getRequestId(), e.getCode(), e.getMessage());

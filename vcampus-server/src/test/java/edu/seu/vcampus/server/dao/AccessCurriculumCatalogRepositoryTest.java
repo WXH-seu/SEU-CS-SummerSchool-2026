@@ -38,7 +38,7 @@ public class AccessCurriculumCatalogRepositoryTest {
         assertEquals(34, count(database, "tblDepartment"));
         assertEquals(7, count(database, "tblCatalogSource"));
         assertEquals(9, count(database, "tblMajor"));
-        assertEquals(66, count(database, "tblCourse"));
+        assertEquals(66, count(database, "tblCatalogCourse"));
         assertEquals(98, count(database, "tblMajorCourse"));
 
         List<Major> computerMajors = repository.findMajors("CS");
@@ -46,20 +46,20 @@ public class AccessCurriculumCatalogRepositoryTest {
         assertEquals("计算机科学与技术", computerMajors.get(0).getMajorName());
         assertTrue(computerMajors.get(0).getSourceUrl().startsWith("https://cs.seu.edu.cn/"));
 
-        List<Course> computerCourses = repository.findCoursesForMajor("080901");
+        List<CatalogCourse> computerCourses = repository.findCoursesForMajor("080901");
         assertTrue(computerCourses.size() >= 10);
         assertTrue(containsCourse(computerCourses, "B71S0032", "编译原理"));
 
         new AccessCurriculumCatalogRepository(database);
         assertEquals(34, count(database, "tblDepartment"));
-        assertEquals(66, count(database, "tblCourse"));
+        assertEquals(66, count(database, "tblCatalogCourse"));
         assertEquals(98, count(database, "tblMajorCourse"));
         assertTrue(hasForeignKey(database, "tblMajorCourse", "majorId", "tblMajor"));
-        assertTrue(hasForeignKey(database, "tblMajorCourse", "courseId", "tblCourse"));
+        assertTrue(hasForeignKey(database, "tblMajorCourse", "courseId", "tblCatalogCourse"));
     }
 
-    private boolean containsCourse(List<Course> courses, String id, String name) {
-        for (Course course : courses) {
+    private boolean containsCourse(List<CatalogCourse> courses, String id, String name) {
+        for (CatalogCourse course : courses) {
             if (id.equals(course.getCourseId()) && name.equals(course.getCourseName())) {
                 return true;
             }

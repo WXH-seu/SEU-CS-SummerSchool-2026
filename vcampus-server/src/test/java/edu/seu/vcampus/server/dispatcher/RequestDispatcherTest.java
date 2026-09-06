@@ -62,7 +62,7 @@ public class RequestDispatcherTest {
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
         dispatcher = new RequestDispatcher(authService, sessions, new PermissionPolicy(),
-                auditService, academicHandler, null);
+                auditService, academicHandler, null, null, null);
     }
 
     private String login(String userId, String password) {
@@ -220,12 +220,10 @@ public class RequestDispatcherTest {
                 Operation.STUDENT_SAVE, adminLibToken, null));
         assertEquals(ResponseCode.FORBIDDEN, studentSave.getCode());
 
-        // Out of scope usage: the administrator keeps ordinary (teacher) usage
-        // rights, so it can borrow a book; the stub module reports it as
-        // not implemented after passing the permission check.
+        // Library-scoped administrator is a manager, not a patron.
         ResponseMessage<?> borrow = dispatcher.dispatch(new RequestMessage<Serializable>(
                 Operation.LIBRARY_BORROW, adminLibToken, null));
-        assertEquals(ResponseCode.NOT_IMPLEMENTED, borrow.getCode());
+        assertEquals(ResponseCode.FORBIDDEN, borrow.getCode());
     }
 
     @Test
@@ -258,7 +256,7 @@ public class RequestDispatcherTest {
     public void unimplementedModuleOperationIsRejectedWithNotice() {
         String token = login("student", "student123");
         ResponseMessage<?> response = dispatcher.dispatch(
-                new RequestMessage<Serializable>(Operation.COURSE_QUERY, token, null));
+                new RequestMessage<Serializable>(Operation.STORE_ORDER_CREATE, token, null));
         assertEquals(ResponseCode.NOT_IMPLEMENTED, response.getCode());
         assertTrue(response.getMessage().contains("预留"));
     }

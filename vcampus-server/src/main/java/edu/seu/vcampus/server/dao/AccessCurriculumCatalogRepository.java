@@ -87,17 +87,17 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
     }
 
     @Override
-    public List<Course> findCoursesForMajor(String majorId) throws SQLException {
-        String sql = "SELECT c.* FROM [tblCourse] c INNER JOIN [tblMajorCourse] mc "
+    public List<CatalogCourse> findCoursesForMajor(String majorId) throws SQLException {
+        String sql = "SELECT c.* FROM [tblCatalogCourse] c INNER JOIN [tblMajorCourse] mc "
                 + "ON c.[courseId]=mc.[courseId] WHERE mc.[majorId]=? "
                 + "ORDER BY mc.[recommendedYear], mc.[recommendedSemester], c.[courseId]";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, required(majorId, "majorId"));
             try (ResultSet result = statement.executeQuery()) {
-                List<Course> courses = new ArrayList<Course>();
+                List<CatalogCourse> courses = new ArrayList<CatalogCourse>();
                 while (result.next()) {
-                    courses.add(new Course(result.getString("courseId"),
+                    courses.add(new CatalogCourse(result.getString("courseId"),
                             result.getString("departmentId"), result.getString("courseName"),
                             result.getDouble("credits"), result.getInt("lectureHours"),
                             result.getInt("practiceHours"), result.getString("courseType"),
@@ -137,17 +137,17 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
                         + "CONSTRAINT [fkMajorSource] FOREIGN KEY ([sourceId]) "
                         + "REFERENCES [tblCatalogSource] ([sourceId]))");
             }
-            if (!tableExists(connection, "tblCourse")) {
-                execute(connection, "CREATE TABLE [tblCourse] ("
+            if (!tableExists(connection, "tblCatalogCourse")) {
+                execute(connection, "CREATE TABLE [tblCatalogCourse] ("
                         + "[courseId] TEXT(20) NOT NULL PRIMARY KEY, "
                         + "[departmentId] TEXT(16) NOT NULL, [courseName] TEXT(128) NOT NULL, "
                         + "[credits] DOUBLE NOT NULL, [lectureHours] INTEGER NOT NULL, "
                         + "[practiceHours] INTEGER NOT NULL, [courseType] TEXT(32) NOT NULL, "
                         + "[sourceYear] INTEGER NOT NULL, [sourceId] TEXT(20) NOT NULL, "
                         + "[sourceUrl] TEXT(255) NOT NULL, [active] YESNO NOT NULL, "
-                        + "CONSTRAINT [fkCourseDepartment] FOREIGN KEY ([departmentId]) "
+                        + "CONSTRAINT [fkCatalogCourseDepartment] FOREIGN KEY ([departmentId]) "
                         + "REFERENCES [tblDepartment] ([departmentId]), "
-                        + "CONSTRAINT [fkCourseSource] FOREIGN KEY ([sourceId]) "
+                        + "CONSTRAINT [fkCatalogCourseSource] FOREIGN KEY ([sourceId]) "
                         + "REFERENCES [tblCatalogSource] ([sourceId]))");
             }
             if (!tableExists(connection, "tblMajorCourse")) {
@@ -159,7 +159,7 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
                         + "CONSTRAINT [fkMajorCourseMajor] FOREIGN KEY ([majorId]) "
                         + "REFERENCES [tblMajor] ([majorId]), "
                         + "CONSTRAINT [fkMajorCourseCourse] FOREIGN KEY ([courseId]) "
-                        + "REFERENCES [tblCourse] ([courseId]))");
+                        + "REFERENCES [tblCatalogCourse] ([courseId]))");
             }
         }
     }
@@ -222,10 +222,10 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
 
     private void importCourses(Connection connection, List<Map<String, String>> rows)
             throws SQLException {
-        String update = "UPDATE [tblCourse] SET [departmentId]=?, [courseName]=?, [credits]=?, "
+        String update = "UPDATE [tblCatalogCourse] SET [departmentId]=?, [courseName]=?, [credits]=?, "
                 + "[lectureHours]=?, [practiceHours]=?, [courseType]=?, [sourceYear]=?, "
                 + "[sourceId]=?, [sourceUrl]=?, [active]=? WHERE [courseId]=?";
-        String insert = "INSERT INTO [tblCourse] ([departmentId], [courseName], [credits], "
+        String insert = "INSERT INTO [tblCatalogCourse] ([departmentId], [courseName], [credits], "
                 + "[lectureHours], [practiceHours], [courseType], [sourceYear], [sourceId], "
                 + "[sourceUrl], [active], [courseId]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         for (Map<String, String> row : rows) {

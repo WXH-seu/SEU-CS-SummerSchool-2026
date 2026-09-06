@@ -9,5 +9,5 @@ public interface CurriculumCatalogRepository {
 
     List<Major> findMajors(String departmentId) throws SQLException;
 
-    List<Course> findCoursesForMajor(String majorId) throws SQLException;
+    List<CatalogCourse> findCoursesForMajor(String majorId) throws SQLException;
 }
