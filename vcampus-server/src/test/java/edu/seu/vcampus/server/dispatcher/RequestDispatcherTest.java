@@ -220,12 +220,10 @@ public class RequestDispatcherTest {
                 Operation.STUDENT_SAVE, adminLibToken, null));
         assertEquals(ResponseCode.FORBIDDEN, studentSave.getCode());
 
-        // Out of scope usage: the administrator keeps ordinary (teacher) usage
-        // rights, so it can borrow a book; the stub module reports it as
-        // not implemented after passing the permission check.
+        // Library-scoped administrator is a manager, not a patron.
         ResponseMessage<?> borrow = dispatcher.dispatch(new RequestMessage<Serializable>(
                 Operation.LIBRARY_BORROW, adminLibToken, null));
-        assertEquals(ResponseCode.NOT_IMPLEMENTED, borrow.getCode());
+        assertEquals(ResponseCode.FORBIDDEN, borrow.getCode());
     }
 
     @Test

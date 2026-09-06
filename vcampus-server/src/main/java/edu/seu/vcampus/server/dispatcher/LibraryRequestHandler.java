@@ -2,7 +2,9 @@ package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
+import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -19,7 +21,8 @@ import java.util.EnumSet;
 public final class LibraryRequestHandler {
     private static final EnumSet<Operation> OPERATIONS = EnumSet.of(
             Operation.LIBRARY_BOOK_QUERY, Operation.LIBRARY_BOOK_SAVE,
-            Operation.LIBRARY_BOOK_DELETE);
+            Operation.LIBRARY_BOOK_DELETE, Operation.LIBRARY_BORROW,
+            Operation.LIBRARY_RETURN, Operation.LIBRARY_BORROW_QUERY);
 
     private final LibraryService service;
 
@@ -45,6 +48,14 @@ public final class LibraryRequestHandler {
                 case LIBRARY_BOOK_DELETE:
                     service.deleteBook(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
+                case LIBRARY_BORROW:
+                    return success(request, service.borrowBook(
+                            actorUserId, actorRole, body(request, BorrowRequest.class)));
+                case LIBRARY_RETURN:
+                    service.returnBook(actorUserId, actorRole, body(request, ReturnRequest.class));
+                    return success(request, "OK");
+                case LIBRARY_BORROW_QUERY:
+                    return success(request, service.queryBorrows(actorUserId, actorRole));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的图书馆操作");

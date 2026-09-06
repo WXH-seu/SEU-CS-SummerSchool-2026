@@ -31,6 +31,8 @@ import java.awt.Font;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 门户主壳：深绿顶栏、金黄激活导航、内容区 CardLayout。
@@ -49,6 +51,7 @@ public final class MainFrame extends JFrame {
     private final LoginResponse session;
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
+    private final Map<String, JPanel> moduleHolders = new LinkedHashMap<String, JPanel>();
     private final JLabel identityLabel = new JLabel();
     private SeuNavBar navBar;
     private String displayName;
@@ -89,22 +92,58 @@ public final class MainFrame extends JFrame {
                 showCard(cardName);
             }
         }), CARD_NAMES[0]);
-        cards.add(new AcademicManagementPanel(
-                new AcademicClientService(connection, session.getSessionToken()),
-                effectiveRole(SubSystem.STUDENT)), CARD_NAMES[1]);
-        cards.add(new CourseManagementPanel(
-                new CourseClientService(connection, session.getSessionToken()),
-                new AcademicClientService(connection, session.getSessionToken()),
-                effectiveRole(SubSystem.COURSE)), CARD_NAMES[2]);
-        cards.add(new LibraryPanel(
-                new LibraryClientService(connection, session.getSessionToken()),
-                effectiveRole(SubSystem.LIBRARY)), CARD_NAMES[3]);
-        cards.add(new StorePanel(
-                new StoreClientService(connection, session.getSessionToken()),
-                effectiveRole(SubSystem.STORE)), CARD_NAMES[4]);
+        // 业务页在首次进入时再创建。登录后立刻构造会让隐藏页签自动发请求，
+        // 管理员被禁止的借阅查询会弹出「您没有权限执行该操作」。
+        cards.add(moduleHolder(CARD_NAMES[1]), CARD_NAMES[1]);
+        cards.add(moduleHolder(CARD_NAMES[2]), CARD_NAMES[2]);
+        cards.add(moduleHolder(CARD_NAMES[3]), CARD_NAMES[3]);
+        cards.add(moduleHolder(CARD_NAMES[4]), CARD_NAMES[4]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
         showCard(CARD_NAMES[0]);
+    }
+
+    private JPanel moduleHolder(String cardName) {
+        JPanel holder = new JPanel(new BorderLayout());
+        holder.setOpaque(false);
+        holder.setBackground(SeuTheme.PAGE_BG);
+        moduleHolders.put(cardName, holder);
+        return holder;
+    }
+
+    private void ensureModuleLoaded(String cardName) {
+        JPanel holder = moduleHolders.get(cardName);
+        if (holder == null || holder.getComponentCount() > 0) {
+            return;
+        }
+        holder.add(createModulePanel(cardName), BorderLayout.CENTER);
+        holder.revalidate();
+        holder.repaint();
+    }
+
+    private JPanel createModulePanel(String cardName) {
+        if ("student".equals(cardName)) {
+            return new AcademicManagementPanel(
+                    new AcademicClientService(connection, session.getSessionToken()),
+                    effectiveRole(SubSystem.STUDENT));
+        }
+        if ("course".equals(cardName)) {
+            return new CourseManagementPanel(
+                    new CourseClientService(connection, session.getSessionToken()),
+                    new AcademicClientService(connection, session.getSessionToken()),
+                    effectiveRole(SubSystem.COURSE));
+        }
+        if ("library".equals(cardName)) {
+            return new LibraryPanel(
+                    new LibraryClientService(connection, session.getSessionToken()),
+                    effectiveRole(SubSystem.LIBRARY));
+        }
+        if ("store".equals(cardName)) {
+            return new StorePanel(
+                    new StoreClientService(connection, session.getSessionToken()),
+                    effectiveRole(SubSystem.STORE));
+        }
+        throw new IllegalArgumentException("unknown module: " + cardName);
     }
 
     private JPanel createHeader() {
@@ -158,7 +197,7 @@ public final class MainFrame extends JFrame {
         navBar = new SeuNavBar(CARD_NAMES, labels, new SeuNavBar.SelectionListener() {
             @Override
             public void onSelected(int index, String key) {
-                cardLayout.show(cards, key);
+                showCard(key);
             }
         });
         return navBar;
@@ -168,6 +207,7 @@ public final class MainFrame extends JFrame {
         if (cardName == null) {
             return;
         }
+        ensureModuleLoaded(cardName);
         cardLayout.show(cards, cardName);
         if (navBar != null) {
             navBar.setActiveKey(cardName);

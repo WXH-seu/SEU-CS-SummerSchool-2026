@@ -29,6 +29,7 @@ public class NetworkLibrarySmokeTest {
             LibraryClientService service =
                     new LibraryClientService(connection, session.getSessionToken());
             assertFalse(service.queryBooks("红楼梦").isEmpty());
+            assertFalse(service.queryBorrows().isEmpty());
             connection.request(new RequestMessage<Serializable>(
                     Operation.USER_LOGOUT, session.getSessionToken(), null));
         } finally {

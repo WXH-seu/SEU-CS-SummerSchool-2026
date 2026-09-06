@@ -2,6 +2,7 @@ package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.OrderStatusRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
@@ -55,7 +56,8 @@ public final class StoreRequestHandler {
                     service.updateCart(actor, body(request, CartUpdateRequest.class));
                     return success(request, "OK");
                 case STORE_ORDER_CREATE:
-                    OrderDto order = service.createOrder(actor);
+                    OrderDto order = service.createOrder(actor,
+                            body(request, OrderCreateRequest.class));
                     return success(request, order);
                 case STORE_ORDER_QUERY:
                     return success(request, service.queryOrders(actor));
