@@ -2,8 +2,11 @@ package edu.seu.vcampus.client.service;
 
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
+import edu.seu.vcampus.common.dto.CatalogCourseDto;
+import edu.seu.vcampus.common.dto.CatalogQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.MajorDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
@@ -41,6 +44,15 @@ public final class AcademicClientService {
 
     public List<SchoolClassDto> queryClasses(AcademicQueryRequest query) throws IOException {
         return listRequest(Operation.CLASS_QUERY, query, SchoolClassDto.class);
+    }
+
+    public List<MajorDto> queryMajors(CatalogQueryRequest query) throws IOException {
+        return listRequest(Operation.CATALOG_MAJOR_QUERY, query, MajorDto.class);
+    }
+
+    public List<CatalogCourseDto> queryCatalogCourses(CatalogQueryRequest query)
+            throws IOException {
+        return listRequest(Operation.CATALOG_COURSE_QUERY, query, CatalogCourseDto.class);
     }
 
     public void saveStudent(StudentDto student) throws IOException {

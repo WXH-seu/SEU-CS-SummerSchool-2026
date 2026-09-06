@@ -87,6 +87,8 @@ public final class SubSystems {
             case CLASS_QUERY:
             case CLASS_SAVE:
             case CLASS_DELETE:
+            case CATALOG_MAJOR_QUERY:
+            case CATALOG_COURSE_QUERY:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
             case COURSE_SAVE:

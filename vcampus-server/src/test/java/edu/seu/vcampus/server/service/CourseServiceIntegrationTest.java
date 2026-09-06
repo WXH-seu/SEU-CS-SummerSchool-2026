@@ -20,7 +20,6 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
-import java.sql.SQLException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -128,8 +127,32 @@ public class CourseServiceIntegrationTest {
         try {
             academicService.deleteStudent(admin.getUserId(), eff(admin),  "20260001");
             fail("Student with enrollments should be protected by the foreign key");
-        } catch (SQLException expected) {
-            // The tblCourseEnrollment foreign key blocks the deletion.
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+    }
+
+    @Test
+    public void teacherAndDepartmentReferencedByCoursesCannotBeDeleted() throws Exception {
+        try {
+            academicService.deleteTeacher(admin.getUserId(), eff(admin), "T0001");
+            fail("Teacher with courses should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        academicService.saveDepartment(admin.getUserId(), eff(admin),
+                new edu.seu.vcampus.common.dto.DepartmentDto(
+                        "COURSE-DEPT", "课程测试院系", "仅用于外键测试", true));
+        service.saveCourse(admin.getUserId(), eff(admin),
+                new CourseDto("COURSE-D001", "跨院系课程", "T0001", "演示教师",
+                        "COURSE-DEPT", "课程测试院系", 2.0, 20, 0,
+                        "2026-2027-1", "周五 1-2 节", "教1-202", "测试课程", true));
+        try {
+            academicService.deleteDepartment(admin.getUserId(), eff(admin), "COURSE-DEPT");
+            fail("Department with courses should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
     }
 

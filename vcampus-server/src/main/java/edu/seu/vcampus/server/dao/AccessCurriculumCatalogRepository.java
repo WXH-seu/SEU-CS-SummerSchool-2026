@@ -88,7 +88,8 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
 
     @Override
     public List<CatalogCourse> findCoursesForMajor(String majorId) throws SQLException {
-        String sql = "SELECT c.* FROM [tblCatalogCourse] c INNER JOIN [tblMajorCourse] mc "
+        String sql = "SELECT c.*, mc.[recommendedYear], mc.[recommendedSemester], "
+                + "mc.[required] FROM [tblCatalogCourse] c INNER JOIN [tblMajorCourse] mc "
                 + "ON c.[courseId]=mc.[courseId] WHERE mc.[majorId]=? "
                 + "ORDER BY mc.[recommendedYear], mc.[recommendedSemester], c.[courseId]";
         try (Connection connection = database.openConnection();
@@ -101,6 +102,8 @@ public final class AccessCurriculumCatalogRepository implements CurriculumCatalo
                             result.getString("departmentId"), result.getString("courseName"),
                             result.getDouble("credits"), result.getInt("lectureHours"),
                             result.getInt("practiceHours"), result.getString("courseType"),
+                            result.getInt("recommendedYear"),
+                            result.getInt("recommendedSemester"), result.getBoolean("required"),
                             result.getInt("sourceYear"), result.getString("sourceUrl"),
                             result.getBoolean("active")));
                 }

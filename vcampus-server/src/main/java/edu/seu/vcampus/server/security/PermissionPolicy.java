@@ -171,6 +171,8 @@ public final class PermissionPolicy {
         // TEACHER and therefore cannot manage that sub-system.
         requireSubSystem(Operation.STUDENT_QUERY);
         requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.CATALOG_MAJOR_QUERY);
+        requireSubSystem(Operation.CATALOG_COURSE_QUERY);
         requireSubSystem(Operation.COURSE_QUERY);
         requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
         requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);

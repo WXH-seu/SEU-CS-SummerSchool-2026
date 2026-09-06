@@ -31,6 +31,8 @@ public interface AcademicRepository {
     boolean departmentExists(String departmentId) throws SQLException;
     boolean classExists(String classId) throws SQLException;
     boolean classBelongsToDepartment(String classId, String departmentId) throws SQLException;
+    boolean studentIsReferenced(String studentId) throws SQLException;
+    boolean teacherIsReferenced(String teacherId) throws SQLException;
     boolean departmentIsReferenced(String departmentId) throws SQLException;
     boolean classIsReferenced(String classId) throws SQLException;
 }

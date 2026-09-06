@@ -116,6 +116,10 @@ public final class AcademicService {
             throws SQLException, BusinessException {
         requireAdmin(actorUserId, actorRole);
         requireId(studentId);
+        if (repository.studentIsReferenced(studentId)) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "学生仍有选课记录，请先处理关联数据");
+        }
         if (!repository.deleteStudent(studentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "学生记录不存在");
         }
@@ -125,6 +129,10 @@ public final class AcademicService {
             throws SQLException, BusinessException {
         requireAdmin(actorUserId, actorRole);
         requireId(teacherId);
+        if (repository.teacherIsReferenced(teacherId)) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "教师仍有授课课程，请先处理关联数据");
+        }
         if (!repository.deleteTeacher(teacherId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "教师记录不存在");
         }
@@ -135,7 +143,8 @@ public final class AcademicService {
         requireAdmin(actorUserId, actorRole);
         requireId(departmentId);
         if (repository.departmentIsReferenced(departmentId)) {
-            throw new BusinessException(ResponseCode.CONFLICT, "院系仍被班级或人员引用，请先停用");
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "院系仍被班级、人员、专业或课程引用，请先停用");
         }
         if (!repository.deleteDepartment(departmentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "院系记录不存在");

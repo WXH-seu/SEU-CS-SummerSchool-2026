@@ -2,8 +2,10 @@ package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
+import edu.seu.vcampus.common.dto.CatalogQueryRequest;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.dto.MajorDto;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.UserImportRequest;
@@ -16,6 +18,7 @@ import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
+import edu.seu.vcampus.server.dao.AccessCurriculumCatalogRepository;
 import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
@@ -24,6 +27,7 @@ import edu.seu.vcampus.server.security.PermissionPolicy;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
+import edu.seu.vcampus.server.service.CurriculumCatalogService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 import org.junit.Before;
 import org.junit.Rule;
@@ -56,8 +60,11 @@ public class RequestDispatcherTest {
                 .getAbsolutePath();
         AccessDatabase database = new AccessDatabase(db);
         AccessUserRepository repository = new AccessUserRepository(database, passwordHasher);
+        AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
         AcademicRequestHandler academicHandler = new AcademicRequestHandler(
-                new AcademicService(new AccessAcademicRepository(database), repository));
+                new AcademicService(academicRepository, repository),
+                new CurriculumCatalogService(
+                        new AccessCurriculumCatalogRepository(database)));
         AuditService auditService = new AuditService(new AccessOperationLogRepository(db));
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
@@ -77,6 +84,19 @@ public class RequestDispatcherTest {
         ResponseMessage<?> response = dispatcher.dispatch(
                 new RequestMessage<Serializable>(Operation.PING, null, null));
         assertEquals(ResponseCode.SUCCESS, response.getCode());
+    }
+
+    @Test
+    public void studentCanQueryReviewedMajorCatalog() {
+        String token = login("student", "student123");
+        ResponseMessage<?> response = dispatcher.dispatch(
+                new RequestMessage<CatalogQueryRequest>(Operation.CATALOG_MAJOR_QUERY, token,
+                        new CatalogQueryRequest("计算机", "CS", null, true)));
+
+        assertEquals(ResponseCode.SUCCESS, response.getCode());
+        List<?> majors = (List<?>) response.getBody();
+        assertEquals(1, majors.size());
+        assertEquals("080901", ((MajorDto) majors.get(0)).getMajorId());
     }
 
     @Test

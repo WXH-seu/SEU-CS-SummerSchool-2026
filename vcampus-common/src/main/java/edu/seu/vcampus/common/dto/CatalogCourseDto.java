@@ -1,7 +1,11 @@
-package edu.seu.vcampus.server.dao;
+package edu.seu.vcampus.common.dto;
 
-/** A catalog course imported from an official SEU curriculum snapshot. */
-public final class CatalogCourse {
+import java.io.Serializable;
+
+/** Read-only curriculum course and its recommended study stage. */
+public final class CatalogCourseDto implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private final String courseId;
     private final String departmentId;
     private final String courseName;
@@ -16,10 +20,11 @@ public final class CatalogCourse {
     private final String sourceUrl;
     private final boolean active;
 
-    public CatalogCourse(String courseId, String departmentId, String courseName, double credits,
-                         int lectureHours, int practiceHours, String courseType,
-                         int recommendedYear, int recommendedSemester, boolean required,
-                         int sourceYear, String sourceUrl, boolean active) {
+    public CatalogCourseDto(String courseId, String departmentId, String courseName,
+                            double credits, int lectureHours, int practiceHours,
+                            String courseType, int recommendedYear,
+                            int recommendedSemester, boolean required, int sourceYear,
+                            String sourceUrl, boolean active) {
         this.courseId = courseId;
         this.departmentId = departmentId;
         this.courseName = courseName;

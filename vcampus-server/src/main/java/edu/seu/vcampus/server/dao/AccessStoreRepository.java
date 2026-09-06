@@ -24,6 +24,8 @@ import java.util.UUID;
 
 /** Access-backed implementation of the store repository. */
 public final class AccessStoreRepository implements StoreRepository {
+    private static final String CART_USER_FOREIGN_KEY = "fkCartUser";
+    private static final String ORDER_USER_FOREIGN_KEY = "fkOrderUser";
     private static final DateTimeFormatter ORDER_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -250,6 +252,9 @@ public final class AccessStoreRepository implements StoreRepository {
 
     private void initializeSchema() throws SQLException {
         try (Connection connection = database.openConnection()) {
+            if (!tableExists(connection, "tblUser")) {
+                throw new SQLException("商店模块初始化前必须先初始化用户表 tblUser");
+            }
             if (!tableExists(connection, "tblProduct")) {
                 execute(connection, "CREATE TABLE [tblProduct] ("
                         + "[productId] TEXT(20) NOT NULL PRIMARY KEY, "
@@ -264,6 +269,8 @@ public final class AccessStoreRepository implements StoreRepository {
                         + "[userId] TEXT(32) NOT NULL, [productId] TEXT(20) NOT NULL, "
                         + "[quantity] INTEGER NOT NULL, "
                         + "CONSTRAINT [uqCartUserProduct] UNIQUE ([userId], [productId]), "
+                        + "CONSTRAINT [" + CART_USER_FOREIGN_KEY + "] "
+                        + "FOREIGN KEY ([userId]) REFERENCES [tblUser] ([userId]), "
                         + "CONSTRAINT [fkCartProduct] FOREIGN KEY ([productId]) "
                         + "REFERENCES [tblProduct] ([productId]))");
             }
@@ -271,7 +278,9 @@ public final class AccessStoreRepository implements StoreRepository {
                 execute(connection, "CREATE TABLE [tblOrder] ("
                         + "[orderId] TEXT(40) NOT NULL PRIMARY KEY, "
                         + "[userId] TEXT(32) NOT NULL, [totalAmount] CURRENCY NOT NULL, "
-                        + "[statusName] TEXT(16) NOT NULL, [orderTime] TEXT(19) NOT NULL)");
+                        + "[statusName] TEXT(16) NOT NULL, [orderTime] TEXT(19) NOT NULL, "
+                        + "CONSTRAINT [" + ORDER_USER_FOREIGN_KEY + "] "
+                        + "FOREIGN KEY ([userId]) REFERENCES [tblUser] ([userId]))");
             }
             if (!tableExists(connection, "tblOrderItem")) {
                 execute(connection, "CREATE TABLE [tblOrderItem] ("
@@ -284,6 +293,33 @@ public final class AccessStoreRepository implements StoreRepository {
                         + "CONSTRAINT [fkOrderItemProduct] FOREIGN KEY ([productId]) "
                         + "REFERENCES [tblProduct] ([productId]))");
             }
+            ensureUserForeignKey(connection, "tblCartItem", CART_USER_FOREIGN_KEY);
+            ensureUserForeignKey(connection, "tblOrder", ORDER_USER_FOREIGN_KEY);
+        }
+    }
+
+    /** Adds user relations when upgrading databases created before version 1.6. */
+    private void ensureUserForeignKey(Connection connection, String table,
+                                      String constraintName) throws SQLException {
+        if (hasUserForeignKey(connection, table)) {
+            return;
+        }
+        execute(connection, "ALTER TABLE [" + table + "] ADD CONSTRAINT ["
+                + constraintName + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId])");
+    }
+
+    private boolean hasUserForeignKey(Connection connection, String table)
+            throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

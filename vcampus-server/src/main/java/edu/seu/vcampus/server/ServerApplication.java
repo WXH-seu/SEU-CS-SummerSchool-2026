@@ -21,6 +21,7 @@ import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.service.CourseService;
+import edu.seu.vcampus.server.service.CurriculumCatalogService;
 import edu.seu.vcampus.server.service.LibraryService;
 import edu.seu.vcampus.server.service.StoreService;
 import edu.seu.vcampus.server.session.SessionRegistry;
@@ -53,10 +54,13 @@ public final class ServerApplication {
                 new AuthService(userRepository, passwordHasher, sessions, auditService);
         PermissionPolicy permissionPolicy = new PermissionPolicy();
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
+        CurriculumCatalogService catalogService =
+                new CurriculumCatalogService(catalogRepository);
         CourseService courseService = new CourseService(courseRepository);
         LibraryService libraryService = new LibraryService(bookRepository);
         StoreService storeService = new StoreService(storeRepository);
-        AcademicRequestHandler academicHandler = new AcademicRequestHandler(academicService);
+        AcademicRequestHandler academicHandler =
+                new AcademicRequestHandler(academicService, catalogService);
         CourseRequestHandler courseHandler = new CourseRequestHandler(courseService);
         LibraryRequestHandler libraryHandler = new LibraryRequestHandler(libraryService);
         StoreRequestHandler storeHandler = new StoreRequestHandler(storeService);

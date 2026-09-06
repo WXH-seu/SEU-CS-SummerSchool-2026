@@ -2,6 +2,10 @@ package edu.seu.vcampus.server.dao;
 
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
+import edu.seu.vcampus.server.service.AcademicService;
+import edu.seu.vcampus.server.service.BusinessException;
+import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.SubSystemRole;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -14,6 +18,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Verifies the reviewed SEU snapshot import without touching the project database. */
 public class AccessCurriculumCatalogRepositoryTest {
@@ -24,8 +29,8 @@ public class AccessCurriculumCatalogRepositoryTest {
     public void createsCatalogAndImportsReviewedSnapshotIdempotently() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "catalog.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
-        new AccessUserRepository(database, new PasswordHasher());
-        new AccessAcademicRepository(database);
+        AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
+        AccessAcademicRepository academics = new AccessAcademicRepository(database);
 
         AccessCurriculumCatalogRepository repository =
                 new AccessCurriculumCatalogRepository(database);
@@ -49,6 +54,8 @@ public class AccessCurriculumCatalogRepositoryTest {
         List<CatalogCourse> computerCourses = repository.findCoursesForMajor("080901");
         assertTrue(computerCourses.size() >= 10);
         assertTrue(containsCourse(computerCourses, "B71S0032", "编译原理"));
+        assertTrue(computerCourses.get(0).getRecommendedYear() > 0);
+        assertTrue(computerCourses.get(0).getRecommendedSemester() > 0);
 
         new AccessCurriculumCatalogRepository(database);
         assertEquals(34, count(database, "tblDepartment"));
@@ -56,6 +63,14 @@ public class AccessCurriculumCatalogRepositoryTest {
         assertEquals(98, count(database, "tblMajorCourse"));
         assertTrue(hasForeignKey(database, "tblMajorCourse", "majorId", "tblMajor"));
         assertTrue(hasForeignKey(database, "tblMajorCourse", "courseId", "tblCatalogCourse"));
+
+        AcademicService academicService = new AcademicService(academics, users);
+        try {
+            academicService.deleteDepartment("admin", SubSystemRole.ADMIN, "AI");
+            fail("Department with a catalog major should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
     }
 
     private boolean containsCourse(List<CatalogCourse> courses, String id, String name) {

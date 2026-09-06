@@ -44,7 +44,8 @@ public class SubSystemRoleMappingTest {
                 Operation.TEACHER_QUERY, Operation.TEACHER_SAVE, Operation.TEACHER_DELETE,
                 Operation.DEPARTMENT_QUERY, Operation.DEPARTMENT_SAVE,
                 Operation.DEPARTMENT_DELETE, Operation.CLASS_QUERY,
-                Operation.CLASS_SAVE, Operation.CLASS_DELETE
+                Operation.CLASS_SAVE, Operation.CLASS_DELETE,
+                Operation.CATALOG_MAJOR_QUERY, Operation.CATALOG_COURSE_QUERY
         };
         for (Operation operation : operations) {
             assertEquals(SubSystem.STUDENT, SubSystems.of(operation));

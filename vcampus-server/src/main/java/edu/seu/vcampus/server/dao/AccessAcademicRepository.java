@@ -263,10 +263,24 @@ public final class AccessAcademicRepository implements AcademicRepository {
     }
 
     @Override
+    public boolean studentIsReferenced(String studentId) throws SQLException {
+        return countReferencesIfTableExists("tblCourseEnrollment", "studentId", studentId) > 0;
+    }
+
+    @Override
+    public boolean teacherIsReferenced(String teacherId) throws SQLException {
+        return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0;
+    }
+
+    @Override
     public boolean departmentIsReferenced(String departmentId) throws SQLException {
         return countReferences("tblSchoolClass", "departmentId", departmentId) > 0
                 || countReferences("tblStudent", "departmentId", departmentId) > 0
-                || countReferences("tblTeacher", "departmentId", departmentId) > 0;
+                || countReferences("tblTeacher", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists("tblMajor", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists(
+                        "tblCatalogCourse", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists("tblCourse", "departmentId", departmentId) > 0;
     }
 
     @Override
@@ -418,6 +432,22 @@ public final class AccessAcademicRepository implements AcademicRepository {
             statement.setString(1, value);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private int countReferencesIfTableExists(String table, String column, String value)
+            throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!tableExists(connection, table)) {
+                return 0;
+            }
+            String sql = "SELECT COUNT(*) FROM [" + table + "] WHERE [" + column + "]=?";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, value);
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getInt(1) : 0;
+                }
             }
         }
     }

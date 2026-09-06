@@ -28,6 +28,8 @@ public enum Operation implements Serializable {
     CLASS_QUERY,
     CLASS_SAVE,
     CLASS_DELETE,
+    CATALOG_MAJOR_QUERY,
+    CATALOG_COURSE_QUERY,
     COURSE_QUERY,
     COURSE_SELECT,
     COURSE_DROP,

@@ -2,7 +2,10 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.AcademicClientService;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
+import edu.seu.vcampus.common.dto.CatalogCourseDto;
+import edu.seu.vcampus.common.dto.CatalogQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
+import edu.seu.vcampus.common.dto.MajorDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
@@ -28,10 +31,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-/** Search and maintenance page for students, teachers, classes and departments. */
+/** Academic records plus the read-only SEU major and curriculum catalog. */
 public final class AcademicManagementPanel extends JPanel {
     private enum EntityType {
-        STUDENT("学生"), TEACHER("教师"), DEPARTMENT("院系"), SCHOOL_CLASS("班级");
+        STUDENT("学生"), TEACHER("教师"), DEPARTMENT("院系"), SCHOOL_CLASS("班级"),
+        MAJOR("专业目录"), CATALOG_COURSE("培养方案课程");
 
         private final String label;
 
@@ -51,6 +55,7 @@ public final class AcademicManagementPanel extends JPanel {
     private final JTextField keyword = new JTextField(10);
     private final JTextField departmentId = new JTextField(7);
     private final JTextField classId = new JTextField(8);
+    private final JTextField majorId = new JTextField(8);
     private final JButton searchButton = new JButton("查询");
     private final JButton addButton = new JButton("新增");
     private final JButton editButton = new JButton("编辑");
@@ -96,6 +101,8 @@ public final class AcademicManagementPanel extends JPanel {
         filterRow.add(departmentId);
         filterRow.add(new JLabel("班级"));
         filterRow.add(classId);
+        filterRow.add(new JLabel("专业代码"));
+        filterRow.add(majorId);
         filterRow.add(searchButton);
 
         JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
@@ -121,22 +128,29 @@ public final class AcademicManagementPanel extends JPanel {
         editButton.setVisible(administrator);
         deleteButton.setVisible(administrator);
         if (effectiveRole == SubSystemRole.STUDENT) {
+            entityType.removeItem(EntityType.TEACHER);
+            entityType.removeItem(EntityType.DEPARTMENT);
+            entityType.removeItem(EntityType.SCHOOL_CLASS);
             entityType.setSelectedItem(EntityType.STUDENT);
-            entityType.setEnabled(false);
         }
+        updateActionAvailability(false);
     }
 
     private void bindActions() {
         searchButton.addActionListener(event -> refreshRows());
         keyword.addActionListener(event -> refreshRows());
-        entityType.addActionListener(event -> refreshRows());
+        entityType.addActionListener(event -> {
+            updateActionAvailability(false);
+            refreshRows();
+        });
         addButton.addActionListener(event -> editRecord(null));
         editButton.addActionListener(event -> editSelected());
         deleteButton.addActionListener(event -> deleteSelected());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
-                if (event.getClickCount() == 2 && effectiveRole == SubSystemRole.ADMIN) {
+                if (event.getClickCount() == 2 && effectiveRole == SubSystemRole.ADMIN
+                        && !isCatalogType()) {
                     editSelected();
                 }
             }
@@ -148,10 +162,16 @@ public final class AcademicManagementPanel extends JPanel {
                 classId.getText(), false);
     }
 
+    private CatalogQueryRequest currentCatalogQuery() {
+        return new CatalogQueryRequest(keyword.getText(), departmentId.getText(),
+                majorId.getText(), false);
+    }
+
     private void refreshRows() {
         setBusy(true, "正在加载……");
         final EntityType requestedType = (EntityType) entityType.getSelectedItem();
         final AcademicQueryRequest requestedQuery = currentQuery();
+        final CatalogQueryRequest requestedCatalogQuery = currentCatalogQuery();
         new SwingWorker<List<?>, Void>() {
             @Override
             protected List<?> doInBackground() throws Exception {
@@ -164,6 +184,10 @@ public final class AcademicManagementPanel extends JPanel {
                         return service.queryDepartments(false);
                     case SCHOOL_CLASS:
                         return service.queryClasses(requestedQuery);
+                    case MAJOR:
+                        return service.queryMajors(requestedCatalogQuery);
+                    case CATALOG_COURSE:
+                        return service.queryCatalogCourses(requestedCatalogQuery);
                     default:
                         throw new IllegalStateException("Unknown academic entity");
                 }
@@ -206,6 +230,13 @@ public final class AcademicManagementPanel extends JPanel {
                 return new String[]{"院系编号", "院系名称", "简介", "启用"};
             case SCHOOL_CLASS:
                 return new String[]{"班级编号", "班级名称", "院系", "年级", "辅导员", "启用"};
+            case MAJOR:
+                return new String[]{"专业代码", "专业名称", "院系", "学位", "学制",
+                        "来源年份", "启用", "官方来源"};
+            case CATALOG_COURSE:
+                return new String[]{"课程代码", "课程名称", "院系", "学分", "理论学时",
+                        "实践学时", "课程类别", "建议年级", "建议学期", "必修",
+                        "来源年份", "官方来源"};
             default:
                 return new String[0];
         }
@@ -234,6 +265,20 @@ public final class AcademicManagementPanel extends JPanel {
                 return new Object[]{schoolClass.getClassId(), schoolClass.getClassName(),
                         schoolClass.getDepartmentId(), schoolClass.getGradeYear(),
                         schoolClass.getCounselor(), schoolClass.isActive()};
+            case MAJOR:
+                MajorDto major = (MajorDto) row;
+                return new Object[]{major.getMajorId(), major.getMajorName(),
+                        major.getDepartmentId(), major.getDegreeType(),
+                        major.getDurationYears() + " 年", major.getSourceYear(),
+                        major.isActive(), major.getSourceUrl()};
+            case CATALOG_COURSE:
+                CatalogCourseDto course = (CatalogCourseDto) row;
+                return new Object[]{course.getCourseId(), course.getCourseName(),
+                        course.getDepartmentId(), course.getCredits(),
+                        course.getLectureHours(), course.getPracticeHours(),
+                        course.getCourseType(), course.getRecommendedYear(),
+                        course.getRecommendedSemester(), course.isRequired(),
+                        course.getSourceYear(), course.getSourceUrl()};
             default:
                 return new Object[0];
         }
@@ -250,6 +295,9 @@ public final class AcademicManagementPanel extends JPanel {
     }
 
     private void editRecord(Object existing) {
+        if (isCatalogType()) {
+            return;
+        }
         try {
             final Object edited = showEditor(existing);
             if (edited == null) {
@@ -301,6 +349,9 @@ public final class AcademicManagementPanel extends JPanel {
     }
 
     private void deleteSelected() {
+        if (isCatalogType()) {
+            return;
+        }
         final Object selected = selectedRecord();
         if (selected == null || JOptionPane.showConfirmDialog(this,
                 "确定删除所选记录吗？", "确认删除", JOptionPane.YES_NO_OPTION)
@@ -352,10 +403,24 @@ public final class AcademicManagementPanel extends JPanel {
     private void setBusy(boolean busy, String status) {
         statusLabel.setText(status);
         searchButton.setEnabled(!busy);
-        addButton.setEnabled(!busy);
-        editButton.setEnabled(!busy);
-        deleteButton.setEnabled(!busy);
-        entityType.setEnabled(!busy && effectiveRole != SubSystemRole.STUDENT);
+        updateActionAvailability(busy);
+        entityType.setEnabled(!busy);
+        keyword.setEnabled(!busy);
+        departmentId.setEnabled(!busy);
+        classId.setEnabled(!busy);
+        majorId.setEnabled(!busy);
+    }
+
+    private void updateActionAvailability(boolean busy) {
+        boolean mutable = effectiveRole == SubSystemRole.ADMIN && !isCatalogType();
+        addButton.setEnabled(!busy && mutable);
+        editButton.setEnabled(!busy && mutable);
+        deleteButton.setEnabled(!busy && mutable);
+    }
+
+    private boolean isCatalogType() {
+        EntityType selected = (EntityType) entityType.getSelectedItem();
+        return selected == EntityType.MAJOR || selected == EntityType.CATALOG_COURSE;
     }
 
     private String messageOf(ExecutionException exception) {

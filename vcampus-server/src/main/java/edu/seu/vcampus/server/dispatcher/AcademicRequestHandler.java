@@ -1,6 +1,7 @@
 package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
+import edu.seu.vcampus.common.dto.CatalogQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
@@ -13,6 +14,7 @@ import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.BusinessException;
+import edu.seu.vcampus.server.service.CurriculumCatalogService;
 
 import java.io.Serializable;
 import java.sql.SQLException;
@@ -24,12 +26,20 @@ public final class AcademicRequestHandler {
             Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_DELETE,
             Operation.TEACHER_QUERY, Operation.TEACHER_SAVE, Operation.TEACHER_DELETE,
             Operation.DEPARTMENT_QUERY, Operation.DEPARTMENT_SAVE, Operation.DEPARTMENT_DELETE,
-            Operation.CLASS_QUERY, Operation.CLASS_SAVE, Operation.CLASS_DELETE);
+            Operation.CLASS_QUERY, Operation.CLASS_SAVE, Operation.CLASS_DELETE,
+            Operation.CATALOG_MAJOR_QUERY, Operation.CATALOG_COURSE_QUERY);
 
     private final AcademicService service;
+    private final CurriculumCatalogService catalogService;
 
     public AcademicRequestHandler(AcademicService service) {
+        this(service, null);
+    }
+
+    public AcademicRequestHandler(AcademicService service,
+                                  CurriculumCatalogService catalogService) {
         this.service = service;
+        this.catalogService = catalogService;
     }
 
     public boolean supports(Operation operation) {
@@ -79,6 +89,12 @@ public final class AcademicRequestHandler {
                 case CLASS_DELETE:
                     service.deleteClass(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
+                case CATALOG_MAJOR_QUERY:
+                    return success(request, requireCatalogService().queryMajors(
+                            actorUserId, actorRole, catalogQueryBody(request)));
+                case CATALOG_COURSE_QUERY:
+                    return success(request, requireCatalogService().queryCourses(
+                            actorUserId, actorRole, catalogQueryBody(request)));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的学籍操作");
@@ -87,6 +103,21 @@ public final class AcademicRequestHandler {
             return ResponseMessage.failure(request.getRequestId(),
                     e.getResponseCode(), e.getMessage());
         }
+    }
+
+    private CurriculumCatalogService requireCatalogService() throws BusinessException {
+        if (catalogService == null) {
+            throw new BusinessException(ResponseCode.NOT_IMPLEMENTED, "培养方案目录尚未初始化");
+        }
+        return catalogService;
+    }
+
+    private CatalogQueryRequest catalogQueryBody(RequestMessage<?> request)
+            throws BusinessException {
+        if (request.getBody() == null) {
+            return null;
+        }
+        return body(request, CatalogQueryRequest.class);
     }
 
     private AcademicQueryRequest queryBody(RequestMessage<?> request) throws BusinessException {
