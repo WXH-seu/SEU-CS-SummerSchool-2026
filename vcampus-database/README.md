@@ -17,8 +17,15 @@ vcampus-database/vCampus.accdb
 - `tblBookCopy`：馆藏副本。
 - `tblBorrowRecord`：借阅记录。
 - `tblOperationLog`：登录与管理员操作审计日志。
+- `tblCatalogSource`：院系、专业和课程快照的官方来源。
+- `tblMajor`：本科专业目录。
+- `tblCourse`：培养方案课程目录。
+- `tblMajorCourse`：专业与课程的建议学年、学期及必修关系。
 
 数据库包含超级管理员、子系统管理员、学生和教师四个演示账号；与学生、教师账号关联的演示学籍，以及 10 种演示图书。演示学生账号有一条在借记录和一条逾期未还记录。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
+
+服务端还会幂等导入仓库内经审核的东南大学公开数据快照。重复启动只更新同一业务主键，
+不重复插入；完整来源和重新采集方式见 `docs/东南大学公开数据快照.md`。
 
 `tblBorrowRecord.userId` 以外键引用 `tblUser.userId`。借阅人统一使用登录账号标识，
 需要学号或工号时再通过学籍表的 `userId` 关联。

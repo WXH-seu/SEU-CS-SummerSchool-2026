@@ -3,6 +3,7 @@ package edu.seu.vcampus.server;
 import edu.seu.vcampus.server.config.ServerConfig;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
 import edu.seu.vcampus.server.dao.AccessBookRepository;
+import edu.seu.vcampus.server.dao.AccessCurriculumCatalogRepository;
 import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
@@ -36,6 +37,8 @@ public final class ServerApplication {
                 new AccessOperationLogRepository(config.getDatabasePath());
         AuditService auditService = new AuditService(logRepository);
         AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
+        AccessCurriculumCatalogRepository catalogRepository =
+                new AccessCurriculumCatalogRepository(database);
         AccessBookRepository bookRepository = new AccessBookRepository(database);
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService =
@@ -62,6 +65,10 @@ public final class ServerApplication {
         }, "vcampus-shutdown"));
         LOGGER.info("Access database: " + userRepository.getDatabaseFile());
         LOGGER.info("Library tables ready: " + database.getDatabaseFile());
+        LOGGER.info("SEU catalog ready: "
+                + catalogRepository.getImportSummary().getDepartmentCount() + " departments, "
+                + catalogRepository.getImportSummary().getMajorCount() + " majors, "
+                + catalogRepository.getImportSummary().getCourseCount() + " courses");
         server.start();
     }
 }
