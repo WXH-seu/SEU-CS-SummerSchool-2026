@@ -1,6 +1,7 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.AcademicClientService;
+import edu.seu.vcampus.client.ui.components.SeuButtons;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.CatalogCourseDto;
 import edu.seu.vcampus.common.dto.CatalogQueryRequest;
@@ -56,10 +57,10 @@ public final class AcademicManagementPanel extends JPanel {
     private final JTextField departmentId = new JTextField(7);
     private final JTextField classId = new JTextField(8);
     private final JTextField majorId = new JTextField(8);
-    private final JButton searchButton = new JButton("查询");
-    private final JButton addButton = new JButton("新增");
-    private final JButton editButton = new JButton("编辑");
-    private final JButton deleteButton = new JButton("删除");
+    private final JButton searchButton = SeuButtons.primary("查询");
+    private final JButton addButton = SeuButtons.secondary("新增");
+    private final JButton editButton = SeuButtons.secondary("编辑");
+    private final JButton deleteButton = SeuButtons.danger("删除");
     private final JLabel statusLabel = new JLabel("准备就绪");
     private final DefaultTableModel tableModel = new DefaultTableModel() {
         private static final long serialVersionUID = 1L;
