@@ -77,6 +77,8 @@ public final class SubSystems {
         switch (operation) {
             case STUDENT_QUERY:
             case STUDENT_SAVE:
+            case STUDENT_IMPORT:
+            case STUDENT_PROFILE_UPDATE:
             case STUDENT_DELETE:
             case TEACHER_QUERY:
             case TEACHER_SAVE:

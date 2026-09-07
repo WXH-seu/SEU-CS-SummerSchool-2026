@@ -18,6 +18,8 @@ public enum Operation implements Serializable {
     USER_AUDIT_QUERY,
     STUDENT_QUERY,
     STUDENT_SAVE,
+    STUDENT_IMPORT,
+    STUDENT_PROFILE_UPDATE,
     STUDENT_DELETE,
     TEACHER_QUERY,
     TEACHER_SAVE,

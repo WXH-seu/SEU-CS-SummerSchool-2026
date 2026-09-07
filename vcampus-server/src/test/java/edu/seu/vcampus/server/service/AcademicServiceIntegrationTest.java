@@ -4,6 +4,9 @@ import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.StudentImportRequest;
+import edu.seu.vcampus.common.dto.StudentImportResponse;
+import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
@@ -16,6 +19,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -84,5 +88,52 @@ public class AcademicServiceIntegrationTest {
         service.deleteDepartment("admin", SubSystemRole.ADMIN, "EE");
         assertFalse(service.queryDepartments("admin", SubSystemRole.ADMIN, false).isEmpty());
         assertTrue(service.queryStudents("admin", SubSystemRole.ADMIN, query).isEmpty());
+    }
+
+    @Test
+    public void studentUpdatesOnlyAllowedPersonalFields() throws Exception {
+        StudentDto before = service.queryStudents(
+                "student", SubSystemRole.STUDENT, null).get(0);
+        StudentDto updated = service.updateOwnProfile("student", SubSystemRole.STUDENT,
+                new StudentProfileUpdateRequest(
+                        "女", "2008-02-02", "13900000000", "new@vcampus.local"));
+
+        assertEquals(before.getStudentId(), updated.getStudentId());
+        assertEquals(before.getDepartmentId(), updated.getDepartmentId());
+        assertEquals(before.getClassId(), updated.getClassId());
+        assertEquals("女", updated.getGender());
+        assertEquals("13900000000", updated.getPhone());
+        assertEquals("new@vcampus.local", updated.getEmail());
+    }
+
+    @Test
+    public void autoAssignsLeastFilledClassAndBatchReportsFailures() throws Exception {
+        service.saveDepartment("admin", SubSystemRole.ADMIN,
+                new DepartmentDto("TEST", "自动分班测试学院", "", true));
+        service.saveClass("admin", SubSystemRole.ADMIN,
+                new SchoolClassDto("TEST-01", "自动分班测试1班",
+                        "TEST", 2026, "", 1, true));
+        service.saveClass("admin", SubSystemRole.ADMIN,
+                new SchoolClassDto("TEST-02", "自动分班测试2班",
+                        "TEST", 2026, "", 2, true));
+
+        service.saveStudent("admin", SubSystemRole.ADMIN, student("20269901", "甲"));
+        assertEquals("TEST-01", service.queryStudents("admin", SubSystemRole.ADMIN,
+                new AcademicQueryRequest("20269901", null, null, false))
+                .get(0).getClassId());
+
+        StudentImportResponse response = service.importStudents(
+                "admin", SubSystemRole.ADMIN, new StudentImportRequest(Arrays.asList(
+                        student("20269902", "乙"), student("20269901", "重复学号"))));
+        assertEquals(1, response.getImported());
+        assertEquals(1, response.getFailures().size());
+        assertEquals("TEST-02", service.queryStudents("admin", SubSystemRole.ADMIN,
+                new AcademicQueryRequest("20269902", null, null, false))
+                .get(0).getClassId());
+    }
+
+    private StudentDto student(String studentId, String name) {
+        return new StudentDto(studentId, null, name, "男", "2008-01-01",
+                "TEST", "", 2026, "在读", "", "");
     }
 }

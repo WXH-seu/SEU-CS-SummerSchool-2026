@@ -9,6 +9,9 @@ import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.MajorDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.StudentImportRequest;
+import edu.seu.vcampus.common.dto.StudentImportResponse;
+import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.message.RequestMessage;
@@ -39,6 +42,10 @@ public final class AcademicClientService {
 
     public List<DepartmentDto> queryDepartments(boolean activeOnly) throws IOException {
         AcademicQueryRequest query = new AcademicQueryRequest(null, null, null, activeOnly);
+        return queryDepartments(query);
+    }
+
+    public List<DepartmentDto> queryDepartments(AcademicQueryRequest query) throws IOException {
         return listRequest(Operation.DEPARTMENT_QUERY, query, DepartmentDto.class);
     }
 
@@ -57,6 +64,23 @@ public final class AcademicClientService {
 
     public void saveStudent(StudentDto student) throws IOException {
         request(Operation.STUDENT_SAVE, student);
+    }
+
+    public StudentImportResponse importStudents(List<StudentDto> students) throws IOException {
+        Object body = request(Operation.STUDENT_IMPORT,
+                new StudentImportRequest(students)).getBody();
+        if (!(body instanceof StudentImportResponse)) {
+            throw new IOException("服务器返回的导入结果格式不正确");
+        }
+        return (StudentImportResponse) body;
+    }
+
+    public StudentDto updateOwnProfile(StudentProfileUpdateRequest profile) throws IOException {
+        Object body = request(Operation.STUDENT_PROFILE_UPDATE, profile).getBody();
+        if (!(body instanceof StudentDto)) {
+            throw new IOException("服务器返回的学籍资料格式不正确");
+        }
+        return (StudentDto) body;
     }
 
     public void saveTeacher(TeacherDto teacher) throws IOException {

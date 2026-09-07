@@ -40,7 +40,8 @@ public class SubSystemRoleMappingTest {
     @Test
     public void mapsEveryAcademicOperationToStudentSubsystem() {
         Operation[] operations = {
-                Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_DELETE,
+                Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_IMPORT,
+                Operation.STUDENT_PROFILE_UPDATE, Operation.STUDENT_DELETE,
                 Operation.TEACHER_QUERY, Operation.TEACHER_SAVE, Operation.TEACHER_DELETE,
                 Operation.DEPARTMENT_QUERY, Operation.DEPARTMENT_SAVE,
                 Operation.DEPARTMENT_DELETE, Operation.CLASS_QUERY,

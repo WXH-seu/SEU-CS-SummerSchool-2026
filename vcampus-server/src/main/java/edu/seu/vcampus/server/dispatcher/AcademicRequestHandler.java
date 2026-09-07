@@ -6,6 +6,8 @@ import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.StudentImportRequest;
+import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
@@ -23,7 +25,8 @@ import java.util.EnumSet;
 /** Handles protocol operations owned by the academic module. */
 public final class AcademicRequestHandler {
     private static final EnumSet<Operation> OPERATIONS = EnumSet.of(
-            Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_DELETE,
+            Operation.STUDENT_QUERY, Operation.STUDENT_SAVE, Operation.STUDENT_IMPORT,
+            Operation.STUDENT_PROFILE_UPDATE, Operation.STUDENT_DELETE,
             Operation.TEACHER_QUERY, Operation.TEACHER_SAVE, Operation.TEACHER_DELETE,
             Operation.DEPARTMENT_QUERY, Operation.DEPARTMENT_SAVE, Operation.DEPARTMENT_DELETE,
             Operation.CLASS_QUERY, Operation.CLASS_SAVE, Operation.CLASS_DELETE,
@@ -57,6 +60,12 @@ public final class AcademicRequestHandler {
                 case STUDENT_SAVE:
                     service.saveStudent(actorUserId, actorRole, body(request, StudentDto.class));
                     return success(request, body(request, StudentDto.class));
+                case STUDENT_IMPORT:
+                    return success(request, service.importStudents(actorUserId, actorRole,
+                            body(request, StudentImportRequest.class)));
+                case STUDENT_PROFILE_UPDATE:
+                    return success(request, service.updateOwnProfile(actorUserId, actorRole,
+                            body(request, StudentProfileUpdateRequest.class)));
                 case STUDENT_DELETE:
                     service.deleteStudent(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
@@ -71,8 +80,8 @@ public final class AcademicRequestHandler {
                     return success(request, "OK");
                 case DEPARTMENT_QUERY:
                     AcademicQueryRequest departmentQuery = queryBody(request);
-                    return success(request, service.queryDepartments(actorUserId, actorRole,
-                            departmentQuery != null && departmentQuery.isActiveOnly()));
+                    return success(request, service.queryDepartments(
+                            actorUserId, actorRole, departmentQuery));
                 case DEPARTMENT_SAVE:
                     service.saveDepartment(
                             actorUserId, actorRole, body(request, DepartmentDto.class));

@@ -13,6 +13,7 @@ import java.util.List;
 public interface AcademicRepository {
     List<StudentDto> findStudents(AcademicQueryRequest query) throws SQLException;
     StudentDto findStudentByUserId(String userId) throws SQLException;
+    boolean studentExists(String studentId) throws SQLException;
     void saveStudent(StudentDto student) throws SQLException;
     boolean deleteStudent(String studentId) throws SQLException;
 
@@ -20,7 +21,7 @@ public interface AcademicRepository {
     void saveTeacher(TeacherDto teacher) throws SQLException;
     boolean deleteTeacher(String teacherId) throws SQLException;
 
-    List<DepartmentDto> findDepartments(boolean activeOnly) throws SQLException;
+    List<DepartmentDto> findDepartments(AcademicQueryRequest query) throws SQLException;
     void saveDepartment(DepartmentDto department) throws SQLException;
     boolean deleteDepartment(String departmentId) throws SQLException;
 
@@ -31,6 +32,7 @@ public interface AcademicRepository {
     boolean departmentExists(String departmentId) throws SQLException;
     boolean classExists(String classId) throws SQLException;
     boolean classBelongsToDepartment(String classId, String departmentId) throws SQLException;
+    String findAvailableClassId(String departmentId, int gradeYear) throws SQLException;
     boolean studentIsReferenced(String studentId) throws SQLException;
     boolean teacherIsReferenced(String teacherId) throws SQLException;
     boolean departmentIsReferenced(String departmentId) throws SQLException;
