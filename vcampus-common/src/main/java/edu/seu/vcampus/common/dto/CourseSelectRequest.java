@@ -2,17 +2,17 @@ package edu.seu.vcampus.common.dto;
 
 import java.io.Serializable;
 
-/** Request body used to select one course. */
+/** Request body used to select one course section. */
 public final class CourseSelectRequest implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private final String courseId;
+    private final String sectionId;
 
-    public CourseSelectRequest(String courseId) {
-        this.courseId = courseId;
+    public CourseSelectRequest(String sectionId) {
+        this.sectionId = sectionId;
     }
 
-    public String getCourseId() {
-        return courseId;
+    public String getSectionId() {
+        return sectionId;
     }
 }

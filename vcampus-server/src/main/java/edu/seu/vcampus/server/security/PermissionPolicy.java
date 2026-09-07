@@ -176,6 +176,7 @@ public final class PermissionPolicy {
         requireSubSystem(Operation.COURSE_QUERY);
         requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
         requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.COURSE_ROSTER, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
         requireSubSystem(Operation.LIBRARY_BOOK_QUERY);
         requireSubSystem(Operation.LIBRARY_BOOK_SAVE, SubSystemRole.ADMIN);
         requireSubSystem(Operation.LIBRARY_BOOK_DELETE, SubSystemRole.ADMIN);

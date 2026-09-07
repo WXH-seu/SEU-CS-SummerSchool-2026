@@ -269,7 +269,9 @@ public final class AccessAcademicRepository implements AcademicRepository {
 
     @Override
     public boolean teacherIsReferenced(String teacherId) throws SQLException {
-        return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0;
+        return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0
+                || countReferencesIfTableExists(
+                        "tblCourseSection", "teacherId", teacherId) > 0;
     }
 
     @Override
@@ -280,7 +282,9 @@ public final class AccessAcademicRepository implements AcademicRepository {
                 || countReferencesIfTableExists("tblMajor", "departmentId", departmentId) > 0
                 || countReferencesIfTableExists(
                         "tblCatalogCourse", "departmentId", departmentId) > 0
-                || countReferencesIfTableExists("tblCourse", "departmentId", departmentId) > 0;
+                || countReferencesIfTableExists("tblCourse", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists(
+                        "tblCourseSection", "departmentId", departmentId) > 0;
     }
 
     @Override
@@ -439,7 +443,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
     private int countReferencesIfTableExists(String table, String column, String value)
             throws SQLException {
         try (Connection connection = database.openConnection()) {
-            if (!tableExists(connection, table)) {
+            if (!tableExists(connection, table) || !columnExists(connection, table, column)) {
                 return 0;
             }
             String sql = "SELECT COUNT(*) FROM [" + table + "] WHERE [" + column + "]=?";
@@ -449,6 +453,19 @@ public final class AccessAcademicRepository implements AcademicRepository {
                     return result.next() ? result.getInt(1) : 0;
                 }
             }
+        }
+    }
+
+    private boolean columnExists(Connection connection, String tableName, String columnName)
+            throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, tableName, null)) {
+            while (columns.next()) {
+                if (columnName.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

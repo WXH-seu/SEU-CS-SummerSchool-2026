@@ -38,6 +38,9 @@ public class FullDatabaseBootstrapTest {
         assertTrue(count(database, "tblProduct") >= 6);
         assertTrue(hasForeignKey(database, "tblStudent", "userId", "tblUser"));
         assertTrue(hasForeignKey(database, "tblCourseEnrollment", "studentId", "tblStudent"));
+        assertTrue(hasForeignKey(database, "tblCourseEnrollment", "sectionId",
+                "tblCourseSection"));
+        assertTrue(hasForeignKey(database, "tblCourseSection", "teacherId", "tblTeacher"));
         assertTrue(hasForeignKey(database, "tblBorrowRecord", "userId", "tblUser"));
         assertTrue(hasForeignKey(database, "tblCartItem", "userId", "tblUser"));
         assertTrue(hasForeignKey(database, "tblOrder", "userId", "tblUser"));
