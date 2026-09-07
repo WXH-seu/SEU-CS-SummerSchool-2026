@@ -47,8 +47,8 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * 账号管理模块：查看当前账号、修改显示名与密码、注销账号。
- * 超级管理员额外拥有用户管理与操作日志页签。
+ * 账号管理模块：查看当前账号、修改显示名与密码；普通用户可注销账号。
+ * 超级管理员额外拥有用户管理与操作日志页签，不显示刷新按钮与注销页签。
  */
 public final class AccountPanel extends JPanel {
     private static final long serialVersionUID = 1L;
@@ -119,7 +119,9 @@ public final class AccountPanel extends JPanel {
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("我的账号", createProfileTab());
         tabs.addTab("修改资料", createEditTab());
-        tabs.addTab("注销账号", createDeregisterTab());
+        if (session.getRole() != Role.SUPER_ADMIN) {
+            tabs.addTab("注销账号", createDeregisterTab());
+        }
         if (session.getRole() == Role.SUPER_ADMIN) {
             tabs.addTab("用户管理", createUserAdminTab());
             tabs.addTab("操作日志", createAuditTab());
@@ -159,17 +161,21 @@ public final class AccountPanel extends JPanel {
         constraints.gridx = 1;
         panel.add(scopeLabel, constraints);
 
-        JButton refreshButton = new JButton("刷新");
         constraints.gridx = 0;
-        constraints.gridy = 5;
         constraints.gridwidth = 2;
         constraints.anchor = GridBagConstraints.CENTER;
-        panel.add(refreshButton, constraints);
-        refreshButton.addActionListener(event -> refreshAccount());
+        int nextRow = 5;
+        if (session.getRole() != Role.SUPER_ADMIN) {
+            JButton refreshButton = new JButton("刷新");
+            constraints.gridy = nextRow;
+            panel.add(refreshButton, constraints);
+            refreshButton.addActionListener(event -> refreshAccount());
+            nextRow++;
+        }
 
         JLabel tip = new JLabel("账号、角色、权限范围与状态由系统统一管理，不可自行修改。");
         tip.setFont(SeuTheme.smallFont());
-        constraints.gridy = 6;
+        constraints.gridy = nextRow;
         panel.add(tip, constraints);
 
         refreshAccount();
