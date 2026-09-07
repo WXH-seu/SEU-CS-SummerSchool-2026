@@ -94,6 +94,7 @@ public final class SubSystems {
             case COURSE_SELECT:
             case COURSE_DROP:
             case SCHEDULE_QUERY:
+            case COURSE_ROSTER:
                 return SubSystem.COURSE;
             case LIBRARY_BOOK_QUERY:
             case LIBRARY_BOOK_SAVE:

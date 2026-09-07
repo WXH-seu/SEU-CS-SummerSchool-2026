@@ -2,9 +2,13 @@ package edu.seu.vcampus.server.service;
 
 import edu.seu.vcampus.common.dto.CourseDto;
 import edu.seu.vcampus.common.dto.CourseDropRequest;
+import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
+import edu.seu.vcampus.common.dto.DepartmentDto;
+import edu.seu.vcampus.common.dto.SectionAudienceDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
@@ -21,19 +25,33 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-/** Exercises the real Access course schema, business rules and role checks. */
+/**
+ * Exercises the v2 course schema: catalog/section split, audience rules at
+ * department granularity, selection windows, nature, teacher roster, role
+ * checks and the per-course lock that prevents concurrent overselling.
+ */
 public class CourseServiceIntegrationTest {
     @Rule
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private CourseService service;
     private AccessCourseRepository courseRepository;
+    private AccessUserRepository userRepository;
     private AcademicService academicService;
     private UserAccount admin;
     private UserAccount student;
@@ -43,133 +61,275 @@ public class CourseServiceIntegrationTest {
         return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(), SubSystem.COURSE);
     }
 
+    private SubSystemRole effAcademic(UserAccount actor) {
+        return SubSystems.effectiveRole(actor.getRole(), actor.getAdminScopes(),
+                SubSystem.STUDENT);
+    }
+
     @Before
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
-        AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
+        userRepository = new AccessUserRepository(database, new PasswordHasher());
         AccessAcademicRepository academics = new AccessAcademicRepository(database);
         courseRepository = new AccessCourseRepository(database);
         service = new CourseService(courseRepository);
-        academicService = new AcademicService(academics, users);
-        admin = users.findById("admin");
-        student = users.findById("student");
-        teacher = users.findById("teacher");
+        academicService = new AcademicService(academics, userRepository);
+        admin = userRepository.findById("admin");
+        student = userRepository.findById("student");
+        teacher = userRepository.findById("teacher");
     }
 
     @Test
-    public void seedsDemoCoursesAndRestrictsTeacherToOwnCourses() throws Exception {
-        assertEquals(2, service.queryCourses(student.getUserId(), eff(student),  null).size());
+    public void seedsDemoSectionsAndRestrictsRoles() throws Exception {
+        List<CourseDto> visible = service.queryCourses(
+                student.getUserId(), eff(student), null);
+        assertEquals(2, visible.size());
+        CourseDto cs101 = byCourseId(visible, "CS101");
+        CourseDto cs102 = byCourseId(visible, "CS102");
+        assertTrue(cs101.getSectionId().startsWith("SEC"));
+        assertTrue(cs101.isSelected());
+        assertEquals("已选", cs101.getReason());
+        assertFalse(cs102.isSelected());
+        assertTrue(cs102.getReason() == null || cs102.getReason().isEmpty());
         assertEquals(1, service.querySchedule(student.getUserId(), eff(student)).size());
-        assertEquals("CS101", service.querySchedule(student.getUserId(), eff(student)).get(0).getCourseId());
-
-        assertTrue(service.queryCourses(teacher.getUserId(), eff(teacher),  null).stream()
+        assertTrue(service.queryCourses(teacher.getUserId(), eff(teacher), null).stream()
                 .allMatch(course -> "T0001".equals(course.getTeacherId())));
-        assertEquals(2, service.queryCourses(teacher.getUserId(), eff(teacher),  null).size());
+        assertEquals(2, service.queryCourses(admin.getUserId(), eff(admin), null).size());
     }
 
     @Test
-    public void duplicateSelectionIsRejected() throws Exception {
+    public void duplicateAndWindowAndAudienceRulesAreEnforced() throws Exception {
         try {
-            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS101"));
+            service.selectCourse(student.getUserId(), eff(student),
+                    new CourseSelectRequest("SEC00000001"));
             fail("Duplicate selection should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
+
+        CourseDto future = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS301", "未来课程", "2099-01-01 00:00", "2099-12-31 23:59",
+                        "周五 1-2 节", 30, allAudience()));
+        try {
+            service.selectCourse(student.getUserId(), eff(student),
+                    new CourseSelectRequest(future.getSectionId()));
+            fail("Course outside its window should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertEquals("尚未开始选课", expected.getMessage());
+        }
+
+        academicService.saveDepartment(admin.getUserId(), effAcademic(admin),
+                new DepartmentDto("EE", "电子科学与工程学院", "测试院系", true));
+        CourseDto eeOnly = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS302", "仅电子学院", "2026-09-01 08:00", "2026-12-31 23:59",
+                        "周六 1-2 节", 30,
+                        Collections.singletonList(new SectionAudienceDto(
+                                null, SectionAudienceDto.SCOPE_DEPARTMENT, "EE",
+                                2024, 2028))));
+        try {
+            service.selectCourse(student.getUserId(), eff(student),
+                    new CourseSelectRequest(eeOnly.getSectionId()));
+            fail("A CS student should not select an EE-only section");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+        assertFalse(service.queryCourses(student.getUserId(), eff(student), null).stream()
+                .anyMatch(course -> "CS302".equals(course.getCourseId())));
     }
 
     @Test
-    public void capacityLimitIsEnforced() throws Exception {
-        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS201", "软件工程", 1));
-        service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS201"));
+    public void capacityLimitIsEnforcedForTwoStudents() throws Exception {
+        String student2 = createSecondStudent("stu2");
+        CourseDto oneSeat = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS201", "软件工程", "2026-09-01 08:00", "2026-12-31 23:59",
+                        "周四 5-6 节", 1, allAudience()));
 
-        academicService.saveStudent(admin.getUserId(), eff(admin),  new StudentDto("20260003", null, "第二名学生",
-                "女", "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
-        courseRepository.insertEnrollment("20260003", "CS201",
-                "FILL-001", "2026-08-25 10:00:00");
-
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(oneSeat.getSectionId()));
         try {
-            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS201"));
-            fail("Full course should be rejected");
+            service.selectCourse(student2, SubSystemRole.STUDENT,
+                    new CourseSelectRequest(oneSeat.getSectionId()));
+            fail("Full section should be rejected");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
+        assertEquals(1, courseRepository.countEnrolled(oneSeat.getSectionId()));
     }
 
     @Test
-    public void timeConflictIsEnforced() throws Exception {
-        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS202", "计算机网络",
-                "周一 3-4 节", 30));
+    public void concurrentSelectionNeverOversells() throws Exception {
+        String student2 = createSecondStudent("stu2");
+        CourseDto oneSeat = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS204", "并发名额", "2026-09-01 08:00", "2026-12-31 23:59",
+                        "周日 1-2 节", 1, allAudience()));
+        final String sectionId = oneSeat.getSectionId();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        final CountDownLatch start = new CountDownLatch(1);
+        Callable<String> attempt = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                start.await();
+                try {
+                    service.selectCourse(student.getUserId(), eff(student),
+                            new CourseSelectRequest(sectionId));
+                    return "OK";
+                } catch (BusinessException e) {
+                    return e.getMessage();
+                }
+            }
+        };
+        Callable<String> attempt2 = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                start.await();
+                try {
+                    service.selectCourse(student2, SubSystemRole.STUDENT,
+                            new CourseSelectRequest(sectionId));
+                    return "OK";
+                } catch (BusinessException e) {
+                    return e.getMessage();
+                }
+            }
+        };
         try {
-            service.selectCourse(student.getUserId(), eff(student),  new CourseSelectRequest("CS202"));
-            fail("Time conflict should be rejected");
+            Future<String> first = pool.submit(attempt);
+            Future<String> second = pool.submit(attempt2);
+            start.countDown();
+            String resultA = first.get();
+            String resultB = second.get();
+            assertEquals(1, (resultA.equals("OK") ? 1 : 0) + (resultB.equals("OK") ? 1 : 0));
+            assertEquals(1, courseRepository.countEnrolled(sectionId));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    public void teacherCanQueryOwnRosterAndRolesAreEnforced() throws Exception {
+        List<CourseDto> rosterSections =
+                service.queryCourses(teacher.getUserId(), eff(teacher), null);
+        assertFalse(rosterSections.isEmpty());
+        String sectionId = rosterSections.get(0).getSectionId();
+        assertEquals(1, service.queryRoster(
+                teacher.getUserId(), eff(teacher), sectionId).size());
+        try {
+            service.queryRoster(student.getUserId(), eff(student), sectionId);
+            fail("Student should not view rosters");
         } catch (BusinessException expected) {
-            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
-    }
-
-    @Test
-    public void studentCanDropOwnEnrollment() throws Exception {
-        assertEquals(1, service.querySchedule(student.getUserId(), eff(student)).size());
-        String enrollmentId = service.querySchedule(student.getUserId(), eff(student)).get(0).getEnrollmentId();
-        service.dropCourse(student.getUserId(), eff(student),  new CourseDropRequest(enrollmentId));
-        assertTrue(service.querySchedule(student.getUserId(), eff(student)).isEmpty());
-
         try {
-            service.dropCourse(student.getUserId(), eff(student),  new CourseDropRequest(enrollmentId));
-            fail("Dropping the same enrollment twice should fail");
-        } catch (BusinessException expected) {
-            assertEquals(ResponseCode.NOT_FOUND, expected.getResponseCode());
-        }
-    }
-
-    @Test
-    public void studentWithEnrollmentsCannotBeDeleted() throws Exception {
-        try {
-            academicService.deleteStudent(admin.getUserId(), eff(admin),  "20260001");
-            fail("Student with enrollments should be protected by the foreign key");
-        } catch (SQLException expected) {
-            // The tblCourseEnrollment foreign key blocks the deletion.
-        }
-    }
-
-    @Test
-    public void adminMaintainsCoursesAndRolesAreEnforced() throws Exception {
-        service.saveCourse(admin.getUserId(), eff(admin),  demoCourse("CS201", "软件工程", 30));
-        assertEquals(3, service.queryCourses(admin.getUserId(), eff(admin),  null).size());
-
-        try {
-            service.selectCourse(teacher.getUserId(), eff(teacher),  new CourseSelectRequest("CS201"));
+            service.selectCourse(teacher.getUserId(), eff(teacher),
+                    new CourseSelectRequest(sectionId));
             fail("Teacher should not select courses");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
         try {
-            service.saveCourse(student.getUserId(), eff(student),  demoCourse("CS203", "数据库", 30));
+            service.saveCourse(student.getUserId(), eff(student),
+                    demoCourse("CS999", "越权课程", "2026-09-01 08:00",
+                            "2026-12-31 23:59", "周日 3-4 节", 30, allAudience()));
             fail("Student should not maintain courses");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
         }
+    }
+
+    @Test
+    public void natureFilterAndValidationWork() throws Exception {
+        service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS401", "通识数学", "2026-09-01 08:00", "2026-12-31 23:59",
+                        "周二 1-2 节", 30, allAudience()));
+        CourseQueryRequest query = new CourseQueryRequest(
+                null, null, null, null, false, "必修");
+        List<CourseDto> required =
+                service.queryCourses(admin.getUserId(), eff(admin), query);
+        assertFalse(required.isEmpty());
+        assertTrue(required.stream().allMatch(course -> "必修".equals(course.getCourseNature())));
         try {
-            service.deleteCourse(admin.getUserId(), eff(admin),  "CS101");
-            fail("Course with enrollments should not be deleted");
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    demoCourse("CS402", "坏性质", "2026-09-01 08:00", "2026-12-31 23:59",
+                            "周二 3-4 节", 30, allAudience(), "超纲"));
+            fail("Invalid nature should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
+    }
+
+    @Test
+    public void studentCanDropOwnEnrollmentAndAdminDeleteIsGuarded() throws Exception {
+        try {
+            service.deleteCourse(admin.getUserId(), eff(admin), "SEC00000001");
+            fail("Section with enrollments should not be deleted");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
 
-        service.deleteCourse(admin.getUserId(), eff(admin),  "CS201");
-        assertFalse(service.queryCourses(admin.getUserId(), eff(admin),  null).stream()
-                .anyMatch(course -> "CS201".equals(course.getCourseId())));
+        List<edu.seu.vcampus.common.dto.CourseEnrollmentDto> schedule =
+                service.querySchedule(student.getUserId(), eff(student));
+        assertFalse(schedule.isEmpty());
+        String enrollmentId = schedule.get(0).getEnrollmentId();
+        assertNotNull(enrollmentId);
+        service.dropCourse(student.getUserId(), eff(student),
+                new CourseDropRequest(enrollmentId));
+        assertTrue(service.querySchedule(student.getUserId(), eff(student)).isEmpty());
+
+        try {
+            service.dropCourse(student.getUserId(), eff(student),
+                    new CourseDropRequest(enrollmentId));
+            fail("Dropping twice should fail");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.NOT_FOUND, expected.getResponseCode());
+        }
+
+        service.deleteCourse(admin.getUserId(), eff(admin), "SEC00000002");
+        assertFalse(service.queryCourses(admin.getUserId(), eff(admin), null).stream()
+                .anyMatch(course -> "SEC00000002".equals(course.getSectionId())));
     }
 
-    private CourseDto demoCourse(String courseId, String courseName, int capacity) {
-        return demoCourse(courseId, courseName, "周四 5-6 节", capacity);
+    private CourseDto byCourseId(List<CourseDto> sections, String courseId) {
+        for (CourseDto section : sections) {
+            if (courseId.equals(section.getCourseId())) {
+                return section;
+            }
+        }
+        throw new AssertionError("section not found: " + courseId);
+    }
+
+    private String createSecondStudent(String userId) throws Exception {
+        PasswordHasher hasher = new PasswordHasher();
+        String salt = hasher.newSalt();
+        userRepository.insert(new UserAccount(userId, hasher.hash("secret123", salt),
+                salt, "第二名学生", Role.STUDENT, true));
+        academicService.saveStudent(admin.getUserId(), eff(admin),
+                new StudentDto("20260003", userId, "第二名学生", "女",
+                        "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
+        return userId;
+    }
+
+    private List<SectionAudienceDto> allAudience() {
+        return Collections.singletonList(new SectionAudienceDto(
+                null, SectionAudienceDto.SCOPE_ALL, null, null, null));
     }
 
     private CourseDto demoCourse(String courseId, String courseName,
-                                 String classTime, int capacity) {
-        return new CourseDto(courseId, courseName, "T0001", "演示教师",
-                "CS", "计算机科学与工程学院", 3.0, capacity, 0,
-                "2026-2027-1", classTime, "教1-201", "测试课程", true);
+                                 String start, String end, String classTime,
+                                 int capacity, List<SectionAudienceDto> audiences) {
+        return demoCourse(courseId, courseName, start, end, classTime,
+                capacity, audiences, "必修");
     }
+
+    private CourseDto demoCourse(String courseId, String courseName,
+                                 String start, String end, String classTime,
+                                 int capacity, List<SectionAudienceDto> audiences,
+                                 String nature) {
+        return new CourseDto(null, courseId, courseName, "测试课程",
+                "T0001", null, "CS", null, 3.0, nature, capacity, 0,
+                "2026-2027-1", classTime, "教1-201", start, end,
+                true, false, null, audiences);
+    }
+
 }

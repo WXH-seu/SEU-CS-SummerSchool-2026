@@ -21,7 +21,8 @@ import java.util.EnumSet;
 public final class CourseRequestHandler {
     private static final EnumSet<Operation> OPERATIONS = EnumSet.of(
             Operation.COURSE_QUERY, Operation.COURSE_SAVE, Operation.COURSE_DELETE,
-            Operation.COURSE_SELECT, Operation.COURSE_DROP, Operation.SCHEDULE_QUERY);
+            Operation.COURSE_SELECT, Operation.COURSE_DROP, Operation.SCHEDULE_QUERY,
+            Operation.COURSE_ROSTER);
 
     private final CourseService service;
 
@@ -50,13 +51,16 @@ public final class CourseRequestHandler {
                             body(request, CourseDropRequest.class));
                     return success(request, "OK");
                 case COURSE_SAVE:
-                    service.saveCourse(actorUserId, actorRole, body(request, CourseDto.class));
-                    return success(request, body(request, CourseDto.class));
+                    return success(request, service.saveCourse(actorUserId, actorRole,
+                            body(request, CourseDto.class)));
                 case COURSE_DELETE:
                     service.deleteCourse(actorUserId, actorRole, idBody(request));
                     return success(request, "OK");
                 case SCHEDULE_QUERY:
                     return success(request, service.querySchedule(actorUserId, actorRole));
+                case COURSE_ROSTER:
+                    return success(request, service.queryRoster(
+                            actorUserId, actorRole, idBody(request)));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的选课操作");

@@ -3,30 +3,36 @@ package edu.seu.vcampus.server.dao;
 import edu.seu.vcampus.common.dto.CourseDto;
 import edu.seu.vcampus.common.dto.CourseEnrollmentDto;
 import edu.seu.vcampus.common.dto.CourseQueryRequest;
+import edu.seu.vcampus.common.dto.SectionRosterEntry;
 import edu.seu.vcampus.common.dto.StudentDto;
 
 import java.sql.SQLException;
 import java.util.List;
 
-/** Persistence contract for course selection. */
+/** Persistence contract for course sections and their enrollments. */
 public interface CourseRepository {
-    List<CourseDto> findCourses(CourseQueryRequest query) throws SQLException;
+    List<CourseDto> findSections(CourseQueryRequest query) throws SQLException;
 
-    CourseDto findCourseById(String courseId) throws SQLException;
+    CourseDto findSectionById(String sectionId) throws SQLException;
 
-    void saveCourse(CourseDto course) throws SQLException;
+    /** Upserts catalog + section + audience rules; returns the saved section. */
+    CourseDto saveSection(CourseDto section) throws SQLException;
 
-    boolean deleteCourse(String courseId) throws SQLException;
+    boolean deleteSection(String sectionId) throws SQLException;
 
-    boolean courseHasEnrollments(String courseId) throws SQLException;
+    boolean sectionHasEnrollments(String sectionId) throws SQLException;
 
-    boolean isEnrolled(String studentId, String courseId) throws SQLException;
+    List<SectionRosterEntry> findRoster(String sectionId) throws SQLException;
 
-    int countEnrolled(String courseId) throws SQLException;
+    boolean isEnrolled(String studentId, String sectionId) throws SQLException;
+
+    boolean isEnrolledInCourse(String studentId, String courseId) throws SQLException;
+
+    int countEnrolled(String sectionId) throws SQLException;
 
     boolean hasTimeConflict(String studentId, String classTime) throws SQLException;
 
-    void insertEnrollment(String studentId, String courseId,
+    void insertEnrollment(String studentId, String sectionId,
                           String enrollmentId, String enrollTime) throws SQLException;
 
     boolean deleteEnrollment(String studentId, String enrollmentId) throws SQLException;

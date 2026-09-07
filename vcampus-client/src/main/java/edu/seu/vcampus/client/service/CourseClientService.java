@@ -7,6 +7,7 @@ import edu.seu.vcampus.common.dto.CourseEnrollmentDto;
 import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.SectionRosterEntry;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
@@ -34,8 +35,8 @@ public final class CourseClientService {
         return listRequest(Operation.SCHEDULE_QUERY, null, CourseEnrollmentDto.class);
     }
 
-    public void selectCourse(String courseId) throws IOException {
-        request(Operation.COURSE_SELECT, new CourseSelectRequest(courseId));
+    public void selectCourse(String sectionId) throws IOException {
+        request(Operation.COURSE_SELECT, new CourseSelectRequest(sectionId));
     }
 
     public void dropCourse(String enrollmentId) throws IOException {
@@ -46,8 +47,13 @@ public final class CourseClientService {
         request(Operation.COURSE_SAVE, course);
     }
 
-    public void deleteCourse(String courseId) throws IOException {
-        request(Operation.COURSE_DELETE, new EntityIdRequest(courseId));
+    public void deleteCourse(String sectionId) throws IOException {
+        request(Operation.COURSE_DELETE, new EntityIdRequest(sectionId));
+    }
+
+    public List<SectionRosterEntry> queryRoster(String sectionId) throws IOException {
+        return listRequest(Operation.COURSE_ROSTER, new EntityIdRequest(sectionId),
+                SectionRosterEntry.class);
     }
 
     private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)

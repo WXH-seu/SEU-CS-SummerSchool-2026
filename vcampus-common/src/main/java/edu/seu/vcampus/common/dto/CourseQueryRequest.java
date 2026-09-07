@@ -11,14 +11,21 @@ public final class CourseQueryRequest implements Serializable {
     private final String teacherId;
     private final String semesterName;
     private final boolean activeOnly;
+    private final String nature;
 
     public CourseQueryRequest(String keyword, String departmentId, String teacherId,
                               String semesterName, boolean activeOnly) {
+        this(keyword, departmentId, teacherId, semesterName, activeOnly, null);
+    }
+
+    public CourseQueryRequest(String keyword, String departmentId, String teacherId,
+                              String semesterName, boolean activeOnly, String nature) {
         this.keyword = keyword;
         this.departmentId = departmentId;
         this.teacherId = teacherId;
         this.semesterName = semesterName;
         this.activeOnly = activeOnly;
+        this.nature = nature;
     }
 
     public String getKeyword() {
@@ -39,5 +46,9 @@ public final class CourseQueryRequest implements Serializable {
 
     public boolean isActiveOnly() {
         return activeOnly;
+    }
+
+    public String getNature() {
+        return nature;
     }
 }

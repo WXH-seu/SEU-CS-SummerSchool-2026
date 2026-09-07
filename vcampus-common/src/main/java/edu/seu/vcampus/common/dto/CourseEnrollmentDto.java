@@ -7,20 +7,25 @@ public final class CourseEnrollmentDto implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private final String enrollmentId;
+    private final String sectionId;
     private final String courseId;
     private final String courseName;
+    private final String courseNature;
     private final String teacherName;
     private final double credit;
     private final String classTime;
     private final String location;
     private final String enrollTime;
 
-    public CourseEnrollmentDto(String enrollmentId, String courseId, String courseName,
-                               String teacherName, double credit, String classTime,
-                               String location, String enrollTime) {
+    public CourseEnrollmentDto(String enrollmentId, String sectionId, String courseId,
+                               String courseName, String courseNature, String teacherName,
+                               double credit, String classTime, String location,
+                               String enrollTime) {
         this.enrollmentId = enrollmentId;
+        this.sectionId = sectionId;
         this.courseId = courseId;
         this.courseName = courseName;
+        this.courseNature = courseNature;
         this.teacherName = teacherName;
         this.credit = credit;
         this.classTime = classTime;
@@ -32,12 +37,20 @@ public final class CourseEnrollmentDto implements Serializable {
         return enrollmentId;
     }
 
+    public String getSectionId() {
+        return sectionId;
+    }
+
     public String getCourseId() {
         return courseId;
     }
 
     public String getCourseName() {
         return courseName;
+    }
+
+    public String getCourseNature() {
+        return courseNature;
     }
 
     public String getTeacherName() {
