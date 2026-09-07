@@ -3,7 +3,6 @@ package edu.seu.vcampus.client.ui;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserClientService;
-import edu.seu.vcampus.client.ui.components.SeuButtons;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.enums.Role;
@@ -51,7 +50,7 @@ public final class RegisterFrame extends JFrame {
             new String[]{"学生", "教师", "子系统管理员", "超级管理员"});
     private final JPanel scopePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
     private final List<JCheckBox> scopeChecks = new ArrayList<JCheckBox>();
-    private final JButton registerButton = SeuButtons.primary("创建账号");
+    private final JButton registerButton = new JButton("创建账号");
     private final JLabel statusLabel = new JLabel(" ");
 
     public RegisterFrame(ClientConnection connection, String sessionToken, AccountFrame parent) {
@@ -136,7 +135,7 @@ public final class RegisterFrame extends JFrame {
         buttonConstraints.gridy = 0;
         buttons.add(registerButton, buttonConstraints);
         buttonConstraints.gridx = 1;
-        JButton cancelButton = SeuButtons.secondary("关闭");
+        JButton cancelButton = new JButton("关闭");
         buttons.add(cancelButton, buttonConstraints);
         buttonConstraints.gridx = 0;
         buttonConstraints.gridy = 1;

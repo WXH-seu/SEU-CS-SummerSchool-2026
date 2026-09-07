@@ -2,6 +2,12 @@ package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.AcademicClientService;
 import edu.seu.vcampus.client.ui.components.SeuButtons;
+import edu.seu.vcampus.client.ui.components.SeuFields;
+import edu.seu.vcampus.client.ui.components.SeuLabels;
+import edu.seu.vcampus.client.ui.components.SeuMessages;
+import edu.seu.vcampus.client.ui.components.SeuPanels;
+import edu.seu.vcampus.client.ui.components.SeuTables;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.CatalogCourseDto;
 import edu.seu.vcampus.common.dto.CatalogQueryRequest;
@@ -12,21 +18,15 @@ import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
-import javax.swing.BorderFactory;
-import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,77 +52,69 @@ public final class AcademicManagementPanel extends JPanel {
 
     private final AcademicClientService service;
     private final SubSystemRole effectiveRole;
-    private final JComboBox<EntityType> entityType = new JComboBox<EntityType>(EntityType.values());
-    private final JTextField keyword = new JTextField(10);
-    private final JTextField departmentId = new JTextField(7);
-    private final JTextField classId = new JTextField(8);
-    private final JTextField majorId = new JTextField(8);
+    private final JComboBox<EntityType> entityType = SeuFields.combo(EntityType.values());
+    private final JTextField keyword = SeuFields.text(12);
+    private final JTextField departmentId = SeuFields.text(7);
+    private final JTextField classId = SeuFields.text(8);
+    private final JTextField majorId = SeuFields.text(8);
     private final JButton searchButton = SeuButtons.primary("查询");
     private final JButton addButton = SeuButtons.secondary("新增");
     private final JButton editButton = SeuButtons.secondary("编辑");
     private final JButton deleteButton = SeuButtons.danger("删除");
-    private final JLabel statusLabel = new JLabel("准备就绪");
-    private final DefaultTableModel tableModel = new DefaultTableModel() {
-        private static final long serialVersionUID = 1L;
-
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(tableModel);
+    private final JLabel statusLabel = SeuLabels.status("准备就绪");
+    private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[0]);
+    private final JTable table = SeuTables.create(tableModel);
     private List<?> rows = new ArrayList<Object>();
 
     public AcademicManagementPanel(AcademicClientService service, SubSystemRole effectiveRole) {
-        super(new BorderLayout(0, 12));
+        super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
         if (effectiveRole == null) {
             throw new IllegalArgumentException("effectiveRole is required");
         }
         this.effectiveRole = effectiveRole;
-        setBorder(BorderFactory.createEmptyBorder(22, 24, 22, 24));
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
         buildUi();
         bindActions();
         refreshRows();
     }
 
     private void buildUi() {
-        JPanel heading = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("学籍管理");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        heading.add(title, BorderLayout.WEST);
-        heading.add(statusLabel, BorderLayout.EAST);
+        SeuFields.setPlaceholder(keyword, "编号 / 姓名 / 名称");
+        SeuFields.setPlaceholder(departmentId, "如：CS");
+        SeuFields.setPlaceholder(classId, "班级编号");
+        SeuFields.setPlaceholder(majorId, "如：080901");
 
-        JPanel filterRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filterRow.add(new JLabel("数据类型"));
+        JPanel filterRow = SeuPanels.toolbar();
+        filterRow.add(SeuLabels.field("数据类型"));
         filterRow.add(entityType);
-        filterRow.add(new JLabel("关键字"));
+        filterRow.add(SeuLabels.field("关键字"));
         filterRow.add(keyword);
-        filterRow.add(new JLabel("院系"));
+        filterRow.add(SeuLabels.field("院系"));
         filterRow.add(departmentId);
-        filterRow.add(new JLabel("班级"));
+        filterRow.add(SeuLabels.field("班级"));
         filterRow.add(classId);
-        filterRow.add(new JLabel("专业代码"));
+        filterRow.add(SeuLabels.field("专业代码"));
         filterRow.add(majorId);
         filterRow.add(searchButton);
 
-        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel actionRow = SeuPanels.toolbar();
         actionRow.add(addButton);
         actionRow.add(editButton);
         actionRow.add(deleteButton);
 
-        JPanel tools = new JPanel();
-        tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
-        tools.add(filterRow);
-        tools.add(actionRow);
-
-        JPanel north = new JPanel(new BorderLayout(0, 12));
-        north.add(heading, BorderLayout.NORTH);
-        north.add(tools, BorderLayout.SOUTH);
+        JPanel north = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
+        north.setOpaque(false);
+        north.add(SeuPanels.heading("学籍管理 · 学籍与培养方案（"
+                + effectiveRole.getDisplayName() + "）", statusLabel), BorderLayout.NORTH);
+        north.add(effectiveRole == SubSystemRole.ADMIN
+                ? SeuPanels.stack(filterRow, actionRow) : filterRow, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
-        table.setFillsViewportHeight(true);
-        table.setAutoCreateRowSorter(true);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+
+        JPanel card = SeuPanels.card();
+        card.add(SeuTables.scroll(table), BorderLayout.CENTER);
+        add(card, BorderLayout.CENTER);
 
         boolean administrator = effectiveRole == SubSystemRole.ADMIN;
         addButton.setVisible(administrator);
@@ -288,8 +280,7 @@ public final class AcademicManagementPanel extends JPanel {
     private Object selectedRecord() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
-            JOptionPane.showMessageDialog(this, "请先选择一条记录", "提示",
-                    JOptionPane.INFORMATION_MESSAGE);
+            SeuMessages.info(this, "请先选择一条记录");
             return null;
         }
         return rows.get(table.convertRowIndexToModel(viewRow));
@@ -354,9 +345,7 @@ public final class AcademicManagementPanel extends JPanel {
             return;
         }
         final Object selected = selectedRecord();
-        if (selected == null || JOptionPane.showConfirmDialog(this,
-                "确定删除所选记录吗？", "确认删除", JOptionPane.YES_NO_OPTION)
-                != JOptionPane.YES_OPTION) {
+        if (selected == null || !SeuMessages.confirm(this, "确定删除所选记录吗？")) {
             return;
         }
         runMutation("正在删除……", new IoAction() {
@@ -430,7 +419,7 @@ public final class AcademicManagementPanel extends JPanel {
     }
 
     private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "操作失败", JOptionPane.ERROR_MESSAGE);
+        SeuMessages.error(this, message);
     }
 
     private interface IoAction {

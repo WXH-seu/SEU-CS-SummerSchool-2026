@@ -5,7 +5,6 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserCsvParser;
 import edu.seu.vcampus.client.service.UserClientService;
-import edu.seu.vcampus.client.ui.components.SeuButtons;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.UserImportFailure;
@@ -154,7 +153,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(scopeLabel, constraints);
 
-        JButton refreshButton = SeuButtons.secondary("刷新");
+        JButton refreshButton = new JButton("刷新");
         constraints.gridx = 0;
         constraints.gridy = 5;
         constraints.gridwidth = 2;
@@ -189,7 +188,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(displayNameField, constraints);
         constraints.gridy = 2;
-        JButton saveNameButton = SeuButtons.primary("保存显示名");
+        JButton saveNameButton = new JButton("保存显示名");
         panel.add(saveNameButton, constraints);
         saveNameButton.addActionListener(event -> updateProfile());
 
@@ -215,7 +214,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(confirmPasswordField, constraints);
         constraints.gridy = 7;
-        JButton changePasswordButton = SeuButtons.primary("修改密码");
+        JButton changePasswordButton = new JButton("修改密码");
         panel.add(changePasswordButton, constraints);
         changePasswordButton.addActionListener(event -> changePassword());
         return panel;
@@ -239,7 +238,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(deletePasswordField, constraints);
         constraints.gridy = 2;
-        JButton deleteButton = SeuButtons.danger("注销账号");
+        JButton deleteButton = new JButton("注销账号");
         panel.add(deleteButton, constraints);
         deleteButton.addActionListener(event -> deleteAccount());
 
@@ -259,11 +258,11 @@ public final class AccountFrame extends JFrame {
         panel.add(new JScrollPane(userTable), BorderLayout.CENTER);
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        JButton refreshButton = SeuButtons.secondary("刷新列表");
-        JButton addButton = SeuButtons.secondary("注册用户");
-        JButton importButton = SeuButtons.secondary("批量导入CSV");
-        JButton enableButton = SeuButtons.primary("启用选中账号");
-        JButton disableButton = SeuButtons.danger("禁用选中账号");
+        JButton refreshButton = new JButton("刷新列表");
+        JButton addButton = new JButton("注册用户");
+        JButton importButton = new JButton("批量导入CSV");
+        JButton enableButton = new JButton("启用选中账号");
+        JButton disableButton = new JButton("禁用选中账号");
         actions.add(refreshButton);
         actions.add(addButton);
         actions.add(importButton);
@@ -361,7 +360,7 @@ public final class AccountFrame extends JFrame {
         panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
         panel.add(new JScrollPane(logTable), BorderLayout.CENTER);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        JButton refreshButton = SeuButtons.secondary("刷新");
+        JButton refreshButton = new JButton("刷新");
         actions.add(refreshButton);
         panel.add(actions, BorderLayout.SOUTH);
         refreshButton.addActionListener(event -> loadAuditLog());
