@@ -40,6 +40,7 @@ public enum Operation implements Serializable {
     LIBRARY_BOOK_DELETE,
     LIBRARY_BORROW,
     LIBRARY_RETURN,
+    LIBRARY_RENEW,
     LIBRARY_BORROW_QUERY,
     STORE_PRODUCT_QUERY,
     STORE_PRODUCT_SAVE,

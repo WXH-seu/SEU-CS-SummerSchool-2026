@@ -37,7 +37,8 @@ public final class SeuNavBar extends JPanel {
         this.activeIndex = 0;
 
         setBackground(SeuTheme.PRIMARY);
-        setBorder(BorderFactory.createEmptyBorder(0, SeuTheme.SPACE_LG, 0, SeuTheme.SPACE_LG));
+        setBorder(BorderFactory.createEmptyBorder(0, SeuTheme.scaled(SeuTheme.SPACE_LG),
+                0, SeuTheme.scaled(SeuTheme.SPACE_LG)));
         setOpaque(true);
 
         for (int i = 0; i < labels.length; i++) {
@@ -49,10 +50,7 @@ public final class SeuNavBar extends JPanel {
             button.setContentAreaFilled(true);
             button.setOpaque(true);
             button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            button.setMargin(new Insets(12, 22, 12, 22));
             button.setHorizontalAlignment(SwingConstants.CENTER);
-            button.setPreferredSize(new Dimension(
-                    Math.max(button.getPreferredSize().width + 28, 110), 44));
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(java.awt.event.ActionEvent event) {
@@ -65,7 +63,27 @@ public final class SeuNavBar extends JPanel {
             buttons[i] = button;
             add(button);
         }
+        syncMetrics();
         refreshStyles();
+    }
+
+    /** 按当前字号重算导航按钮尺寸，窗口缩放后由 {@link SeuUiScale} 调用。 */
+    public void syncMetrics() {
+        setBorder(BorderFactory.createEmptyBorder(0, SeuTheme.scaled(SeuTheme.SPACE_LG),
+                0, SeuTheme.scaled(SeuTheme.SPACE_LG)));
+        int padV = SeuTheme.scaled(12);
+        int padH = SeuTheme.scaled(22);
+        int extra = SeuTheme.scaled(28);
+        int minWidth = SeuTheme.scaled(110);
+        int height = SeuTheme.scaled(44);
+        for (int i = 0; i < buttons.length; i++) {
+            JButton button = buttons[i];
+            button.setMargin(new Insets(padV, padH, padV, padH));
+            button.setPreferredSize(null);
+            int width = Math.max(button.getPreferredSize().width + extra, minWidth);
+            button.setPreferredSize(new Dimension(width, height));
+        }
+        revalidate();
     }
 
     public void setActiveKey(String key) {

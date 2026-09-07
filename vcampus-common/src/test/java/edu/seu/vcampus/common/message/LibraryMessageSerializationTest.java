@@ -95,7 +95,7 @@ public class LibraryMessageSerializationTest {
         BorrowRecordDto record = new BorrowRecordDto(3, "9787040202489", "线性代数",
                 "同济大学数学系", "student", "演示学生",
                 "2026-09-04 12:00:00", "2026-09-18 12:00:00",
-                "", false, false);
+                "", false, false, 0);
         ResponseMessage<BorrowRecordDto> response =
                 ResponseMessage.success("req-2", "操作成功", record);
         bytes = new ByteArrayOutputStream();
@@ -108,6 +108,20 @@ public class LibraryMessageSerializationTest {
         assertEquals("演示学生（student）", restoredRecord.getBorrowerLabel());
         assertEquals("在借", restoredRecord.getStatusName());
         assertEquals(false, restoredRecord.isReturned());
+        assertEquals(0, restoredRecord.getRenewCount());
+    }
+
+    @Test
+    public void serializesRenewRequest() throws Exception {
+        RequestMessage<ReturnRequest> request = new RequestMessage<ReturnRequest>(
+                Operation.LIBRARY_RENEW, "session", new ReturnRequest(8));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        new ObjectOutputStream(bytes).writeObject(request);
+        ObjectInputStream input = new ObjectInputStream(
+                new ByteArrayInputStream(bytes.toByteArray()));
+        RequestMessage<?> restored = (RequestMessage<?>) input.readObject();
+        assertEquals(Operation.LIBRARY_RENEW, restored.getOperation());
+        assertEquals(8, ((ReturnRequest) restored.getBody()).getRecordId());
     }
 
     @Test

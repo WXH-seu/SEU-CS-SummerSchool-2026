@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /** One borrow / return row shared by client and server. */
 public final class BorrowRecordDto implements Serializable {
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 3L;
 
     private final int recordId;
     private final String isbn;
@@ -17,11 +17,12 @@ public final class BorrowRecordDto implements Serializable {
     private final String returnTime;
     private final boolean overdue;
     private final boolean returned;
+    private final int renewCount;
 
     public BorrowRecordDto(int recordId, String isbn, String title, String author,
                            String userId, String displayName,
                            String borrowTime, String dueTime, String returnTime,
-                           boolean overdue, boolean returned) {
+                           boolean overdue, boolean returned, int renewCount) {
         this.recordId = recordId;
         this.isbn = isbn;
         this.title = title;
@@ -33,6 +34,7 @@ public final class BorrowRecordDto implements Serializable {
         this.returnTime = returnTime;
         this.overdue = overdue;
         this.returned = returned;
+        this.renewCount = Math.max(0, renewCount);
     }
 
     public int getRecordId() {
@@ -87,6 +89,10 @@ public final class BorrowRecordDto implements Serializable {
 
     public boolean isReturned() {
         return returned;
+    }
+
+    public int getRenewCount() {
+        return renewCount;
     }
 
     /** Display status for tables: 已还 / 逾期 / 在借. */

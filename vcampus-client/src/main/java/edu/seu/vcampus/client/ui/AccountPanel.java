@@ -5,6 +5,7 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserCsvParser;
 import edu.seu.vcampus.client.service.UserClientService;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.UserImportFailure;
@@ -16,7 +17,6 @@ import edu.seu.vcampus.common.enums.SubSystem;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
-import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -47,12 +47,11 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Account management screen: shows the current account, allows the user to
- * update the display name, change the password and deregister the account.
- * Administrators additionally see a user management tab to enable or disable
- * accounts.
+ * 账号管理模块：查看当前账号、修改显示名与密码、注销账号。
+ * 超级管理员额外拥有用户管理与操作日志页签。
  */
-public final class AccountFrame extends JFrame {
+public final class AccountPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
     private static final int MIN_PASSWORD_LENGTH = 6;
 
     private final ClientConfig config;
@@ -95,17 +94,24 @@ public final class AccountFrame extends JFrame {
     };
     private final JTable logTable = new JTable(logTableModel);
 
-    public AccountFrame(ClientConfig config, MainFrame mainFrame,
+    public AccountPanel(ClientConfig config, MainFrame mainFrame,
                         ClientConnection connection, LoginResponse session) {
-        super("账号管理 - " + session.getDisplayName());
+        super(new BorderLayout());
+        if (config == null || mainFrame == null || connection == null || session == null) {
+            throw new IllegalArgumentException("account panel arguments are required");
+        }
         this.config = config;
         this.mainFrame = mainFrame;
         this.connection = connection;
         this.service = new UserClientService(connection);
         this.session = session;
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(680, 560);
-        setLocationRelativeTo(mainFrame);
+        setOpaque(false);
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
+        userTable.setFont(SeuTheme.bodyFont());
+        userTable.setRowHeight(SeuTheme.scaled(32));
+        logTable.setFont(SeuTheme.bodyFont());
+        logTable.setRowHeight(SeuTheme.scaled(32));
         buildUi();
     }
 
@@ -118,7 +124,7 @@ public final class AccountFrame extends JFrame {
             tabs.addTab("用户管理", createUserAdminTab());
             tabs.addTab("操作日志", createAuditTab());
         }
-        setContentPane(tabs);
+        add(tabs, BorderLayout.CENTER);
     }
 
     private JPanel createProfileTab() {
@@ -162,7 +168,7 @@ public final class AccountFrame extends JFrame {
         refreshButton.addActionListener(event -> refreshAccount());
 
         JLabel tip = new JLabel("账号、角色、权限范围与状态由系统统一管理，不可自行修改。");
-        tip.setFont(tip.getFont().deriveFont(Font.PLAIN, 12f));
+        tip.setFont(SeuTheme.smallFont());
         constraints.gridy = 6;
         panel.add(tip, constraints);
 
@@ -180,7 +186,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridy = 0;
         constraints.gridwidth = 2;
         JLabel nameTitle = new JLabel("修改显示名");
-        nameTitle.setFont(nameTitle.getFont().deriveFont(Font.BOLD, 15f));
+        nameTitle.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(nameTitle, constraints);
         constraints.gridwidth = 1;
         constraints.gridy = 1;
@@ -196,7 +202,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridy = 3;
         constraints.gridwidth = 2;
         JLabel passwordTitle = new JLabel("修改密码");
-        passwordTitle.setFont(passwordTitle.getFont().deriveFont(Font.BOLD, 15f));
+        passwordTitle.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(passwordTitle, constraints);
         constraints.gridwidth = 1;
         constraints.gridy = 4;
@@ -230,7 +236,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridy = 0;
         constraints.gridwidth = 2;
         JLabel title = new JLabel("注销当前账号");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+        title.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(title, constraints);
         constraints.gridwidth = 1;
         constraints.gridy = 1;
@@ -470,7 +476,7 @@ public final class AccountFrame extends JFrame {
                     AccountInfo info = get();
                     renderInfo(info);
                     mainFrame.updateDisplayName(info.getDisplayName());
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "显示名已更新为：" + info.getDisplayName(), "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
@@ -522,7 +528,7 @@ public final class AccountFrame extends JFrame {
                     oldPasswordField.setText("");
                     newPasswordField.setText("");
                     confirmPasswordField.setText("");
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "密码修改成功，下次登录请使用新密码", "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
@@ -561,7 +567,7 @@ public final class AccountFrame extends JFrame {
                 Arrays.fill(passwordChars, '\0');
                 try {
                     get();
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "账号已注销，感谢使用虚拟校园", "注销成功",
                             JOptionPane.INFORMATION_MESSAGE);
                     returnToLogin();
@@ -638,7 +644,7 @@ public final class AccountFrame extends JFrame {
                 setBusy(false);
                 try {
                     get();
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "账号 " + userId + " 已" + action, "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                     loadUsers();
@@ -653,7 +659,6 @@ public final class AccountFrame extends JFrame {
 
     private void returnToLogin() {
         mainFrame.dispose();
-        dispose();
         try {
             connection.close();
         } catch (Exception ignored) {

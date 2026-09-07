@@ -14,10 +14,12 @@ public final class BorrowRecord {
     private final String title;
     private final String author;
     private final String displayName;
+    private final int renewCount;
 
     public BorrowRecord(int recordId, int copyId, String userId,
                         Date borrowTime, Date dueTime, Date returnTime,
-                        String isbn, String title, String author, String displayName) {
+                        String isbn, String title, String author, String displayName,
+                        int renewCount) {
         this.recordId = recordId;
         this.copyId = copyId;
         this.userId = userId;
@@ -28,6 +30,7 @@ public final class BorrowRecord {
         this.title = title;
         this.author = author;
         this.displayName = displayName;
+        this.renewCount = Math.max(0, renewCount);
     }
 
     public int getRecordId() {
@@ -68,6 +71,10 @@ public final class BorrowRecord {
 
     public String getDisplayName() {
         return displayName;
+    }
+
+    public int getRenewCount() {
+        return renewCount;
     }
 
     public boolean isReturned() {

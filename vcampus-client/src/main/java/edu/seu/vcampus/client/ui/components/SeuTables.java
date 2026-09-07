@@ -46,7 +46,7 @@ public final class SeuTables {
         table.setSelectionBackground(SeuTheme.TABLE_SELECTION);
         table.setSelectionForeground(SeuTheme.TEXT);
         table.setGridColor(SeuTheme.BORDER);
-        table.setRowHeight(32);
+        table.setRowHeight(SeuTheme.scaled(32));
         table.setShowHorizontalLines(true);
         table.setShowVerticalLines(false);
         table.setFillsViewportHeight(true);

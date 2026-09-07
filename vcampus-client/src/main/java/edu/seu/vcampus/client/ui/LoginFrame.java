@@ -127,7 +127,7 @@ public final class LoginFrame extends JFrame {
         getRootPane().setDefaultButton(loginButton);
         loginButton.addActionListener(event -> login());
         changePasswordLink.addActionListener(event -> SeuMessages.info(this,
-                "请先登录，再在右上角「账号管理」中修改密码。"));
+                "请先登录，再在应用中心「账号管理」中修改密码。"));
         rememberPassword.addActionListener(event -> {
             if (rememberPassword.isSelected()) {
                 SeuMessages.info(this, "当前版本仅作界面展示，不会在本地保存密码。");

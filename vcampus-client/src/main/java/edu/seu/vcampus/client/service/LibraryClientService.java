@@ -61,6 +61,14 @@ public final class LibraryClientService {
         request(Operation.LIBRARY_RETURN, new ReturnRequest(recordId));
     }
 
+    public BorrowRecordDto renewBook(int recordId) throws IOException {
+        Object body = request(Operation.LIBRARY_RENEW, new ReturnRequest(recordId)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
+    }
+
     private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)
             throws IOException {
         Object responseBody = request(operation, body).getBody();

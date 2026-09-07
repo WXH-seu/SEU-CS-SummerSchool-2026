@@ -1,6 +1,7 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.service.AcademicClientService;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
@@ -22,7 +23,6 @@ import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
-import java.awt.Font;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,7 +83,7 @@ public final class AcademicManagementPanel extends JPanel {
     private void buildUi() {
         JPanel heading = new JPanel(new BorderLayout());
         JLabel title = new JLabel("学籍管理");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
+        title.setFont(SeuTheme.titleFont());
         heading.add(title, BorderLayout.WEST);
         heading.add(statusLabel, BorderLayout.EAST);
 
@@ -114,6 +114,8 @@ public final class AcademicManagementPanel extends JPanel {
         add(north, BorderLayout.NORTH);
         table.setFillsViewportHeight(true);
         table.setAutoCreateRowSorter(true);
+        table.setFont(SeuTheme.bodyFont());
+        table.setRowHeight(SeuTheme.scaled(32));
         add(new JScrollPane(table), BorderLayout.CENTER);
 
         boolean administrator = effectiveRole == SubSystemRole.ADMIN;

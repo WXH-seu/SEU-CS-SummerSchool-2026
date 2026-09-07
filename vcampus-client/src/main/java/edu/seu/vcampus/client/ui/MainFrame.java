@@ -11,7 +11,9 @@ import edu.seu.vcampus.client.ui.components.SeuButtons;
 import edu.seu.vcampus.client.ui.components.SeuNavBar;
 import edu.seu.vcampus.client.ui.components.SeuPanels;
 import edu.seu.vcampus.client.ui.components.SeuTheme;
+import edu.seu.vcampus.client.ui.components.SeuUiScale;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
@@ -40,10 +42,10 @@ import java.util.Map;
  */
 public final class MainFrame extends JFrame {
     private static final String[] CARD_NAMES = {
-            "home", "student", "course", "library", "store"
+            "home", "student", "course", "library", "store", "account"
     };
     private static final String[] NAV_LABELS = {
-            "应用中心", "学籍管理", "选课系统", "图书馆", "校园商店"
+            "应用中心", "学籍管理", "选课系统", "图书馆", "校园商店", "账号管理"
     };
 
     private final ClientConfig config;
@@ -63,10 +65,11 @@ public final class MainFrame extends JFrame {
         this.session = session;
         this.displayName = session.getDisplayName();
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setMinimumSize(new Dimension(1000, 650));
-        setSize(1120, 720);
+        setMinimumSize(new Dimension(1100, 650));
+        setSize(1200, 720);
         setLocationRelativeTo(null);
         buildUi();
+        SeuUiScale.bind(this);
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent event) {
@@ -98,6 +101,7 @@ public final class MainFrame extends JFrame {
         cards.add(moduleHolder(CARD_NAMES[2]), CARD_NAMES[2]);
         cards.add(moduleHolder(CARD_NAMES[3]), CARD_NAMES[3]);
         cards.add(moduleHolder(CARD_NAMES[4]), CARD_NAMES[4]);
+        cards.add(moduleHolder(CARD_NAMES[5]), CARD_NAMES[5]);
         root.add(cards, BorderLayout.CENTER);
         setContentPane(root);
         showCard(CARD_NAMES[0]);
@@ -143,6 +147,9 @@ public final class MainFrame extends JFrame {
                     new StoreClientService(connection, session.getSessionToken()),
                     effectiveRole(SubSystem.STORE));
         }
+        if ("account".equals(cardName)) {
+            return new AccountPanel(config, MainFrame.this, connection, session);
+        }
         throw new IllegalArgumentException("unknown module: " + cardName);
     }
 
@@ -175,11 +182,6 @@ public final class MainFrame extends JFrame {
         identityLabel.setFont(SeuTheme.bodyFont());
         identityLabel.setForeground(Color.WHITE);
         identityPanel.add(identityLabel);
-
-        JButton accountButton = SeuButtons.headerLink("账号管理");
-        accountButton.addActionListener(event ->
-                new AccountFrame(config, MainFrame.this, connection, session).setVisible(true));
-        identityPanel.add(accountButton);
 
         JButton logoutButton = SeuButtons.headerLink("退出登录");
         logoutButton.addActionListener(event -> logout());
@@ -219,6 +221,12 @@ public final class MainFrame extends JFrame {
      */
     private String buildModuleLabel(String cardName, String baseName) {
         if ("home".equals(cardName)) {
+            return baseName;
+        }
+        if ("account".equals(cardName)) {
+            if (session.getRole() == Role.SUPER_ADMIN) {
+                return baseName + "（管理员）";
+            }
             return baseName;
         }
         SubSystem subSystem = SubSystems.byKey(cardName);

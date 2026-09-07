@@ -73,7 +73,7 @@ final class CourseEditorDialog {
         }
         JList<SectionAudienceDto> audienceList = new JList<SectionAudienceDto>(audienceModel);
         audienceList.setFont(SeuTheme.bodyFont());
-        audienceList.setFixedCellHeight(24);
+        audienceList.setFixedCellHeight(SeuTheme.scaled(24));
 
         JComboBox<String> scope = SeuFields.combo(
                 new String[]{SCOPE_ALL_LABEL, SCOPE_DEPARTMENT_LABEL});
