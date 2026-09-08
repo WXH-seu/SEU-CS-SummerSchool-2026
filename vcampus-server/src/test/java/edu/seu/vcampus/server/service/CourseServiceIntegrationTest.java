@@ -290,6 +290,41 @@ public class CourseServiceIntegrationTest {
                 .anyMatch(course -> "SEC00000002".equals(course.getSectionId())));
     }
 
+    @Test
+    public void academicEntitiesReferencedByCourseV2CannotBeDeleted() throws Exception {
+        try {
+            academicService.deleteStudent(
+                    admin.getUserId(), effAcademic(admin), "20260001");
+            fail("Student with enrollments should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        try {
+            academicService.deleteTeacher(
+                    admin.getUserId(), effAcademic(admin), "T0001");
+            fail("Teacher with course sections should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        academicService.saveDepartment(admin.getUserId(), effAcademic(admin),
+                new DepartmentDto("COURSE-DEPT", "课程测试院系", "仅用于外键测试", true));
+        CourseDto section = new CourseDto(null, "COURSE-D001", "跨院系课程", "测试课程",
+                "T0001", null, "COURSE-DEPT", null, 2.0, "必修", 20, 0,
+                "2026-2027-1", "周五 1-2 节", "教1-202",
+                "2026-09-01 08:00", "2026-12-31 23:59",
+                true, false, null, allAudience());
+        service.saveCourse(admin.getUserId(), eff(admin), section);
+        try {
+            academicService.deleteDepartment(
+                    admin.getUserId(), effAcademic(admin), "COURSE-DEPT");
+            fail("Department with course sections should be protected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+    }
+
     private CourseDto byCourseId(List<CourseDto> sections, String courseId) {
         for (CourseDto section : sections) {
             if (courseId.equals(section.getCourseId())) {
@@ -304,7 +339,7 @@ public class CourseServiceIntegrationTest {
         String salt = hasher.newSalt();
         userRepository.insert(new UserAccount(userId, hasher.hash("secret123", salt),
                 salt, "第二名学生", Role.STUDENT, true));
-        academicService.saveStudent(admin.getUserId(), eff(admin),
+        academicService.saveStudent(admin.getUserId(), effAcademic(admin),
                 new StudentDto("20260003", userId, "第二名学生", "女",
                         "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
         return userId;

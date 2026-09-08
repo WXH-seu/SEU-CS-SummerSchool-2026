@@ -146,15 +146,23 @@ public final class AccessAcademicRepository implements AcademicRepository {
     }
 
     @Override
-    public List<DepartmentDto> findDepartments(boolean activeOnly) throws SQLException {
-        String sql = "SELECT * FROM [tblDepartment]"
-                + (activeOnly ? " WHERE [active] = ?" : "")
-                + " ORDER BY [departmentId]";
+    public List<DepartmentDto> findDepartments(AcademicQueryRequest query) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT * FROM [tblDepartment] WHERE 1=1");
+        List<Object> parameters = new ArrayList<Object>();
+        if (query != null && !isBlank(query.getKeyword())) {
+            sql.append(" AND ([departmentId] LIKE ? OR [departmentName] LIKE ?)");
+            String pattern = "%" + query.getKeyword().trim() + "%";
+            parameters.add(pattern);
+            parameters.add(pattern);
+        }
+        if (query != null && query.isActiveOnly()) {
+            sql.append(" AND [active] = ?");
+            parameters.add(Boolean.TRUE);
+        }
+        sql.append(" ORDER BY [departmentId]");
         try (Connection connection = database.openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            if (activeOnly) {
-                statement.setBoolean(1, true);
-            }
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
             try (ResultSet result = statement.executeQuery()) {
                 List<DepartmentDto> departments = new ArrayList<DepartmentDto>();
                 while (result.next()) {
@@ -212,7 +220,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
                     classes.add(new SchoolClassDto(result.getString("classId"),
                             result.getString("className"), result.getString("departmentId"),
                             result.getInt("gradeYear"), result.getString("counselor"),
-                            result.getBoolean("active")));
+                            result.getInt("capacity"), result.getBoolean("active")));
                 }
                 return classes;
             }
@@ -222,9 +230,10 @@ public final class AccessAcademicRepository implements AcademicRepository {
     @Override
     public void saveClass(SchoolClassDto schoolClass) throws SQLException {
         String update = "UPDATE [tblSchoolClass] SET [className]=?, [departmentId]=?, "
-                + "[gradeYear]=?, [counselor]=?, [active]=? WHERE [classId]=?";
+                + "[gradeYear]=?, [counselor]=?, [capacity]=?, [active]=? WHERE [classId]=?";
         String insert = "INSERT INTO [tblSchoolClass] ([className], [departmentId], "
-                + "[gradeYear], [counselor], [active], [classId]) VALUES (?, ?, ?, ?, ?, ?)";
+                + "[gradeYear], [counselor], [capacity], [active], [classId]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = database.openConnection()) {
             if (executeClassSave(connection, update, schoolClass) == 0) {
                 executeClassSave(connection, insert, schoolClass);
@@ -263,10 +272,28 @@ public final class AccessAcademicRepository implements AcademicRepository {
     }
 
     @Override
+    public boolean studentIsReferenced(String studentId) throws SQLException {
+        return countReferencesIfTableExists("tblCourseEnrollment", "studentId", studentId) > 0;
+    }
+
+    @Override
+    public boolean teacherIsReferenced(String teacherId) throws SQLException {
+        return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0
+                || countReferencesIfTableExists(
+                        "tblCourseSection", "teacherId", teacherId) > 0;
+    }
+
+    @Override
     public boolean departmentIsReferenced(String departmentId) throws SQLException {
         return countReferences("tblSchoolClass", "departmentId", departmentId) > 0
                 || countReferences("tblStudent", "departmentId", departmentId) > 0
-                || countReferences("tblTeacher", "departmentId", departmentId) > 0;
+                || countReferences("tblTeacher", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists("tblMajor", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists(
+                        "tblCatalogCourse", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists("tblCourse", "departmentId", departmentId) > 0
+                || countReferencesIfTableExists(
+                        "tblCourseSection", "departmentId", departmentId) > 0;
     }
 
     @Override
@@ -288,10 +315,16 @@ public final class AccessAcademicRepository implements AcademicRepository {
                         + "[classId] TEXT(20) NOT NULL PRIMARY KEY, "
                         + "[className] TEXT(64) NOT NULL, [departmentId] TEXT(16) NOT NULL, "
                         + "[gradeYear] INTEGER NOT NULL, [counselor] TEXT(64), "
-                        + "[active] YESNO NOT NULL, CONSTRAINT [uqClassName] UNIQUE ([className]), "
+                        + "[capacity] INTEGER NOT NULL, [active] YESNO NOT NULL, "
+                        + "CONSTRAINT [uqClassName] UNIQUE ([className]), "
                         + "CONSTRAINT [fkClassDepartment] FOREIGN KEY ([departmentId]) "
                         + "REFERENCES [tblDepartment] ([departmentId]))");
             }
+            if (!columnExists(connection, "tblSchoolClass", "capacity")) {
+                execute(connection, "ALTER TABLE [tblSchoolClass] ADD COLUMN [capacity] INTEGER");
+            }
+            execute(connection, "UPDATE [tblSchoolClass] SET [capacity]=50 "
+                    + "WHERE [capacity] IS NULL OR [capacity] <= 0");
             if (!tableExists(connection, "tblStudent")) {
                 execute(connection, "CREATE TABLE [tblStudent] ("
                         + "[studentId] TEXT(20) NOT NULL PRIMARY KEY, [userId] TEXT(32), "
@@ -328,7 +361,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
         }
         if (!classExists("CS2026-01")) {
             saveClass(new SchoolClassDto("CS2026-01", "计算机2026级1班",
-                    "CS", 2026, "演示辅导员", true));
+                    "CS", 2026, "演示辅导员", 50, true));
         }
         if (!exists("tblStudent", "studentId", "20260001")) {
             saveStudent(new StudentDto("20260001", "student", "演示学生", "男",
@@ -392,8 +425,9 @@ public final class AccessAcademicRepository implements AcademicRepository {
             statement.setString(2, schoolClass.getDepartmentId());
             statement.setInt(3, schoolClass.getGradeYear());
             setNullableString(statement, 4, schoolClass.getCounselor());
-            statement.setBoolean(5, schoolClass.isActive());
-            statement.setString(6, schoolClass.getClassId());
+            statement.setInt(5, schoolClass.getCapacity());
+            statement.setBoolean(6, schoolClass.isActive());
+            statement.setString(7, schoolClass.getClassId());
             return statement.executeUpdate();
         }
     }
@@ -419,6 +453,66 @@ public final class AccessAcademicRepository implements AcademicRepository {
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getInt(1) : 0;
             }
+        }
+    }
+
+    private int countReferencesIfTableExists(String table, String column, String value)
+            throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!tableExists(connection, table) || !columnExists(connection, table, column)) {
+                return 0;
+            }
+            String sql = "SELECT COUNT(*) FROM [" + table + "] WHERE [" + column + "]=?";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, value);
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getInt(1) : 0;
+                }
+            }
+        }
+    }
+
+    @Override
+    public String findAvailableClassId(String departmentId, int gradeYear) throws SQLException {
+        String sql = "SELECT [classId], [capacity] FROM [tblSchoolClass] "
+                + "WHERE [departmentId]=? AND [gradeYear]=? AND [active]=? ORDER BY [classId]";
+        String selectedId = null;
+        int selectedCount = Integer.MAX_VALUE;
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, departmentId);
+            statement.setInt(2, gradeYear);
+            statement.setBoolean(3, true);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    String candidateId = result.getString("classId");
+                    int capacity = result.getInt("capacity");
+                    int enrolled = countReferences("tblStudent", "classId", candidateId);
+                    if (capacity > 0 && enrolled < capacity && enrolled < selectedCount) {
+                        selectedId = candidateId;
+                        selectedCount = enrolled;
+                    }
+                }
+            }
+        }
+        return selectedId;
+    }
+
+    @Override
+    public boolean studentExists(String studentId) throws SQLException {
+        return exists("tblStudent", "studentId", studentId);
+    }
+
+    private boolean columnExists(Connection connection, String tableName, String columnName)
+            throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, tableName, null)) {
+            while (columns.next()) {
+                if (columnName.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

@@ -13,15 +13,29 @@ vcampus-database/vCampus.accdb
 - `tblSchoolClass`：班级。
 - `tblStudent`：学生学籍。
 - `tblTeacher`：教师档案。
+- `tblCourse`：实际开课与选课容量、教师、时间信息。
+- `tblCourseEnrollment`：学生选课记录。
 - `tblBook`：图书书目。
 - `tblBookCopy`：馆藏副本。
 - `tblBorrowRecord`：借阅记录。
 - `tblOperationLog`：登录与管理员操作审计日志。
+- `tblCatalogSource`：院系、专业和课程快照的官方来源。
+- `tblMajor`：本科专业目录。
+- `tblCatalogCourse`：培养方案课程目录，与实际开课的 `tblCourse` 分离。
+- `tblMajorCourse`：专业与课程的建议学年、学期及必修关系。
+- `tblProduct`：商品。
+- `tblCartItem`：账号购物车，`userId` 引用 `tblUser`。
+- `tblOrder`：订单，`userId` 引用 `tblUser`。
+- `tblOrderItem`：订单明细。
 
 数据库包含超级管理员、子系统管理员、学生和教师四个演示账号；与学生、教师账号关联的演示学籍，以及 10 种演示图书。演示学生账号有一条在借记录和一条逾期未还记录。密码以 PBKDF2 加盐哈希保存，不保存明文密码。
 
+服务端还会幂等导入仓库内经审核的东南大学公开数据快照。重复启动只更新同一业务主键，
+不重复插入；完整来源和重新采集方式见 `docs/东南大学公开数据快照.md`。
+
 `tblBorrowRecord.userId` 以外键引用 `tblUser.userId`。借阅人统一使用登录账号标识，
 需要学号或工号时再通过学籍表的 `userId` 关联。
+`tblCartItem.userId` 和 `tblOrder.userId` 采用相同的账号关联规则。
 
 ## 用户表结构（tblUser）
 
@@ -50,13 +64,13 @@ vcampus-database/vCampus.accdb
 - 字段名使用英文小驼峰命名。
 - 所有 SQL 使用 `PreparedStatement`，不拼接用户输入。
 
-## 建议业务表
+## 已实现业务表
 
 | 模块 | 建议表 |
 | --- | --- |
-| 用户 | `tblUser`、`tblRole` |
+| 用户 | `tblUser`、`tblOperationLog` |
 | 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblSchoolClass` |
-| 选课 | `tblCourse`、`tblTeachingClass`、`tblEnrollment` |
+| 选课 | `tblCourse`、`tblCourseEnrollment` |
 | 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`（已自动创建） |
 | 商店 | `tblProduct`、`tblCartItem`、`tblOrder`、`tblOrderItem` |
 
