@@ -80,6 +80,16 @@ public class AccessBookRepositoryTest {
 
         new AccessBookRepository(database);
         assertEquals(10, repository.findBooks(null).size());
+        List<BookWish> wishes = repository.findAllWishes();
+        assertEquals(2, wishes.size());
+        assertEquals("三体", wishes.get(0).getTitle());
+        assertTrue(wishes.get(0).isPending());
+        assertEquals("teacher", wishes.get(0).getUserId());
+        assertEquals("演示教师", wishes.get(0).getDisplayName());
+        List<BookWish> studentWishes = repository.findWishesByUser("student");
+        assertEquals(1, studentWishes.size());
+        assertEquals("百年孤独", studentWishes.get(0).getTitle());
+        assertEquals(BookWish.STATUS_REJECTED, studentWishes.get(0).getStatus());
     }
 
     @Test

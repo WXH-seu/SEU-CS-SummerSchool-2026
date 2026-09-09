@@ -11,7 +11,8 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 
 /**
- * 图书馆入口：书目检索；学生和教师看「我的借阅」，管理员看「全部借阅」。
+ * 图书馆入口：书目检索；学生和教师看「我的借阅」，管理员看「全部借阅」；
+ * 师生提交好书推荐，管理员审核引进。
  */
 public final class LibraryPanel extends JPanel {
     private static final long serialVersionUID = 1L;
@@ -19,6 +20,7 @@ public final class LibraryPanel extends JPanel {
     private final JTabbedPane tabs = new JTabbedPane();
     private final LibraryCatalogPanel catalogPanel;
     private final LibraryBorrowPanel borrowPanel;
+    private final LibraryWishPanel wishPanel;
 
     public LibraryPanel(LibraryClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout());
@@ -41,6 +43,13 @@ public final class LibraryPanel extends JPanel {
             }
         }, admin);
         tabs.addTab(admin ? "全部借阅" : "我的借阅", borrowPanel);
+        wishPanel = new LibraryWishPanel(service, effectiveRole, new Runnable() {
+            @Override
+            public void run() {
+                catalogPanel.refresh();
+            }
+        });
+        tabs.addTab("好书推荐", wishPanel);
         add(tabs, BorderLayout.CENTER);
         tabs.addChangeListener(new ChangeListener() {
             @Override
@@ -61,6 +70,8 @@ public final class LibraryPanel extends JPanel {
             ((LibraryCatalogPanel) selected).refresh();
         } else if (selected instanceof LibraryBorrowPanel) {
             ((LibraryBorrowPanel) selected).refresh();
+        } else if (selected instanceof LibraryWishPanel) {
+            ((LibraryWishPanel) selected).refresh();
         }
     }
 }

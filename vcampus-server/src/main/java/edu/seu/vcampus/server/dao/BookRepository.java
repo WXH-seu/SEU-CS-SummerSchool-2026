@@ -82,4 +82,35 @@ public interface BookRepository {
      * Returns {@code false} until the reservation tables are connected.
      */
     boolean isRenewalBlockedByReservation(int copyId) throws SQLException;
+
+    /** Patrons see their own wishes; administrators should call {@link #findAllWishes()}. */
+    List<BookWish> findWishesByUser(String userId) throws SQLException;
+
+    /** Every recommendation, newest first. */
+    List<BookWish> findAllWishes() throws SQLException;
+
+    BookWish findWishById(int wishId) throws SQLException;
+
+    /** Whether the user already has a pending wish with the same title and author. */
+    boolean hasPendingWish(String userId, String title, String author) throws SQLException;
+
+    /**
+     * Inserts a pending wish and returns the stored row (including display name).
+     */
+    BookWish insertWish(String userId, String title, String author, Date submitTime)
+            throws SQLException;
+
+    /**
+     * Marks a pending wish approved. Returns {@code false} when the row is missing
+     * or no longer pending.
+     */
+    boolean markWishApproved(int wishId, String reviewerUserId, String isbn, Date reviewTime)
+            throws SQLException;
+
+    /**
+     * Marks a pending wish rejected. Returns {@code false} when the row is missing
+     * or no longer pending.
+     */
+    boolean markWishRejected(int wishId, String reviewerUserId, Date reviewTime)
+            throws SQLException;
 }

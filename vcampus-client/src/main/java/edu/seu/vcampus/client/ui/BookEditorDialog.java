@@ -52,6 +52,44 @@ final class BookEditorDialog {
                 text(category), parseCopies(copies), active.isSelected());
     }
 
+    /**
+     * New-title form used when an administrator approves a wish.
+     * ISBN stays editable; title and author are filled from the recommendation.
+     */
+    static BookDto createFromWish(Component parent, String wishTitle, String wishAuthor) {
+        JTextField isbn = field("", true);
+        JTextField title = field(wishTitle == null ? "" : wishTitle, true);
+        JTextField author = field(wishAuthor == null ? "" : wishAuthor, true);
+        JTextField publisher = field("", true);
+        JTextField category = field("", true);
+        JTextField copies = field("1", true);
+        JCheckBox active = new JCheckBox("在架", true);
+
+        JPanel form = new JPanel(new GridLayout(7, 2, 8, 8));
+        form.add(new JLabel("ISBN*"));
+        form.add(isbn);
+        form.add(new JLabel("书名*"));
+        form.add(title);
+        form.add(new JLabel("作者*"));
+        form.add(author);
+        form.add(new JLabel("出版社"));
+        form.add(publisher);
+        form.add(new JLabel("分类"));
+        form.add(category);
+        form.add(new JLabel("馆藏册数*"));
+        form.add(copies);
+        form.add(new JLabel("状态"));
+        form.add(active);
+
+        if (JOptionPane.showConfirmDialog(parent, form, "批准引进",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+                != JOptionPane.OK_OPTION) {
+            return null;
+        }
+        return new BookDto(text(isbn), text(title), text(author), text(publisher),
+                text(category), parseCopies(copies), active.isSelected());
+    }
+
     private static JTextField field(String value, boolean editable) {
         JTextField field = new JTextField(value == null ? "" : value, 18);
         field.setEditable(editable);

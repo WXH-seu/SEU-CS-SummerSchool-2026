@@ -71,7 +71,7 @@ vcampus-database/vCampus.accdb
 | 用户 | `tblUser`、`tblOperationLog` |
 | 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblSchoolClass` |
 | 选课 | `tblCourse`、`tblCourseEnrollment` |
-| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`（已自动创建） |
+| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`、`tblBookWish`（已自动创建） |
 | 商店 | `tblProduct`、`tblCartItem`、`tblOrder`、`tblOrderItem` |
 
 Access 不适合大量并发写入。库存扣减、选课、借书等关键业务应由服务器端使用短事务完成。

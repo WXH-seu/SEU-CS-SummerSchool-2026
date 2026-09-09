@@ -6,11 +6,15 @@ import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
+import edu.seu.vcampus.common.dto.WishDto;
+import edu.seu.vcampus.common.dto.WishReviewRequest;
+import edu.seu.vcampus.common.dto.WishSubmitRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.Book;
 import edu.seu.vcampus.server.dao.BookCopy;
 import edu.seu.vcampus.server.dao.BookRepository;
+import edu.seu.vcampus.server.dao.BookWish;
 import edu.seu.vcampus.server.dao.BorrowRecord;
 
 import java.sql.SQLException;
@@ -216,6 +220,78 @@ public final class LibraryService {
         return toRecordDto(renewed);
     }
 
+    /**
+     * Patrons receive their own recommendations. Administrators receive every
+     * wish so they can review pending titles and inspect history.
+     */
+    public ArrayList<WishDto> queryWishes(String actorUserId, SubSystemRole actorRole)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        List<BookWish> wishes = actorRole == SubSystemRole.ADMIN
+                ? repository.findAllWishes()
+                : repository.findWishesByUser(actorUserId.trim());
+        ArrayList<WishDto> result = new ArrayList<WishDto>();
+        for (BookWish wish : wishes) {
+            result.add(toWishDto(wish));
+        }
+        return result;
+    }
+
+    public WishDto submitWish(String actorUserId, SubSystemRole actorRole,
+                              WishSubmitRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requirePatron(actorRole);
+        String title = requireLength(request == null ? null : request.getTitle(),
+                "书名", TITLE_MAX, true);
+        String author = requireLength(request == null ? null : request.getAuthor(),
+                "作者", AUTHOR_MAX, true);
+        if (repository.hasPendingWish(actorUserId.trim(), title, author)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "已有相同书名和作者的待审推荐");
+        }
+        BookWish created = repository.insertWish(actorUserId.trim(), title, author, new Date());
+        if (created == null) {
+            throw new BusinessException(ResponseCode.SERVER_ERROR, "提交推荐失败");
+        }
+        return toWishDto(created);
+    }
+
+    /**
+     * Approves or rejects a pending wish. Approval writes the supplied catalog
+     * row first; if that write fails the wish stays pending.
+     *
+     * @return the saved book when approved, or {@code null} when rejected
+     */
+    public BookDto reviewWish(String actorUserId, SubSystemRole actorRole,
+                              WishReviewRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requireAdmin(actorRole);
+        if (request == null || request.getWishId() <= 0) {
+            throw invalid("推荐编号无效");
+        }
+        BookWish wish = repository.findWishById(request.getWishId());
+        if (wish == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "推荐记录不存在");
+        }
+        if (!wish.isPending()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该推荐已审核");
+        }
+        Date now = new Date();
+        if (!request.isApproved()) {
+            if (!repository.markWishRejected(wish.getWishId(), actorUserId.trim(), now)) {
+                throw new BusinessException(ResponseCode.CONFLICT, "该推荐已审核");
+            }
+            return null;
+        }
+        BookDto saved = saveBook(actorUserId, actorRole, request.getBook());
+        if (!repository.markWishApproved(wish.getWishId(), actorUserId.trim(),
+                saved.getIsbn(), now)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该推荐已审核");
+        }
+        return saved;
+    }
+
     private void rejectIfOverdue(String actorUserId) throws SQLException, BusinessException {
         if (repository.hasOverdueBorrow(actorUserId.trim())) {
             throw new BusinessException(ResponseCode.CONFLICT, OVERDUE_BLOCK_MESSAGE);
@@ -295,6 +371,19 @@ public final class LibraryService {
                 record.getRenewCount());
     }
 
+    private WishDto toWishDto(BookWish wish) {
+        return new WishDto(
+                wish.getWishId(),
+                wish.getUserId(),
+                wish.getDisplayName(),
+                wish.getTitle(),
+                wish.getAuthor(),
+                wish.getStatus(),
+                formatTime(wish.getSubmitTime()),
+                formatTime(wish.getReviewTime()),
+                wish.getIsbn() == null ? "" : wish.getIsbn());
+    }
+
     private String formatTime(Date date) {
         if (date == null) {
             return "";
@@ -322,7 +411,7 @@ public final class LibraryService {
 
     private void requirePatron(SubSystemRole actorRole) throws BusinessException {
         if (actorRole == SubSystemRole.ADMIN) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅、归还或续借图书");
+            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅、归还、续借或提交推荐");
         }
     }
 

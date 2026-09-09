@@ -107,6 +107,9 @@ public final class SubSystems {
             case LIBRARY_RETURN:
             case LIBRARY_RENEW:
             case LIBRARY_BORROW_QUERY:
+            case LIBRARY_WISH_QUERY:
+            case LIBRARY_WISH_SUBMIT:
+            case LIBRARY_WISH_REVIEW:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:
             case STORE_PRODUCT_SAVE:

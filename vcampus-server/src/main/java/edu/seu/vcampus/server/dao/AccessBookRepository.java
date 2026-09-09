@@ -11,13 +11,18 @@ import java.sql.Types;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 
 /** Access implementation that creates library tables and demo data on first use. */
 public final class AccessBookRepository implements BookRepository {
     private static final String BORROW_USER_FOREIGN_KEY = "fkBorrowRecordUser";
+    private static final String WISH_USER_FOREIGN_KEY = "fkBookWishUser";
     private static final String DEMO_STUDENT_ID = "student";
+    private static final String DEMO_TEACHER_ID = "teacher";
+    private static final String DEMO_ADMIN_ID = "admin";
     private static final String MATH_ISBN = "9787040396621";
     private static final String NOVEL_ISBN = "9787020008735";
     private static final long DAY_MILLIS = 24L * 60 * 60 * 1000;
@@ -327,6 +332,100 @@ public final class AccessBookRepository implements BookRepository {
         return false;
     }
 
+    @Override
+    public List<BookWish> findWishesByUser(String userId) throws SQLException {
+        if (isBlank(userId)) {
+            return new ArrayList<BookWish>();
+        }
+        String sql = wishSelectSql() + " WHERE w.[userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            return sortWishes(mapWishes(statement));
+        }
+    }
+
+    @Override
+    public List<BookWish> findAllWishes() throws SQLException {
+        String sql = wishSelectSql();
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            return sortWishes(mapWishes(statement));
+        }
+    }
+
+    @Override
+    public BookWish findWishById(int wishId) throws SQLException {
+        if (wishId <= 0) {
+            return null;
+        }
+        String sql = wishSelectSql() + " WHERE w.[wishId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, wishId);
+            List<BookWish> rows = mapWishes(statement);
+            return rows.isEmpty() ? null : rows.get(0);
+        }
+    }
+
+    @Override
+    public boolean hasPendingWish(String userId, String title, String author) throws SQLException {
+        if (isBlank(userId) || isBlank(title) || isBlank(author)) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM [tblBookWish] "
+                + "WHERE [userId] = ? AND [title] = ? AND [author] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            statement.setString(2, title.trim());
+            statement.setString(3, author.trim());
+            statement.setString(4, BookWish.STATUS_PENDING);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
+    }
+
+    @Override
+    public BookWish insertWish(String userId, String title, String author, Date submitTime)
+            throws SQLException {
+        String sql = "INSERT INTO [tblBookWish] ([userId], [title], [author], [status], "
+                + "[submitTime], [reviewTime], [reviewerUserId], [isbn]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        int generatedId;
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql,
+                     Statement.RETURN_GENERATED_KEYS)) {
+            statement.setString(1, userId);
+            statement.setString(2, title);
+            statement.setString(3, author);
+            statement.setString(4, BookWish.STATUS_PENDING);
+            statement.setString(5, formatTime(submitTime));
+            statement.setNull(6, Types.VARCHAR);
+            statement.setNull(7, Types.VARCHAR);
+            statement.setNull(8, Types.VARCHAR);
+            statement.executeUpdate();
+            generatedId = readGeneratedId(statement);
+            if (generatedId <= 0) {
+                generatedId = lookupLatestWishId(connection, userId, title, author);
+            }
+        }
+        return findWishById(generatedId);
+    }
+
+    @Override
+    public boolean markWishApproved(int wishId, String reviewerUserId, String isbn, Date reviewTime)
+            throws SQLException {
+        return updateWishStatus(wishId, BookWish.STATUS_APPROVED, reviewerUserId, isbn, reviewTime);
+    }
+
+    @Override
+    public boolean markWishRejected(int wishId, String reviewerUserId, Date reviewTime)
+            throws SQLException {
+        return updateWishStatus(wishId, BookWish.STATUS_REJECTED, reviewerUserId, null, reviewTime);
+    }
+
     /**
      * Moves an open record's due time without changing {@code renewCount}.
      * Used by tests to place a loan inside or outside the renewal window.
@@ -394,6 +493,9 @@ public final class AccessBookRepository implements BookRepository {
             if (!tableExists(connection, "tblBorrowRecord")) {
                 createBorrowRecordTable(connection);
             }
+            if (!tableExists(connection, "tblBookWish")) {
+                createBookWishTable(connection);
+            }
             migrateBorrowTimesToText(connection);
             ensureBorrowUserForeignKey(connection);
             ensureRenewCountColumn(connection);
@@ -401,6 +503,9 @@ public final class AccessBookRepository implements BookRepository {
                 insertDemoData(connection);
             }
             alignDemoLoanPeriods(connection);
+            if (countWishes(connection) == 0) {
+                insertDemoWishes(connection);
+            }
         }
     }
 
@@ -502,6 +607,22 @@ public final class AccessBookRepository implements BookRepository {
         execute(connection, sql);
     }
 
+    private void createBookWishTable(Connection connection) throws SQLException {
+        String sql = "CREATE TABLE [tblBookWish] ("
+                + "[wishId] COUNTER PRIMARY KEY, "
+                + "[userId] TEXT(32) NOT NULL, "
+                + "[title] TEXT(128) NOT NULL, "
+                + "[author] TEXT(64) NOT NULL, "
+                + "[status] TEXT(16) NOT NULL, "
+                + "[submitTime] TEXT(19) NOT NULL, "
+                + "[reviewTime] TEXT(19), "
+                + "[reviewerUserId] TEXT(32), "
+                + "[isbn] TEXT(32), "
+                + "CONSTRAINT [" + WISH_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId]))";
+        execute(connection, sql);
+    }
+
     /** Adds renewal count when upgrading a database created before version 1.5. */
     private void ensureRenewCountColumn(Connection connection) throws SQLException {
         if (!tableExists(connection, "tblBorrowRecord") || hasColumn(connection, "tblBorrowRecord",
@@ -579,6 +700,54 @@ public final class AccessBookRepository implements BookRepository {
         insertBookWithCopies(connection, "9787020024759", "围城",
                 "钱钟书", "人民文学出版社", "文学", 1);
         insertDemoBorrows(connection);
+    }
+
+    private int countWishes(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM [tblBookWish]")) {
+            return result.next() ? result.getInt(1) : 0;
+        }
+    }
+
+    private void insertDemoWishes(Connection connection) throws SQLException {
+        Date now = new Date();
+        insertWishRow(connection, DEMO_TEACHER_ID, "三体", "刘慈欣",
+                BookWish.STATUS_PENDING, formatTime(now), null, null, null);
+        insertWishRow(connection, DEMO_STUDENT_ID, "百年孤独", "加西亚·马尔克斯",
+                BookWish.STATUS_REJECTED,
+                formatTime(new Date(now.getTime() - DAY_MILLIS)),
+                formatTime(now), DEMO_ADMIN_ID, null);
+    }
+
+    private void insertWishRow(Connection connection, String userId, String title, String author,
+                               String status, String submitTime, String reviewTime,
+                               String reviewerUserId, String isbn) throws SQLException {
+        String sql = "INSERT INTO [tblBookWish] ([userId], [title], [author], [status], "
+                + "[submitTime], [reviewTime], [reviewerUserId], [isbn]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.setString(2, title);
+            statement.setString(3, author);
+            statement.setString(4, status);
+            statement.setString(5, submitTime);
+            if (reviewTime == null) {
+                statement.setNull(6, Types.VARCHAR);
+            } else {
+                statement.setString(6, reviewTime);
+            }
+            if (reviewerUserId == null) {
+                statement.setNull(7, Types.VARCHAR);
+            } else {
+                statement.setString(7, reviewerUserId);
+            }
+            if (isbn == null) {
+                statement.setNull(8, Types.VARCHAR);
+            } else {
+                statement.setString(8, isbn);
+            }
+            statement.executeUpdate();
+        }
     }
 
     private void insertDemoBorrows(Connection connection) throws SQLException {
@@ -901,6 +1070,115 @@ public final class AccessBookRepository implements BookRepository {
                 result.getString("author"),
                 result.getString("displayName"),
                 result.getInt("renewCount"));
+    }
+
+    private String wishSelectSql() {
+        return "SELECT w.[wishId], w.[userId], u.[displayName], w.[title], w.[author], "
+                + "w.[status], w.[submitTime], w.[reviewTime], w.[reviewerUserId], w.[isbn] "
+                + "FROM [tblBookWish] AS w INNER JOIN [tblUser] AS u ON w.[userId] = u.[userId]";
+    }
+
+    private List<BookWish> mapWishes(PreparedStatement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery()) {
+            List<BookWish> wishes = new ArrayList<BookWish>();
+            while (result.next()) {
+                wishes.add(mapWish(result));
+            }
+            return wishes;
+        }
+    }
+
+    private BookWish mapWish(ResultSet result) throws SQLException {
+        return new BookWish(
+                result.getInt("wishId"),
+                result.getString("userId"),
+                result.getString("displayName"),
+                result.getString("title"),
+                result.getString("author"),
+                result.getString("status"),
+                parseTime(result.getString("submitTime")),
+                parseTime(result.getString("reviewTime")),
+                result.getString("reviewerUserId"),
+                result.getString("isbn"));
+    }
+
+    private List<BookWish> sortWishes(List<BookWish> wishes) {
+        Collections.sort(wishes, new Comparator<BookWish>() {
+            @Override
+            public int compare(BookWish left, BookWish right) {
+                int pending = (left.isPending() ? 0 : 1) - (right.isPending() ? 0 : 1);
+                if (pending != 0) {
+                    return pending;
+                }
+                Date leftTime = left.getSubmitTime();
+                Date rightTime = right.getSubmitTime();
+                if (leftTime == null && rightTime == null) {
+                    return 0;
+                }
+                if (leftTime == null) {
+                    return 1;
+                }
+                if (rightTime == null) {
+                    return -1;
+                }
+                return rightTime.compareTo(leftTime);
+            }
+        });
+        return wishes;
+    }
+
+    private boolean updateWishStatus(int wishId, String status, String reviewerUserId,
+                                     String isbn, Date reviewTime) throws SQLException {
+        String sql = "UPDATE [tblBookWish] SET [status] = ?, [reviewTime] = ?, "
+                + "[reviewerUserId] = ?, [isbn] = ? "
+                + "WHERE [wishId] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, status);
+            statement.setString(2, formatTime(reviewTime));
+            statement.setString(3, reviewerUserId);
+            if (isbn == null || isbn.trim().isEmpty()) {
+                statement.setNull(4, Types.VARCHAR);
+            } else {
+                statement.setString(4, isbn.trim());
+            }
+            statement.setInt(5, wishId);
+            statement.setString(6, BookWish.STATUS_PENDING);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    private int readGeneratedId(PreparedStatement statement) throws SQLException {
+        try (ResultSet keys = statement.getGeneratedKeys()) {
+            if (keys.next()) {
+                int generated = keys.getInt(1);
+                if (!keys.wasNull() && generated > 0) {
+                    return generated;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private int lookupLatestWishId(Connection connection, String userId, String title, String author)
+            throws SQLException {
+        String sql = "SELECT MAX([wishId]) FROM [tblBookWish] "
+                + "WHERE [userId] = ? AND [title] = ? AND [author] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.setString(2, title);
+            statement.setString(3, author);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new SQLException("Inserted book wish was not found");
+                }
+                int wishId = result.getInt(1);
+                if (result.wasNull()) {
+                    throw new SQLException("Inserted book wish was not found");
+                }
+                return wishId;
+            }
+        }
     }
 
     private String formatTime(Date date) {

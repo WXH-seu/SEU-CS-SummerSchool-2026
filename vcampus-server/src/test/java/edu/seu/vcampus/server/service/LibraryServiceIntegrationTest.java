@@ -6,6 +6,9 @@ import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
+import edu.seu.vcampus.common.dto.WishDto;
+import edu.seu.vcampus.common.dto.WishReviewRequest;
+import edu.seu.vcampus.common.dto.WishSubmitRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -413,6 +416,91 @@ public class LibraryServiceIntegrationTest {
         }
     }
 
+    @Test
+    public void patronsSubmitWishesAndAdminReviewsThem() throws Exception {
+        List<WishDto> studentWishes = service.queryWishes("student", SubSystemRole.STUDENT);
+        assertEquals(1, studentWishes.size());
+        assertEquals("百年孤独", studentWishes.get(0).getTitle());
+        assertEquals("已拒绝", studentWishes.get(0).getStatusName());
+
+        List<WishDto> teacherWishes = service.queryWishes("teacher", SubSystemRole.TEACHER);
+        assertEquals(1, teacherWishes.size());
+        WishDto pending = teacherWishes.get(0);
+        assertEquals("三体", pending.getTitle());
+        assertTrue(pending.isPending());
+
+        List<WishDto> adminWishes = service.queryWishes(
+                adminAccount.getUserId(), SubSystemRole.ADMIN);
+        assertEquals(2, adminWishes.size());
+        assertEquals("三体", adminWishes.get(0).getTitle());
+        assertTrue(adminWishes.get(0).isPending());
+
+        try {
+            service.submitWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                    new WishSubmitRequest("新书", "作者"));
+            fail("Administrator should not submit a wish");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        WishDto submitted = service.submitWish("student", SubSystemRole.STUDENT,
+                new WishSubmitRequest("平凡的世界", "路遥"));
+        assertEquals("平凡的世界", submitted.getTitle());
+        assertTrue(submitted.isPending());
+        assertEquals(2, service.queryWishes("student", SubSystemRole.STUDENT).size());
+
+        try {
+            service.submitWish("student", SubSystemRole.STUDENT,
+                    new WishSubmitRequest("平凡的世界", "路遥"));
+            fail("Duplicate pending wish should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        try {
+            service.reviewWish("student", SubSystemRole.STUDENT,
+                    new WishReviewRequest(pending.getWishId(), false, null));
+            fail("Student should not review wishes");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        int catalogSize = service.queryBooks("student", SubSystemRole.STUDENT, null).size();
+        service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new WishReviewRequest(submitted.getWishId(), false, null));
+        assertEquals(catalogSize,
+                service.queryBooks("student", SubSystemRole.STUDENT, null).size());
+        WishDto rejected = findWishByTitle(
+                service.queryWishes("student", SubSystemRole.STUDENT), "平凡的世界");
+        assertEquals("已拒绝", rejected.getStatusName());
+
+        try {
+            service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                    new WishReviewRequest(pending.getWishId(), true,
+                            new BookDto("", "三体", "刘慈欣", "重庆出版社", "科幻", 2, true)));
+            fail("Invalid catalog row should keep the wish pending");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
+        assertTrue(findWishByTitle(service.queryWishes("teacher", SubSystemRole.TEACHER),
+                "三体").isPending());
+
+        BookDto imported = service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new WishReviewRequest(pending.getWishId(), true,
+                        new BookDto("9787536692930", "三体", "刘慈欣",
+                                "重庆出版社", "科幻", 2, true)));
+        assertEquals("9787536692930", imported.getIsbn());
+        assertEquals(catalogSize + 1,
+                service.queryBooks("student", SubSystemRole.STUDENT, null).size());
+        WishDto approved = findWishByTitle(
+                service.queryWishes("teacher", SubSystemRole.TEACHER), "三体");
+        assertTrue(approved.isApproved());
+        assertEquals("9787536692930", approved.getIsbn());
+        assertEquals("三体", findByIsbn(
+                service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787536692930").getTitle());
+    }
+
     private void placeInRenewWindow(int recordId) throws Exception {
         Date due = new Date(System.currentTimeMillis() + 5L * 24 * 60 * 60 * 1000);
         assertTrue(books.forceDueTime(recordId, due));
@@ -444,6 +532,16 @@ public class LibraryServiceIntegrationTest {
             }
         }
         fail("Missing ISBN " + isbn);
+        return null;
+    }
+
+    private WishDto findWishByTitle(List<WishDto> wishes, String title) {
+        for (WishDto wish : wishes) {
+            if (title.equals(wish.getTitle())) {
+                return wish;
+            }
+        }
+        fail("Missing wish for title " + title);
         return null;
     }
 }
