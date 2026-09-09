@@ -239,6 +239,44 @@ public class CourseServiceIntegrationTest {
     }
 
     @Test
+    public void changingClassTimeConflictingWithEnrolledStudentsIsRejected() throws Exception {
+        CourseDto cs101 = byCourseId(service.queryCourses(
+                admin.getUserId(), eff(admin), null), "CS101");
+        CourseDto cs500 = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCourse("CS500", "系统分析", "2026-09-01 08:00", "2026-12-31 23:59",
+                        "周五 7-8 节", 30, allAudience()));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(cs500.getSectionId()));
+
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    withClassTime(cs101, "周五 7-8 节"));
+            fail("Changing class time that conflicts with enrolled students should fail");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("冲突"));
+        }
+
+        CourseDto saved = service.saveCourse(admin.getUserId(), eff(admin),
+                withClassTime(cs101, "周二 5-6 节"));
+        assertEquals("周二 5-6 节", saved.getClassTime());
+    }
+
+    @Test
+    public void changingClassTimeConflictingWithTeachersOtherSectionIsRejected() throws Exception {
+        CourseDto cs102 = byCourseId(service.queryCourses(
+                admin.getUserId(), eff(admin), null), "CS102");
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    withClassTime(cs102, "周一 3-4 节"));
+            fail("Teacher already teaches CS101 at the requested time");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("教师"));
+        }
+    }
+
+    @Test
     public void natureFilterAndValidationWork() throws Exception {
         service.saveCourse(admin.getUserId(), eff(admin),
                 demoCourse("CS401", "通识数学", "2026-09-01 08:00", "2026-12-31 23:59",
@@ -297,6 +335,17 @@ public class CourseServiceIntegrationTest {
             }
         }
         throw new AssertionError("section not found: " + courseId);
+    }
+
+    private CourseDto withClassTime(CourseDto source, String classTime) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                source.getEnrolledCount(), source.getSemesterName(), classTime,
+                source.getLocation(), source.getSelectionStartTime(),
+                source.getSelectionEndTime(), source.isActive(), source.isSelected(),
+                source.getReason(), source.getAudiences());
     }
 
     private String createSecondStudent(String userId) throws Exception {

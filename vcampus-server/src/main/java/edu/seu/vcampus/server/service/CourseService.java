@@ -11,6 +11,7 @@ import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.CourseRepository;
+import edu.seu.vcampus.server.dao.EnrolledStudentTime;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -120,7 +121,7 @@ public final class CourseService {
             if (repository.countEnrolled(sectionId) >= course.getCapacity()) {
                 throw new BusinessException(ResponseCode.CONFLICT, "课程容量已满");
             }
-            if (repository.hasTimeConflict(studentId, course.getClassTime())) {
+            if (hasConflictWithEnrolled(studentId, course.getClassTime())) {
                 throw new BusinessException(ResponseCode.CONFLICT, "与已选课程上课时间冲突");
             }
             repository.insertEnrollment(studentId, sectionId,
@@ -143,7 +144,84 @@ public final class CourseService {
             throws SQLException, BusinessException {
         requireAdmin(effectiveRole);
         validateCourse(course);
+        String classTime = course.getClassTime().trim();
+        String sectionId = course == null ? null : course.getSectionId();
+        if (!isBlank(sectionId)) {
+            synchronized (lockFor(course.getCourseId())) {
+                CourseDto existing = repository.findSectionById(sectionId.trim());
+                if (existing != null && classTimeChanged(existing, course)) {
+                    List<EnrolledStudentTime> conflicts =
+                            new ArrayList<EnrolledStudentTime>();
+                    for (EnrolledStudentTime row
+                            : repository.findEnrolledStudentsOtherClassTimes(
+                                    sectionId.trim())) {
+                        if (timesConflict(classTime, row.getClassTime())) {
+                            conflicts.add(row);
+                        }
+                    }
+                    if (!conflicts.isEmpty()) {
+                        throw conflictFor(conflicts);
+                    }
+                }
+                ensureTeacherAvailable(course.getTeacherId(), classTime, sectionId.trim());
+                return repository.saveSection(course);
+            }
+        }
+        ensureTeacherAvailable(course.getTeacherId(), classTime, "");
         return repository.saveSection(course);
+    }
+
+    private void ensureTeacherAvailable(String teacherId, String classTime,
+                                        String excludeSectionId)
+            throws SQLException, BusinessException {
+        for (String taughtTime : repository.findTeacherSectionClassTimes(
+                teacherId, excludeSectionId)) {
+            if (timesConflict(classTime, taughtTime)) {
+                throw new BusinessException(ResponseCode.CONFLICT,
+                        "该教师在该时段已有其他教学班上课，未保存");
+            }
+        }
+    }
+
+    private boolean classTimeChanged(CourseDto existing, CourseDto next) {
+        String oldTime = existing.getClassTime();
+        String newTime = next == null ? null : next.getClassTime();
+        return oldTime == null
+                ? newTime != null
+                : !oldTime.trim().equals(
+                        newTime == null ? null : newTime.trim());
+    }
+
+    private BusinessException conflictFor(List<EnrolledStudentTime> conflicts) {
+        EnrolledStudentTime first = conflicts.get(0);
+        String message = "调课后学生 " + first.getStudentId()
+                + "（" + first.getFullName() + "）将与已选课程时间冲突，未保存";
+        if (conflicts.size() > 1) {
+            message += "；另有 " + (conflicts.size() - 1) + " 名学生同样冲突";
+        }
+        return new BusinessException(ResponseCode.CONFLICT, message);
+    }
+
+    private boolean hasConflictWithEnrolled(String studentId, String candidateTime)
+            throws SQLException {
+        for (String enrolledTime : repository.findStudentEnrolledClassTimes(studentId)) {
+            if (timesConflict(candidateTime, enrolledTime)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Canonical上课时间冲突规则：两端时间非空且去除首尾空白后完全相等即冲突。
+     * 选课校验与管理员调课校验都必须经由本方法判断，今后如需支持“周次 + 节次
+     * 区间重叠”等更细规则，只需修改此处。
+     */
+    private boolean timesConflict(String first, String second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        return first.trim().equals(second.trim());
     }
 
     public void deleteCourse(String userId, SubSystemRole effectiveRole, String sectionId)

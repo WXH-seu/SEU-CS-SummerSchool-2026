@@ -174,6 +174,32 @@ public final class AccessCourseRepository implements CourseRepository {
     }
 
     @Override
+    public List<EnrolledStudentTime> findEnrolledStudentsOtherClassTimes(
+            String sectionId) throws SQLException {
+        String sql = "SELECT DISTINCT e1.[studentId], st.[fullName], s2.[classTime] "
+                + "FROM [tblCourseEnrollment] e1 "
+                + "INNER JOIN [tblStudent] st ON st.[studentId] = e1.[studentId] "
+                + "INNER JOIN [tblCourseEnrollment] e2 "
+                + "ON e2.[studentId] = e1.[studentId] "
+                + "AND e2.[sectionId] <> e1.[sectionId] "
+                + "INNER JOIN [tblCourseSection] s2 ON s2.[sectionId] = e2.[sectionId] "
+                + "WHERE e1.[sectionId] = ? ORDER BY e1.[studentId], s2.[classTime]";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, sectionId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<EnrolledStudentTime> rows = new ArrayList<EnrolledStudentTime>();
+                while (result.next()) {
+                    rows.add(new EnrolledStudentTime(
+                            result.getString("studentId"), result.getString("fullName"),
+                            result.getString("classTime")));
+                }
+                return rows;
+            }
+        }
+    }
+
+    @Override
     public boolean isEnrolled(String studentId, String sectionId) throws SQLException {
         String sql = "SELECT COUNT(*) FROM [tblCourseEnrollment] "
                 + "WHERE [studentId]=? AND [sectionId]=?";
@@ -215,16 +241,39 @@ public final class AccessCourseRepository implements CourseRepository {
     }
 
     @Override
-    public boolean hasTimeConflict(String studentId, String classTime) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM [tblCourseEnrollment] e "
+    public List<String> findStudentEnrolledClassTimes(String studentId)
+            throws SQLException {
+        String sql = "SELECT s.[classTime] FROM [tblCourseEnrollment] e "
                 + "INNER JOIN [tblCourseSection] s ON s.[sectionId] = e.[sectionId] "
-                + "WHERE e.[studentId]=? AND s.[classTime]=?";
+                + "WHERE e.[studentId] = ?";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, studentId);
-            statement.setString(2, classTime);
             try (ResultSet result = statement.executeQuery()) {
-                return result.next() && result.getInt(1) > 0;
+                List<String> times = new ArrayList<String>();
+                while (result.next()) {
+                    times.add(result.getString(1));
+                }
+                return times;
+            }
+        }
+    }
+
+    @Override
+    public List<String> findTeacherSectionClassTimes(
+            String teacherId, String excludeSectionId) throws SQLException {
+        String sql = "SELECT [classTime] FROM [tblCourseSection] "
+                + "WHERE [teacherId] = ? AND [sectionId] <> ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, teacherId);
+            statement.setString(2, excludeSectionId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<String> times = new ArrayList<String>();
+                while (result.next()) {
+                    times.add(result.getString(1));
+                }
+                return times;
             }
         }
     }

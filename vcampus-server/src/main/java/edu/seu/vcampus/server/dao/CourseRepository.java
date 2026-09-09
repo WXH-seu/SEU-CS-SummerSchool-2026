@@ -24,13 +24,25 @@ public interface CourseRepository {
 
     List<SectionRosterEntry> findRoster(String sectionId) throws SQLException;
 
+    /** Class times of every section the student is enrolled in. */
+    List<String> findStudentEnrolledClassTimes(String studentId) throws SQLException;
+
+    /**
+     * For every student enrolled in {@code sectionId}, one row per other
+     * section that student takes (excluding the section itself).
+     */
+    List<EnrolledStudentTime> findEnrolledStudentsOtherClassTimes(
+            String sectionId) throws SQLException;
+
+    /** Class times of all sections taught by the teacher, excluding one section. */
+    List<String> findTeacherSectionClassTimes(
+            String teacherId, String excludeSectionId) throws SQLException;
+
     boolean isEnrolled(String studentId, String sectionId) throws SQLException;
 
     boolean isEnrolledInCourse(String studentId, String courseId) throws SQLException;
 
     int countEnrolled(String sectionId) throws SQLException;
-
-    boolean hasTimeConflict(String studentId, String classTime) throws SQLException;
 
     void insertEnrollment(String studentId, String sectionId,
                           String enrollmentId, String enrollTime) throws SQLException;
