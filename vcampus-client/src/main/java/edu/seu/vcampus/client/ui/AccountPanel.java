@@ -201,11 +201,11 @@ public final class AccountPanel extends JPanel {
         constraints.gridx = 1;
         panel.add(displayNameField, constraints);
         constraints.gridy = 2;
-        panel.add(new JLabel("联系邮箱"), constraints);
+        panel.add(new JLabel("找回邮箱"), constraints);
         constraints.gridx = 1;
         panel.add(emailField, constraints);
         constraints.gridy = 3;
-        JButton saveNameButton = new JButton("保存显示名");
+        JButton saveNameButton = new JButton("保存资料");
         panel.add(saveNameButton, constraints);
         saveNameButton.addActionListener(event -> updateProfile());
 
@@ -447,8 +447,13 @@ public final class AccountPanel extends JPanel {
         roleLabel.setText(RoleNames.of(info.getRole()));
         activeLabel.setText(info.isActive() ? "正常" : "已禁用");
         scopeLabel.setText(scopesOf(info));
-        displayNameField.setText(info.getDisplayName());
-        emailField.setText(info.getEmail());
+        // 仅在字段为空时预填，避免异步刷新覆盖用户正在输入的内容。
+        if (displayNameField.getText().trim().isEmpty()) {
+            displayNameField.setText(info.getDisplayName());
+        }
+        if (emailField.getText().trim().isEmpty()) {
+            emailField.setText(info.getEmail());
+        }
     }
 
     /** Renders a human-readable list of granted sub-systems for an administrator. */
@@ -490,8 +495,11 @@ public final class AccountPanel extends JPanel {
                     AccountInfo info = get();
                     renderInfo(info);
                     mainFrame.updateDisplayName(info.getDisplayName());
-                    JOptionPane.showMessageDialog(AccountPanel.this,
-                            "显示名已更新为：" + info.getDisplayName(), "提示",
+                    String detail = (info.getEmail() == null || info.getEmail().isEmpty())
+                            ? "显示名已更新为：" + info.getDisplayName()
+                            : "资料已更新：显示名 " + info.getDisplayName()
+                                    + "，找回邮箱 " + info.getEmail();
+                    JOptionPane.showMessageDialog(AccountPanel.this, detail, "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

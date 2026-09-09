@@ -10,32 +10,31 @@ import edu.seu.vcampus.client.ui.components.SeuLabels;
 import edu.seu.vcampus.client.ui.components.SeuMessages;
 import edu.seu.vcampus.client.ui.components.SeuTheme;
 
-import javax.swing.Box;
-import javax.swing.BoxLayout;
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
-import javax.swing.SwingConstants;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 
 /** 忘记密码：输入邮箱 → 服务端发验证码 → 校验验证码并重置密码。 */
 public final class ForgotPasswordFrame extends JFrame {
     private final ClientConfig config;
-    private final JTextField emailField = SeuFields.pillText(24);
-    private final JTextField codeField = SeuFields.pillText(24);
-    private final JPasswordField newPasswordField = new JPasswordField(24);
-    private final JPasswordField confirmField = new JPasswordField(24);
+    private final JTextField emailField = SeuFields.pillText(20);
+    private final JTextField codeField = SeuFields.pillText(20);
+    private final JPasswordField newPasswordField = SeuFields.pillPassword(20);
+    private final JPasswordField confirmField = SeuFields.pillPassword(20);
     private final JButton sendButton = SeuButtons.pillPrimary("发送验证码");
     private final JButton resetButton = SeuButtons.pillPrimary("重置密码");
     private final JLabel statusLabel = SeuLabels.muted(" ");
@@ -54,54 +53,105 @@ public final class ForgotPasswordFrame extends JFrame {
     private void buildUi() {
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(Color.WHITE);
-        root.setBorder(SeuTheme.empty(28, 48, 24, 48));
+        root.setBorder(BorderFactory.createEmptyBorder(24, 40, 24, 40));
 
-        JPanel center = new JPanel();
-        center.setOpaque(false);
-        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setOpaque(false);
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(7, 6, 7, 6);
+        c.fill = GridBagConstraints.HORIZONTAL;
 
+        // 标题（跨两列、居中）
         JLabel title = SeuLabels.title("找回密码");
-        title.setAlignmentX(Component.CENTER_ALIGNMENT);
-        center.add(title);
-        center.add(Box.createVerticalStrut(20));
+        title.setFont(SeuTheme.font(Font.BOLD, 18f));
+        c.gridx = 0;
+        c.gridy = 0;
+        c.gridwidth = 2;
+        c.fill = GridBagConstraints.NONE;
+        c.anchor = GridBagConstraints.CENTER;
+        form.add(title, c);
 
-        SeuFields.setPlaceholder(emailField, "请输入已绑定的邮箱");
-        center.add(labelRow("邮箱", emailField));
-        center.add(Box.createVerticalStrut(8));
-        sendButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        center.add(sendButton);
-        center.add(Box.createVerticalStrut(18));
+        c.gridwidth = 1;
+        c.fill = GridBagConstraints.NONE;
+        c.anchor = GridBagConstraints.EAST;
+        c.gridy = 1;
+        c.gridx = 0;
+        form.add(label("邮箱"), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        form.add(emailField, c);
 
-        center.add(labelRow("验证码", codeField));
-        center.add(labelRow("新密码", newPasswordField));
-        center.add(labelRow("确认新密码", confirmField));
-        center.add(Box.createVerticalStrut(12));
-        resetButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        center.add(resetButton);
-        center.add(Box.createVerticalStrut(10));
-        statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        center.add(statusLabel);
+        c.gridy = 2;
+        c.gridx = 0;
+        c.fill = GridBagConstraints.NONE;
+        c.anchor = GridBagConstraints.EAST;
+        form.add(label("验证码"), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        form.add(codeField, c);
 
-        JPanel frame = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        c.gridy = 3;
+        c.gridx = 0;
+        c.fill = GridBagConstraints.NONE;
+        c.anchor = GridBagConstraints.EAST;
+        form.add(label("新密码"), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        form.add(newPasswordField, c);
+
+        c.gridy = 4;
+        c.gridx = 0;
+        c.fill = GridBagConstraints.NONE;
+        c.anchor = GridBagConstraints.EAST;
+        form.add(label("确认新密码"), c);
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        form.add(confirmField, c);
+
+        // 发送验证码按钮（跨两列）
+        c.gridy = 5;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.CENTER;
+        sendButton.setFont(SeuTheme.font(Font.PLAIN, 15f));
+        form.add(sendButton, c);
+
+        // 重置密码按钮（跨两列）
+        c.anchor = GridBagConstraints.NORTH;
+        c.gridy = 6;
+        form.add(resetButton, c);
+
+        // 状态提示
+        c.gridy = 7;
+        c.fill = GridBagConstraints.NONE;
+        statusLabel.setHorizontalAlignment(JLabel.CENTER);
+        form.add(statusLabel, c);
+
+        // 外层居中
+        JPanel frame = new JPanel(new GridBagLayout());
         frame.setOpaque(false);
-        frame.add(center);
+        frame.add(form, new GridBagConstraints());
         root.add(frame, BorderLayout.CENTER);
         setContentPane(root);
+
+        SeuFields.setPlaceholder(emailField, "请输入已绑定的邮箱");
+        SeuFields.setPlaceholder(codeField, "请输入邮箱中的验证码");
+        SeuFields.setPlaceholder(newPasswordField, "请输入新密码");
+        SeuFields.setPlaceholder(confirmField, "请再次输入新密码");
 
         sendButton.addActionListener(event -> sendCode());
         resetButton.addActionListener(event -> resetPassword());
     }
 
-    private JPanel labelRow(String label, JComponent field) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        row.setOpaque(false);
-        JLabel l = SeuLabels.field(label);
-        l.setVerticalAlignment(SwingConstants.CENTER);
-        row.add(l);
-        row.add(field);
-        row.setMaximumSize(new Dimension(380, 36));
-        row.setAlignmentX(Component.CENTER_ALIGNMENT);
-        return row;
+    private JLabel label(String text) {
+        JLabel label = SeuLabels.field(text);
+        label.setFont(SeuTheme.bodyFont());
+        return label;
     }
 
     private void sendCode() {
@@ -207,7 +257,9 @@ public final class ForgotPasswordFrame extends JFrame {
         if (cause instanceof ClientServiceException) {
             SeuMessages.error(this, cause.getMessage());
         } else {
-            SeuMessages.error(this, "无法连接服务器：" + (cause == null ? "未知错误" : cause.getMessage()));
+            String detail = cause == null ? "" : cause.getMessage();
+            SeuMessages.error(this, "无法连接服务器，请确认服务端已启动"
+                    + (detail == null || detail.trim().isEmpty() ? "" : "（" + detail + "）"));
         }
     }
 }
