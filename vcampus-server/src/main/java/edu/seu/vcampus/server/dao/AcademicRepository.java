@@ -33,7 +33,9 @@ public interface AcademicRepository {
     boolean classExists(String classId) throws SQLException;
     boolean classBelongsToDepartment(String classId, String departmentId) throws SQLException;
     String findAvailableClassId(String departmentId, int gradeYear) throws SQLException;
+    /** True when the student still has course, borrow, reservation or wish records. */
     boolean studentIsReferenced(String studentId) throws SQLException;
+    /** True when the teacher still has taught sections or library records. */
     boolean teacherIsReferenced(String teacherId) throws SQLException;
     boolean departmentIsReferenced(String departmentId) throws SQLException;
     boolean classIsReferenced(String classId) throws SQLException;

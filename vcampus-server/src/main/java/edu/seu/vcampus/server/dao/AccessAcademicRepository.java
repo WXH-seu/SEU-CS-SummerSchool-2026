@@ -273,14 +273,16 @@ public final class AccessAcademicRepository implements AcademicRepository {
 
     @Override
     public boolean studentIsReferenced(String studentId) throws SQLException {
-        return countReferencesIfTableExists("tblCourseEnrollment", "studentId", studentId) > 0;
+        return countReferencesIfTableExists("tblCourseEnrollment", "studentId", studentId) > 0
+                || linkedUserHasLibraryRecords("tblStudent", "studentId", studentId);
     }
 
     @Override
     public boolean teacherIsReferenced(String teacherId) throws SQLException {
         return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0
                 || countReferencesIfTableExists(
-                        "tblCourseSection", "teacherId", teacherId) > 0;
+                        "tblCourseSection", "teacherId", teacherId) > 0
+                || linkedUserHasLibraryRecords("tblTeacher", "teacherId", teacherId);
     }
 
     @Override
@@ -452,6 +454,30 @@ public final class AccessAcademicRepository implements AcademicRepository {
             statement.setString(1, value);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private boolean linkedUserHasLibraryRecords(String table, String idColumn, String id)
+            throws SQLException {
+        String userId = findLinkedUserId(table, idColumn, id);
+        if (isBlank(userId)) {
+            return false;
+        }
+        return countReferencesIfTableExists("tblBorrowRecord", "userId", userId) > 0
+                || countReferencesIfTableExists("tblBookWish", "userId", userId) > 0
+                || countReferencesIfTableExists("tblReservation", "userId", userId) > 0
+                || countReferencesIfTableExists("tblReservationPatron", "userId", userId) > 0;
+    }
+
+    private String findLinkedUserId(String table, String idColumn, String id)
+            throws SQLException {
+        String sql = "SELECT [userId] FROM [" + table + "] WHERE [" + idColumn + "]=?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getString("userId") : null;
             }
         }
     }
