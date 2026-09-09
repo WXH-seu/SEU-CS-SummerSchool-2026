@@ -93,7 +93,7 @@ public final class StoreCartPanel extends JPanel {
     private void bindActions() {
         selectAllButton.addActionListener(event -> toggleSelectAll());
         changeButton.addActionListener(event -> changeSelectedQuantity());
-        removeButton.addActionListener(event -> removeSelected());
+        removeButton.addActionListener(event -> removeChecked());
         checkoutButton.addActionListener(event -> checkOut());
         tableModel.addTableModelListener(event -> updateTotal());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -208,18 +208,49 @@ public final class StoreCartPanel extends JPanel {
         });
     }
 
-    private void removeSelected() {
-        final CartItemDto item = selectedItem();
-        if (item == null || !SeuMessages.confirm(this,
-                "确定将「" + item.getProductName() + "」移出购物车吗？")) {
+    private void removeChecked() {
+        final List<String> checkedProductIds = new ArrayList<String>();
+        final List<String> checkedNames = new ArrayList<String>();
+        for (int i = 0; i < rows.size(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
+                checkedProductIds.add(rows.get(i).getProductId());
+                checkedNames.add(rows.get(i).getProductName());
+            }
+        }
+        if (checkedProductIds.isEmpty()) {
+            SeuMessages.info(this, "请先勾选要移除的商品");
             return;
         }
-        runMutation("正在移除……", new IoAction() {
+        if (!SeuMessages.confirm(this,
+                "确定将勾选的 " + checkedNames.size()
+                        + " 种商品（" + String.join("、", checkedNames) + "）移出购物车吗？")) {
+            return;
+        }
+        setBusy(true, "正在移除……");
+        new SwingWorker<Void, Void>() {
             @Override
-            public void run() throws IOException {
-                service.updateCart(item.getProductId(), 0);
+            protected Void doInBackground() throws Exception {
+                for (String productId : checkedProductIds) {
+                    service.updateCart(productId, 0);
+                }
+                return null;
             }
-        });
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    refresh();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    showError("操作被中断");
+                    setBusy(false, "操作失败");
+                } catch (ExecutionException e) {
+                    showError(messageOf(e));
+                    setBusy(false, "操作失败");
+                }
+            }
+        }.execute();
     }
 
     private void checkOut() {

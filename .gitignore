@@ -33,3 +33,6 @@ credentials.txt
 vcampus-common/bin/
 vcampus-server/vcampus-database/
 vcampus-server/mail.properties
+
+# 数据库文件不入库，由服务端启动时自动创建
+vcampus-database/vCampus.accdb

@@ -6,12 +6,15 @@ import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 
 import java.sql.SQLException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
 /** Persistence contract for the campus store. */
 public interface StoreRepository {
     List<ProductDto> findProducts(StoreQueryRequest query) throws SQLException;
+    /** 返回商品分类去重列表；activeOnly=true 时只统计上架商品。 */
+    List<String> findCategories(boolean activeOnly) throws SQLException;
     ProductDto findProduct(String productId) throws SQLException;
     void saveProduct(ProductDto product) throws SQLException;
     boolean deleteProduct(String productId) throws SQLException;
@@ -27,4 +30,8 @@ public interface StoreRepository {
     List<OrderDto> findOrders(String userId) throws SQLException;
     boolean orderExists(String orderId) throws SQLException;
     void updateOrderStatus(String orderId, String statusName) throws SQLException;
+
+    BigDecimal findBalance(String userId) throws SQLException;
+    /** 充值成功后返回最新余额。 */
+    BigDecimal rechargeBalance(String userId, BigDecimal amount) throws SQLException;
 }

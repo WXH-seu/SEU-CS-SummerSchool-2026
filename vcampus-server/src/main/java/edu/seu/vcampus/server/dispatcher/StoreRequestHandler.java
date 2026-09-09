@@ -1,6 +1,7 @@
 package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
+import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
@@ -25,7 +26,9 @@ public final class StoreRequestHandler {
             Operation.STORE_PRODUCT_QUERY, Operation.STORE_PRODUCT_SAVE,
             Operation.STORE_PRODUCT_DELETE, Operation.STORE_CART_QUERY,
             Operation.STORE_CART_UPDATE, Operation.STORE_ORDER_CREATE,
-            Operation.STORE_ORDER_QUERY, Operation.STORE_ORDER_STATUS);
+            Operation.STORE_ORDER_QUERY, Operation.STORE_ORDER_STATUS,
+            Operation.STORE_CATEGORY_QUERY, Operation.STORE_BALANCE_QUERY,
+            Operation.STORE_BALANCE_RECHARGE);
 
     private final StoreService service;
 
@@ -52,6 +55,13 @@ public final class StoreRequestHandler {
                     return success(request, "OK");
                 case STORE_CART_QUERY:
                     return success(request, service.queryCart(actor));
+                case STORE_CATEGORY_QUERY:
+                    return success(request, service.queryCategories(actor));
+                case STORE_BALANCE_QUERY:
+                    return success(request, service.queryBalance(actor));
+                case STORE_BALANCE_RECHARGE:
+                    return success(request, service.rechargeBalance(actor,
+                            body(request, BalanceRechargeRequest.class)));
                 case STORE_CART_UPDATE:
                     service.updateCart(actor, body(request, CartUpdateRequest.class));
                     return success(request, "OK");

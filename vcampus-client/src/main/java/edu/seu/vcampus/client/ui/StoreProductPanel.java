@@ -14,6 +14,7 @@ import edu.seu.vcampus.common.enums.SubSystemRole;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -37,7 +38,8 @@ public final class StoreProductPanel extends JPanel {
     private final StoreClientService service;
     private final SubSystemRole effectiveRole;
     private final JTextField keyword = SeuFields.text(18);
-    private final JTextField category = SeuFields.text(10);
+    private final JComboBox<String> categoryBox = SeuFields.combo(new String[]{"全部"});
+    private boolean updatingCategories;
     private final JCheckBox includeInactive = new JCheckBox("含已下架");
     private final JButton searchButton = SeuButtons.primary("查询");
     private final JButton addToCartButton = SeuButtons.secondary("加入购物车");
@@ -49,6 +51,7 @@ public final class StoreProductPanel extends JPanel {
             "商品编号", "名称", "分类", "描述", "单价", "库存", "上架"});
     private final JTable table = SeuTables.create(tableModel);
     private List<ProductDto> rows = new ArrayList<ProductDto>();
+    private List<String> categories = new ArrayList<String>();
 
     public StoreProductPanel(StoreClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, SeuTheme.SPACE_MD));
@@ -66,7 +69,6 @@ public final class StoreProductPanel extends JPanel {
 
     private void buildUi() {
         SeuFields.setPlaceholder(keyword, "编号 / 名称");
-        SeuFields.setPlaceholder(category, "如：文具");
         includeInactive.setFont(SeuTheme.bodyFont());
         includeInactive.setForeground(SeuTheme.TEXT);
         includeInactive.setOpaque(false);
@@ -75,7 +77,7 @@ public final class StoreProductPanel extends JPanel {
         filters.add(SeuLabels.field("关键字"));
         filters.add(keyword);
         filters.add(SeuLabels.field("分类"));
-        filters.add(category);
+        filters.add(categoryBox);
         filters.add(includeInactive);
         filters.add(searchButton);
         filters.add(addToCartButton);
@@ -104,7 +106,11 @@ public final class StoreProductPanel extends JPanel {
     private void bindActions() {
         searchButton.addActionListener(event -> refresh());
         keyword.addActionListener(event -> refresh());
-        category.addActionListener(event -> refresh());
+        categoryBox.addActionListener(event -> {
+            if (!updatingCategories) {
+                refresh();
+            }
+        });
         includeInactive.addActionListener(event -> refresh());
         addToCartButton.addActionListener(event -> addSelectedToCart());
         addButton.addActionListener(event -> editProduct(null));
@@ -123,18 +129,22 @@ public final class StoreProductPanel extends JPanel {
 
     public void refresh() {
         setBusy(true, "正在加载商品……");
-        final StoreQueryRequest query = new StoreQueryRequest(
-                keyword.getText(), category.getText(), !includeInactive.isSelected());
+        final String keywordText = keyword.getText();
+        final String selectedCategory = currentCategory();
+        final boolean activeOnly = !includeInactive.isSelected();
         new SwingWorker<List<ProductDto>, Void>() {
             @Override
             protected List<ProductDto> doInBackground() throws Exception {
-                return service.queryProducts(query);
+                categories = service.queryCategories();
+                return service.queryProducts(new StoreQueryRequest(
+                        keywordText, selectedCategory, activeOnly));
             }
 
             @Override
             protected void done() {
                 try {
                     rows = get();
+                    rebuildCategoryItems(selectedCategory);
                     renderRows();
                     statusLabel.setText("共 " + rows.size() + " 件商品");
                 } catch (InterruptedException e) {
@@ -147,6 +157,35 @@ public final class StoreProductPanel extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    private String currentCategory() {
+        Object selected = categoryBox.getSelectedItem();
+        return selected == null || "全部".equals(String.valueOf(selected))
+                ? null : String.valueOf(selected).trim();
+    }
+
+    private void rebuildCategoryItems(String previous) {
+        updatingCategories = true;
+        try {
+            java.util.List<String> items = new ArrayList<String>();
+            items.add("全部");
+            for (String category : categories) {
+                if (category != null && !category.trim().isEmpty()
+                        && !items.contains(category)) {
+                    items.add(category);
+                }
+            }
+            categoryBox.setModel(new javax.swing.DefaultComboBoxModel<String>(
+                    items.toArray(new String[items.size()])));
+            if (previous != null && items.contains(previous)) {
+                categoryBox.setSelectedItem(previous);
+            } else {
+                categoryBox.setSelectedItem("全部");
+            }
+        } finally {
+            updatingCategories = false;
+        }
     }
 
     private void renderRows() {
@@ -271,7 +310,7 @@ public final class StoreProductPanel extends JPanel {
         statusLabel.setText(status);
         searchButton.setEnabled(!busy);
         keyword.setEnabled(!busy);
-        category.setEnabled(!busy);
+        categoryBox.setEnabled(!busy);
         includeInactive.setEnabled(!busy);
         addToCartButton.setEnabled(!busy);
         addButton.setEnabled(!busy);

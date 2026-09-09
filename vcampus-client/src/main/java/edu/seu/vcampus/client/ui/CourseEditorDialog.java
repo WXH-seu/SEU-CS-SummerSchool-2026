@@ -59,19 +59,18 @@ final class CourseEditorDialog {
         JComboBox<String> nature = SeuFields.combo(NATURE_ITEMS);
         nature.setSelectedItem(value == null ? "必修" : value.getCourseNature());
 
-        DefaultListModel<SectionAudienceDto> audienceModel =
-                new DefaultListModel<SectionAudienceDto>();
+        DefaultListModel<AudienceItem> audienceModel = new DefaultListModel<AudienceItem>();
         List<SectionAudienceDto> existing = value == null
                 ? new ArrayList<SectionAudienceDto>() : value.getAudiences();
         if (existing.isEmpty()) {
-            audienceModel.addElement(new SectionAudienceDto(null,
-                    SectionAudienceDto.SCOPE_ALL, null, null, null));
+            audienceModel.addElement(new AudienceItem(new SectionAudienceDto(null,
+                    SectionAudienceDto.SCOPE_ALL, null, null, null), departments));
         } else {
             for (SectionAudienceDto audience : existing) {
-                audienceModel.addElement(audience);
+                audienceModel.addElement(new AudienceItem(audience, departments));
             }
         }
-        JList<SectionAudienceDto> audienceList = new JList<SectionAudienceDto>(audienceModel);
+        JList<AudienceItem> audienceList = new JList<AudienceItem>(audienceModel);
         audienceList.setFont(SeuTheme.bodyFont());
         audienceList.setFixedCellHeight(SeuTheme.scaled(24));
 
@@ -87,8 +86,9 @@ final class CourseEditorDialog {
         JButton removeAudience = SeuButtons.danger("移除选中");
         addAudience.addActionListener(event -> {
             try {
-                audienceModel.addElement(buildAudience(scope, scopeDepartment,
-                        yearMin, yearMax));
+                audienceModel.addElement(new AudienceItem(
+                        buildAudience(scope, scopeDepartment, yearMin, yearMax),
+                        departments));
             } catch (IllegalArgumentException e) {
                 JOptionPane.showMessageDialog(parent, e.getMessage(), "受众规则有误",
                         JOptionPane.ERROR_MESSAGE);
@@ -157,7 +157,7 @@ final class CourseEditorDialog {
         }
         List<SectionAudienceDto> audiences = new ArrayList<SectionAudienceDto>();
         for (int i = 0; i < audienceModel.size(); i++) {
-            audiences.add(audienceModel.get(i));
+            audiences.add(audienceModel.get(i).dto);
         }
         return new CourseDto(value == null ? null : value.getSectionId(),
                 text(id), text(name), text(description),
@@ -203,6 +203,56 @@ final class CourseEditorDialog {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("入学年份" + label + "必须是整数");
         }
+    }
+
+    /** 受众规则的显示包装：把规则格式化成“全校 / 院系名 + 年份区间”。 */
+    private static final class AudienceItem {
+        private final SectionAudienceDto dto;
+        private final String label;
+
+        AudienceItem(SectionAudienceDto dto, List<DepartmentDto> departments) {
+            this.dto = dto;
+            StringBuilder text = new StringBuilder();
+            if (SectionAudienceDto.SCOPE_ALL.equals(dto.getScopeType())) {
+                text.append("全校");
+            } else {
+                text.append(departmentLabel(dto.getScopeValue(), departments));
+            }
+            text.append(yearLabel(dto));
+            this.label = text.toString();
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
+    private static String departmentLabel(String departmentId,
+                                          List<DepartmentDto> departments) {
+        if (departmentId != null) {
+            for (DepartmentDto department : departments) {
+                if (departmentId.equals(department.getDepartmentId())) {
+                    return department.getDepartmentName() + "（" + departmentId + "）";
+                }
+            }
+        }
+        return departmentId == null || departmentId.isEmpty() ? "指定院系" : departmentId;
+    }
+
+    private static String yearLabel(SectionAudienceDto audience) {
+        Integer min = audience.getYearMin();
+        Integer max = audience.getYearMax();
+        if (min == null && max == null) {
+            return " · 不限入学年份";
+        }
+        if (min == null) {
+            return " · ≤" + max + " 级入学";
+        }
+        if (max == null) {
+            return " · ≥" + min + " 级入学";
+        }
+        return " · " + min + "-" + max + " 级入学";
     }
 
     private static JComboBox<Choice> teacherCombo(List<TeacherDto> teachers, CourseDto value) {
