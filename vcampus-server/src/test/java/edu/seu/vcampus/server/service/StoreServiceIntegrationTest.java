@@ -19,6 +19,8 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.Collections;
 
@@ -34,18 +36,25 @@ public class StoreServiceIntegrationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private StoreService service;
+    private AccessDatabase database;
     private UserAccount admin;
     private UserAccount studentAccount;
 
     @Before
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
-        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        database = new AccessDatabase(file.getAbsolutePath());
         AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
         AccessStoreRepository store = new AccessStoreRepository(database);
         service = new StoreService(store);
         admin = users.findById("admin");
         studentAccount = users.findById("student");
+    }
+
+    @Test
+    public void cartAndOrderReferenceExistingUsers() throws Exception {
+        assertTrue(hasUserForeignKey("tblCartItem"));
+        assertTrue(hasUserForeignKey("tblOrder"));
     }
 
     @Test
@@ -231,5 +240,19 @@ public class StoreServiceIntegrationTest {
             }
         }
         return null;
+    }
+
+    private boolean hasUserForeignKey(String table) throws Exception {
+        try (Connection connection = database.openConnection();
+             ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

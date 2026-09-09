@@ -77,6 +77,8 @@ public final class SubSystems {
         switch (operation) {
             case STUDENT_QUERY:
             case STUDENT_SAVE:
+            case STUDENT_IMPORT:
+            case STUDENT_PROFILE_UPDATE:
             case STUDENT_DELETE:
             case TEACHER_QUERY:
             case TEACHER_SAVE:
@@ -87,6 +89,8 @@ public final class SubSystems {
             case CLASS_QUERY:
             case CLASS_SAVE:
             case CLASS_DELETE:
+            case CATALOG_MAJOR_QUERY:
+            case CATALOG_COURSE_QUERY:
                 return SubSystem.STUDENT;
             case COURSE_QUERY:
             case COURSE_SAVE:
@@ -101,6 +105,7 @@ public final class SubSystems {
             case LIBRARY_BOOK_DELETE:
             case LIBRARY_BORROW:
             case LIBRARY_RETURN:
+            case LIBRARY_RENEW:
             case LIBRARY_BORROW_QUERY:
                 return SubSystem.LIBRARY;
             case STORE_PRODUCT_QUERY:

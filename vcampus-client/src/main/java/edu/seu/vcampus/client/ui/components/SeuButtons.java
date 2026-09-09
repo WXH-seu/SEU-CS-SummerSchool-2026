@@ -49,7 +49,7 @@ public final class SeuButtons {
         return button;
     }
 
-    /** 深绿顶栏上的浅色文字按钮（账号管理 / 退出登录）。 */
+    /** 深绿顶栏上的浅色文字按钮（退出登录）。 */
     public static JButton headerLink(String text) {
         JButton button = link(text);
         button.setForeground(Color.WHITE);
@@ -62,9 +62,10 @@ public final class SeuButtons {
         JButton button = styled(text, SeuTheme.LOGIN_GREEN, Color.WHITE,
                 SeuTheme.LOGIN_GREEN_HOVER, true);
         button.setFont(SeuTheme.font(java.awt.Font.BOLD, 18f));
-        button.setPreferredSize(new Dimension(320, 48));
-        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
-        button.setMargin(new Insets(10, 24, 10, 24));
+        button.setPreferredSize(new Dimension(SeuTheme.scaled(320), SeuTheme.scaled(48)));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, SeuTheme.scaled(48)));
+        button.setMargin(new Insets(SeuTheme.scaled(10), SeuTheme.scaled(24),
+                SeuTheme.scaled(10), SeuTheme.scaled(24)));
         return button;
     }
 
@@ -76,10 +77,11 @@ public final class SeuButtons {
         button.setForeground(foreground);
         button.setFocusPainted(false);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        button.setMargin(new Insets(7, 16, 7, 16));
+        button.setMargin(new Insets(SeuTheme.scaled(7), SeuTheme.scaled(16),
+                SeuTheme.scaled(7), SeuTheme.scaled(16)));
         button.setPreferredSize(new Dimension(
-                Math.max(button.getPreferredSize().width, 72),
-                34));
+                Math.max(button.getPreferredSize().width, SeuTheme.scaled(72)),
+                SeuTheme.scaled(34)));
         button.putClientProperty("JButton.buttonType", "roundRect");
         if (makeDefault) {
             button.putClientProperty("JComponent.roundRect", Boolean.TRUE);

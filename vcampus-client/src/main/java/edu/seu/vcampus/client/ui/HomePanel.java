@@ -5,6 +5,7 @@ import edu.seu.vcampus.client.ui.components.SeuLabels;
 import edu.seu.vcampus.client.ui.components.SeuPanels;
 import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.common.enums.SubSystems;
@@ -16,7 +17,7 @@ import java.awt.FlowLayout;
 import java.awt.GridLayout;
 
 /**
- * 门户首页「应用中心」：以卡片展示四个业务模块入口。
+ * 门户首页「应用中心」：以卡片展示学籍、选课、图书馆、商店与账号管理入口。
  */
 public final class HomePanel extends JPanel {
     /** 模块跳转回调，参数为 CardLayout 名称。 */
@@ -50,12 +51,13 @@ public final class HomePanel extends JPanel {
         allApps.setForeground(SeuTheme.PRIMARY);
         sectionTitle.add(allApps);
 
-        JPanel grid = new JPanel(new GridLayout(1, 4, SeuTheme.SPACE_MD, SeuTheme.SPACE_MD));
+        JPanel grid = new JPanel(new GridLayout(1, 5, SeuTheme.SPACE_MD, SeuTheme.SPACE_MD));
         grid.setOpaque(false);
         grid.add(tile("学", "学籍管理", roleHint(session, SubSystem.STUDENT), "student", navigator));
         grid.add(tile("课", "选课系统", roleHint(session, SubSystem.COURSE), "course", navigator));
         grid.add(tile("书", "图书馆", roleHint(session, SubSystem.LIBRARY), "library", navigator));
         grid.add(tile("店", "校园商店", roleHint(session, SubSystem.STORE), "store", navigator));
+        grid.add(tile("账", "账号管理", accountHint(session), "account", navigator));
 
         JPanel card = SeuPanels.card();
         JPanel cardBody = new JPanel(new BorderLayout(0, SeuTheme.SPACE_MD));
@@ -95,6 +97,13 @@ public final class HomePanel extends JPanel {
             return "教师 · 可使用";
         }
         return "学生 · 可使用";
+    }
+
+    private String accountHint(LoginResponse session) {
+        if (session.getRole() == Role.SUPER_ADMIN) {
+            return "超级管理员 · 可维护用户";
+        }
+        return "个人账号 · 可使用";
     }
 
     private String nullToEmpty(String value) {

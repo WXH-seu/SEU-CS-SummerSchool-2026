@@ -23,6 +23,7 @@ public final class AccessBookRepository implements BookRepository {
     private static final long DAY_MILLIS = 24L * 60 * 60 * 1000;
     private static final int LOAN_PERIOD_DAYS = 30;
     private static final int DEMO_OVERDUE_BORROW_DAYS_AGO = 40;
+    private static final int DEMO_CURRENT_BORROW_DAYS_AGO = 25;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
     private final AccessDatabase database;
@@ -222,6 +223,24 @@ public final class AccessBookRepository implements BookRepository {
     }
 
     @Override
+    public boolean hasOverdueBorrow(String userId) throws SQLException {
+        if (isBlank(userId)) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM [tblBorrowRecord] "
+                + "WHERE [userId] = ? AND ([returnTime] IS NULL OR [returnTime] = '') "
+                + "AND [dueTime] < ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.setString(2, formatTime(new Date()));
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
+    }
+
+    @Override
     public BorrowRecord borrowAvailableCopy(String userId, String isbn, Date borrowTime,
                                             Date dueTime) throws SQLException {
         try (Connection connection = database.openConnection()) {
@@ -284,9 +303,51 @@ public final class AccessBookRepository implements BookRepository {
         }
     }
 
+    @Override
+    public boolean renewBorrow(int recordId, Date newDueTime, int expectedRenewCount,
+                               int newRenewCount) throws SQLException {
+        if (newDueTime == null || newRenewCount < 0) {
+            return false;
+        }
+        String sql = "UPDATE [tblBorrowRecord] SET [dueTime] = ?, [renewCount] = ? "
+                + "WHERE [recordId] = ? AND [renewCount] = ? "
+                + "AND ([returnTime] IS NULL OR [returnTime] = '')";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, formatTime(newDueTime));
+            statement.setInt(2, newRenewCount);
+            statement.setInt(3, recordId);
+            statement.setInt(4, expectedRenewCount);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public boolean isRenewalBlockedByReservation(int copyId) throws SQLException {
+        return false;
+    }
+
+    /**
+     * Moves an open record's due time without changing {@code renewCount}.
+     * Used by tests to place a loan inside or outside the renewal window.
+     */
+    public boolean forceDueTime(int recordId, Date dueTime) throws SQLException {
+        if (dueTime == null) {
+            return false;
+        }
+        String sql = "UPDATE [tblBorrowRecord] SET [dueTime] = ? "
+                + "WHERE [recordId] = ? AND ([returnTime] IS NULL OR [returnTime] = '')";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, formatTime(dueTime));
+            statement.setInt(2, recordId);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
     private String borrowSelectSql() {
         return "SELECT r.[recordId], r.[copyId], r.[userId], r.[borrowTime], r.[dueTime], "
-                + "r.[returnTime], c.[isbn], b.[title], b.[author], u.[displayName] "
+                + "r.[returnTime], r.[renewCount], c.[isbn], b.[title], b.[author], u.[displayName] "
                 + "FROM (([tblBorrowRecord] AS r "
                 + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId]) "
                 + "INNER JOIN [tblBook] AS b ON c.[isbn] = b.[isbn]) "
@@ -335,6 +396,7 @@ public final class AccessBookRepository implements BookRepository {
             }
             migrateBorrowTimesToText(connection);
             ensureBorrowUserForeignKey(connection);
+            ensureRenewCountColumn(connection);
             if (countBooks(connection) == 0) {
                 insertDemoData(connection);
             }
@@ -434,9 +496,34 @@ public final class AccessBookRepository implements BookRepository {
                 + "[borrowTime] TEXT(19) NOT NULL, "
                 + "[dueTime] TEXT(19) NOT NULL, "
                 + "[returnTime] TEXT(19), "
+                + "[renewCount] INTEGER NOT NULL, "
                 + "CONSTRAINT [" + BORROW_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
                 + "REFERENCES [tblUser] ([userId]))";
         execute(connection, sql);
+    }
+
+    /** Adds renewal count when upgrading a database created before version 1.5. */
+    private void ensureRenewCountColumn(Connection connection) throws SQLException {
+        if (!tableExists(connection, "tblBorrowRecord") || hasColumn(connection, "tblBorrowRecord",
+                "renewCount")) {
+            return;
+        }
+        execute(connection, "ALTER TABLE [tblBorrowRecord] ADD COLUMN [renewCount] INTEGER");
+        execute(connection, "UPDATE [tblBorrowRecord] SET [renewCount] = 0 "
+                + "WHERE [renewCount] IS NULL");
+    }
+
+    private boolean hasColumn(Connection connection, String tableName, String columnName)
+            throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, null, null)) {
+            while (columns.next()) {
+                if (tableName.equalsIgnoreCase(columns.getString("TABLE_NAME"))
+                        && columnName.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Adds the user relation when upgrading a database created before version 1.3. */
@@ -497,8 +584,10 @@ public final class AccessBookRepository implements BookRepository {
     private void insertDemoBorrows(Connection connection) throws SQLException {
         Date now = new Date();
         long loanMillis = loanPeriodMillis();
+        Date currentBorrowed = new Date(now.getTime() - DEMO_CURRENT_BORROW_DAYS_AGO * DAY_MILLIS);
         borrowCopy(connection, MATH_ISBN, DEMO_STUDENT_ID,
-                formatTime(now), formatTime(new Date(now.getTime() + loanMillis)));
+                formatTime(currentBorrowed),
+                formatTime(new Date(currentBorrowed.getTime() + loanMillis)));
         Date overdueBorrowed = new Date(now.getTime() - DEMO_OVERDUE_BORROW_DAYS_AGO * DAY_MILLIS);
         borrowCopy(connection, NOVEL_ISBN, DEMO_STUDENT_ID,
                 formatTime(overdueBorrowed),
@@ -513,7 +602,7 @@ public final class AccessBookRepository implements BookRepository {
         if (!tableExists(connection, "tblBorrowRecord")) {
             return;
         }
-        String sql = "SELECT r.[recordId], r.[borrowTime], r.[dueTime] "
+        String sql = "SELECT r.[recordId], r.[borrowTime], r.[dueTime], r.[renewCount] "
                 + "FROM [tblBorrowRecord] AS r "
                 + "INNER JOIN [tblBookCopy] AS c ON r.[copyId] = c.[copyId] "
                 + "WHERE r.[userId] = ? AND (c.[isbn] = ? OR c.[isbn] = ?) "
@@ -526,6 +615,9 @@ public final class AccessBookRepository implements BookRepository {
             statement.setString(3, NOVEL_ISBN);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
+                    if (result.getInt("renewCount") > 0) {
+                        continue;
+                    }
                     Date borrowTime = parseTime(result.getString("borrowTime"));
                     if (borrowTime == null) {
                         continue;
@@ -731,7 +823,7 @@ public final class AccessBookRepository implements BookRepository {
                                    String borrowTime, String dueTime)
             throws SQLException {
         String sql = "INSERT INTO [tblBorrowRecord] ([copyId], [userId], [borrowTime], "
-                + "[dueTime], [returnTime]) VALUES (?, ?, ?, ?, ?)";
+                + "[dueTime], [returnTime], [renewCount]) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql,
                 Statement.RETURN_GENERATED_KEYS)) {
             statement.setInt(1, copyId);
@@ -739,6 +831,7 @@ public final class AccessBookRepository implements BookRepository {
             statement.setString(3, borrowTime);
             statement.setString(4, dueTime);
             statement.setNull(5, Types.VARCHAR);
+            statement.setInt(6, 0);
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -806,7 +899,8 @@ public final class AccessBookRepository implements BookRepository {
                 result.getString("isbn"),
                 result.getString("title"),
                 result.getString("author"),
-                result.getString("displayName"));
+                result.getString("displayName"),
+                result.getInt("renewCount"));
     }
 
     private String formatTime(Date date) {

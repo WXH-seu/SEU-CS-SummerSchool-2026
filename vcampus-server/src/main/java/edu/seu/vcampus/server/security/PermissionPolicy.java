@@ -146,6 +146,8 @@ public final class PermissionPolicy {
     private void installDefaults() {
         markPublic(Operation.PING);
         markPublic(Operation.USER_LOGIN);
+        markPublic(Operation.USER_FORGOT_PASSWORD);
+        markPublic(Operation.USER_RESET_PASSWORD);
 
         // Account management is super-admin only. The sub-system admin (SUBSYSADMIN)
         // only operates business sub-systems and cannot register users or
@@ -171,6 +173,10 @@ public final class PermissionPolicy {
         // TEACHER and therefore cannot manage that sub-system.
         requireSubSystem(Operation.STUDENT_QUERY);
         requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STUDENT_IMPORT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STUDENT_PROFILE_UPDATE, SubSystemRole.STUDENT);
+        requireSubSystem(Operation.CATALOG_MAJOR_QUERY);
+        requireSubSystem(Operation.CATALOG_COURSE_QUERY);
         requireSubSystem(Operation.COURSE_QUERY);
         requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
         requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
@@ -181,6 +187,8 @@ public final class PermissionPolicy {
         requireSubSystem(Operation.LIBRARY_BORROW,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         requireSubSystem(Operation.LIBRARY_RETURN,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RENEW,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         // Patrons see their own records; administrators see every unreturned copy.
         requireSubSystem(Operation.LIBRARY_BORROW_QUERY);

@@ -1,0 +1,10 @@
+majorId,departmentId,majorName,degreeType,durationYears,sourceYear,sourceId,sourceUrl,active
+080901,CS,计算机科学与技术,工学,4,2023,CS_2023,https://cs.seu.edu.cn/_upload/article/files/c0/e1/a1ddff26422fb6f655d8d4f65a1c/ba192a48-19cf-4f08-b707-c39f12ecca36.pdf,true
+080902,SOFTWARE,软件工程,工学,4,2023,SE_2023,https://cs.seu.edu.cn/_upload/article/files/6d/10/9792a12f4db7b53a3d6301db8a8c/15d8b627-5777-46c2-af5b-8bb76a7c2c2b.pdf,true
+080717T,AI,人工智能,工学,4,2023,AI_2023,https://cs.seu.edu.cn/_upload/article/files/ce/96/460b19804b69a1df18e4ffeb8d7f/0e756f75-618f-4b41-9372-5743a1a09d36.pdf,true
+080911TK,CYBER,网络空间安全,工学,4,2025,CYBER_2025,https://cyber.seu.edu.cn/_upload/article/files/03/00/16c6c414442686387b259209cfc7/3e6a752c-3e91-4bac-9589-89015f43bdbe.pdf,true
+080904K,CYBER,信息安全,工学,4,2025,CYBER_2025,https://cyber.seu.edu.cn/_upload/article/files/03/00/16c6c414442686387b259209cfc7/3e6a752c-3e91-4bac-9589-89015f43bdbe.pdf,true
+080706,RADIO,信息工程,工学,4,2025,RADIO_2025,https://radio.seu.edu.cn/_upload/article/files/62/23/db30cf5446009d6beb9cc5e41a3d/051e14ec-5b6c-4945-839f-69f21ee43422.pdf,true
+080718T,RADIO,海洋信息工程,工学,4,2025,RADIO_2025,https://radio.seu.edu.cn/_upload/article/files/62/23/db30cf5446009d6beb9cc5e41a3d/051e14ec-5b6c-4945-839f-69f21ee43422.pdf,true
+080301,INS,测控技术与仪器,工学,4,2025,INS_2025,https://ins.seu.edu.cn/_upload/article/files/85/70/d182645e4f388c89654c939c8593/34130697-0248-4a98-ad86-4f72b7ae5b5b.pdf,true
+080303T,INS,智能感知工程,工学,4,2025,INS_2025,https://ins.seu.edu.cn/_upload/article/files/85/70/d182645e4f388c89654c939c8593/34130697-0248-4a98-ad86-4f72b7ae5b5b.pdf,true

@@ -34,7 +34,10 @@ public final class LibraryService {
     private static final int PUBLISHER_MAX = 64;
     private static final int CATEGORY_MAX = 32;
     private static final long LOAN_PERIOD_MILLIS = 30L * 24 * 60 * 60 * 1000;
+    private static final long RENEW_WINDOW_MILLIS = 10L * 24 * 60 * 60 * 1000;
+    private static final int MAX_RENEWALS = 2;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
+    private static final String OVERDUE_BLOCK_MESSAGE = "存在逾期未还图书，请先归还后再借或续借";
 
     private final BookRepository repository;
 
@@ -125,6 +128,7 @@ public final class LibraryService {
         if (!book.isActive()) {
             throw new BusinessException(ResponseCode.CONFLICT, "图书已下架，无法借阅");
         }
+        rejectIfOverdue(actorUserId);
         if (repository.hasActiveBorrow(actorUserId.trim(), isbn)) {
             throw new BusinessException(ResponseCode.CONFLICT, "不能重复借阅同一图书");
         }
@@ -156,6 +160,65 @@ public final class LibraryService {
         }
         if (!repository.returnBorrow(record.getRecordId(), new Date())) {
             throw new BusinessException(ResponseCode.CONFLICT, "该记录已归还");
+        }
+    }
+
+    /**
+     * Extends an open loan by 30 days when the caller is the patron, the record
+     * is inside the last-10-day window, and fewer than two renewals have been used.
+     */
+    public BorrowRecordDto renewBook(String actorUserId, SubSystemRole actorRole,
+                                     ReturnRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requirePatron(actorRole);
+        if (request == null || request.getRecordId() <= 0) {
+            throw invalid("借阅记录编号无效");
+        }
+        BorrowRecord record = repository.findBorrowRecordById(request.getRecordId());
+        if (record == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "借阅记录不存在");
+        }
+        if (!actorUserId.trim().equals(record.getUserId())) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "只能续借本人的借阅记录");
+        }
+        if (record.isReturned()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该记录已归还");
+        }
+        rejectIfOverdue(actorUserId);
+        if (record.getDueTime() == null) {
+            throw invalid("应还时间无效");
+        }
+        Date now = new Date();
+        if (record.isOverdue() || record.getDueTime().before(now)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "已逾期，无法续借");
+        }
+        Date windowStart = new Date(record.getDueTime().getTime() - RENEW_WINDOW_MILLIS);
+        if (now.before(windowStart)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "未到续借时间，应还日前 10 天内可续借");
+        }
+        if (record.getRenewCount() >= MAX_RENEWALS) {
+            throw new BusinessException(ResponseCode.CONFLICT, "同一借阅最多续借 2 次");
+        }
+        if (repository.isRenewalBlockedByReservation(record.getCopyId())) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该副本已被预约，无法续借");
+        }
+        Date newDue = new Date(record.getDueTime().getTime() + LOAN_PERIOD_MILLIS);
+        int newCount = record.getRenewCount() + 1;
+        if (!repository.renewBorrow(record.getRecordId(), newDue, record.getRenewCount(),
+                newCount)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "续借失败，请刷新后重试");
+        }
+        BorrowRecord renewed = repository.findBorrowRecordById(record.getRecordId());
+        if (renewed == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "借阅记录不存在");
+        }
+        return toRecordDto(renewed);
+    }
+
+    private void rejectIfOverdue(String actorUserId) throws SQLException, BusinessException {
+        if (repository.hasOverdueBorrow(actorUserId.trim())) {
+            throw new BusinessException(ResponseCode.CONFLICT, OVERDUE_BLOCK_MESSAGE);
         }
     }
 
@@ -228,7 +291,8 @@ public final class LibraryService {
                 formatTime(record.getDueTime()),
                 formatTime(record.getReturnTime()),
                 record.isOverdue(),
-                record.isReturned());
+                record.isReturned(),
+                record.getRenewCount());
     }
 
     private String formatTime(Date date) {
@@ -258,7 +322,7 @@ public final class LibraryService {
 
     private void requirePatron(SubSystemRole actorRole) throws BusinessException {
         if (actorRole == SubSystemRole.ADMIN) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅或归还图书");
+            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅、归还或续借图书");
         }
     }
 

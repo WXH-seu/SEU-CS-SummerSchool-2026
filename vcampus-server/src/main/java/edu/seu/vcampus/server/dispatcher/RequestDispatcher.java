@@ -2,11 +2,13 @@ package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.DeleteAccountRequest;
+import edu.seu.vcampus.common.dto.ForgotPasswordRequest;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.PasswordChangeRequest;
 import edu.seu.vcampus.common.dto.ProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.ResetPasswordRequest;
 import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
@@ -149,6 +151,16 @@ public final class RequestDispatcher {
             LoginResponse session = authService.login(body);
             return ResponseMessage.success(request.getRequestId(), "登录成功", session);
         }
+        if (operation == Operation.USER_FORGOT_PASSWORD) {
+            ForgotPasswordRequest body = requireBody(request, ForgotPasswordRequest.class);
+            authService.requestPasswordReset(body.getEmail());
+            return ResponseMessage.success(request.getRequestId(), "验证码已发送，请查收邮箱", "OK");
+        }
+        if (operation == Operation.USER_RESET_PASSWORD) {
+            ResetPasswordRequest body = requireBody(request, ResetPasswordRequest.class);
+            authService.resetPassword(body.getEmail(), body.getCode(), body.getNewPassword());
+            return ResponseMessage.success(request.getRequestId(), "密码已重置，请重新登录", "OK");
+        }
         return ResponseMessage.failure(request.getRequestId(),
                 ResponseCode.NOT_IMPLEMENTED, "该操作尚未实现");
     }
@@ -176,7 +188,7 @@ public final class RequestDispatcher {
             case USER_PROFILE_UPDATE:
                 ProfileUpdateRequest profile = requireBody(request, ProfileUpdateRequest.class);
                 AccountInfo updated = authService.updateProfile(
-                        account.getUserId(), profile.getDisplayName());
+                        account.getUserId(), profile.getDisplayName(), profile.getEmail());
                 return ResponseMessage.success(request.getRequestId(), "资料已更新", updated);
             case USER_PASSWORD_CHANGE:
                 PasswordChangeRequest password = requireBody(request, PasswordChangeRequest.class);

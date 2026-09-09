@@ -22,7 +22,8 @@ public final class LibraryRequestHandler {
     private static final EnumSet<Operation> OPERATIONS = EnumSet.of(
             Operation.LIBRARY_BOOK_QUERY, Operation.LIBRARY_BOOK_SAVE,
             Operation.LIBRARY_BOOK_DELETE, Operation.LIBRARY_BORROW,
-            Operation.LIBRARY_RETURN, Operation.LIBRARY_BORROW_QUERY);
+            Operation.LIBRARY_RETURN, Operation.LIBRARY_RENEW,
+            Operation.LIBRARY_BORROW_QUERY);
 
     private final LibraryService service;
 
@@ -54,6 +55,9 @@ public final class LibraryRequestHandler {
                 case LIBRARY_RETURN:
                     service.returnBook(actorUserId, actorRole, body(request, ReturnRequest.class));
                     return success(request, "OK");
+                case LIBRARY_RENEW:
+                    return success(request, service.renewBook(
+                            actorUserId, actorRole, body(request, ReturnRequest.class)));
                 case LIBRARY_BORROW_QUERY:
                     return success(request, service.queryBorrows(actorUserId, actorRole));
                 default:

@@ -53,6 +53,9 @@ public interface BookRepository {
     /** Whether the user already has an unreturned copy of this ISBN. */
     boolean hasActiveBorrow(String userId, String isbn) throws SQLException;
 
+    /** Whether the user has any unreturned copy past its due time. */
+    boolean hasOverdueBorrow(String userId) throws SQLException;
+
     /**
      * Borrows one available copy in a short transaction.
      * Returns {@code null} when no available copy exists.
@@ -65,4 +68,18 @@ public interface BookRepository {
      * the record is missing or already returned.
      */
     boolean returnBorrow(int recordId, Date returnTime) throws SQLException;
+
+    /**
+     * Extends the due date and stores the new renewal count for an open record.
+     * Returns {@code false} when the record is missing, already returned, or the
+     * stored renewal count no longer matches {@code expectedRenewCount}.
+     */
+    boolean renewBorrow(int recordId, Date newDueTime, int expectedRenewCount, int newRenewCount)
+            throws SQLException;
+
+    /**
+     * Whether an approved reservation currently blocks renewal of this copy.
+     * Returns {@code false} until the reservation tables are connected.
+     */
+    boolean isRenewalBlockedByReservation(int copyId) throws SQLException;
 }

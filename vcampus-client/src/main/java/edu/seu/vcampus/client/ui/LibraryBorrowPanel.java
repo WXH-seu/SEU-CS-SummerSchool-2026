@@ -30,6 +30,7 @@ public final class LibraryBorrowPanel extends JPanel {
     private final Runnable onReturned;
     private final boolean adminView;
     private final JButton refreshButton = SeuButtons.secondary("刷新");
+    private final JButton renewButton = SeuButtons.secondary("续借");
     private final JButton returnButton = SeuButtons.primary("归还");
     private final JLabel statusLabel = SeuLabels.status("准备就绪");
     private final DefaultTableModel tableModel;
@@ -55,15 +56,16 @@ public final class LibraryBorrowPanel extends JPanel {
 
     private String[] columnNames() {
         if (adminView) {
-            return new String[]{"借阅人", "书名", "ISBN", "作者", "借出时间", "应还时间", "状态"};
+            return new String[]{"借阅人", "书名", "ISBN", "作者", "借出时间", "应还时间", "续借", "状态"};
         }
-        return new String[]{"书名", "ISBN", "作者", "借出时间", "应还时间", "归还时间", "状态"};
+        return new String[]{"书名", "ISBN", "作者", "借出时间", "应还时间", "归还时间", "续借", "状态"};
     }
 
     private void buildUi() {
         JPanel actions = SeuPanels.toolbar();
         actions.add(refreshButton);
         if (!adminView) {
+            actions.add(renewButton);
             actions.add(returnButton);
         }
 
@@ -85,6 +87,7 @@ public final class LibraryBorrowPanel extends JPanel {
             return;
         }
         returnButton.addActionListener(event -> returnSelected());
+        renewButton.addActionListener(event -> renewSelected());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent event) {
@@ -133,6 +136,7 @@ public final class LibraryBorrowPanel extends JPanel {
                         record.getAuthor(),
                         nullToEmpty(record.getBorrowTime()),
                         nullToEmpty(record.getDueTime()),
+                        renewLabel(record),
                         record.getStatusName()
                 });
             } else {
@@ -143,6 +147,7 @@ public final class LibraryBorrowPanel extends JPanel {
                         nullToEmpty(record.getBorrowTime()),
                         nullToEmpty(record.getDueTime()),
                         nullToEmpty(record.getReturnTime()),
+                        renewLabel(record),
                         record.getStatusName()
                 });
             }
@@ -190,6 +195,59 @@ public final class LibraryBorrowPanel extends JPanel {
         }.execute();
     }
 
+    private void renewSelected() {
+        final BorrowRecordDto record = selectedRecord();
+        if (record == null) {
+            return;
+        }
+        if (record.isReturned()) {
+            SeuMessages.info(this, "该记录已经归还");
+            return;
+        }
+        if (hasOverdueBorrow()) {
+            showError("存在逾期未还图书，请先归还后再借或续借");
+            return;
+        }
+        if (record.isOverdue()) {
+            showError("已逾期，无法续借");
+            return;
+        }
+        if (record.getRenewCount() >= 2) {
+            showError("同一借阅最多续借 2 次");
+            return;
+        }
+        if (!SeuMessages.confirm(this,
+                "确定续借「" + record.getTitle() + "」30 天吗？\n当前已续 " + record.getRenewCount()
+                        + " 次，最多 2 次。")) {
+            return;
+        }
+        setBusy(true, "正在续借……");
+        new SwingWorker<BorrowRecordDto, Void>() {
+            @Override
+            protected BorrowRecordDto doInBackground() throws Exception {
+                return service.renewBook(record.getRecordId());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    BorrowRecordDto renewed = get();
+                    SeuMessages.info(LibraryBorrowPanel.this, "续借成功",
+                            "「" + renewed.getTitle() + "」应还时间已延至 " + renewed.getDueTime()
+                                    + "\n已续借 " + renewed.getRenewCount() + " / 2 次");
+                    refresh();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    showError("续借被中断");
+                    setBusy(false, "续借失败");
+                } catch (ExecutionException e) {
+                    showError(messageOf(e));
+                    setBusy(false, "续借失败");
+                }
+            }
+        }.execute();
+    }
+
     private BorrowRecordDto selectedRecord() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) {
@@ -203,6 +261,21 @@ public final class LibraryBorrowPanel extends JPanel {
         statusLabel.setText(status);
         refreshButton.setEnabled(!busy);
         returnButton.setEnabled(!busy && !adminView);
+        renewButton.setEnabled(!busy && !adminView);
+    }
+
+    private String renewLabel(BorrowRecordDto record) {
+        return record.getRenewCount() + " / 2";
+    }
+
+    private boolean hasOverdueBorrow() {
+        for (int i = 0; i < rows.size(); i++) {
+            BorrowRecordDto record = rows.get(i);
+            if (!record.isReturned() && record.isOverdue()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String messageOf(ExecutionException exception) {

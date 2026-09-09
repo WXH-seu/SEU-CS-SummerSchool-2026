@@ -12,6 +12,9 @@ public interface UserRepository {
     /** Returns the account with the given id, or {@code null} when absent. */
     UserAccount findById(String userId) throws SQLException;
 
+    /** Returns the account whose registered email matches, or {@code null}. */
+    UserAccount findByEmail(String email) throws SQLException;
+
     /** Returns every account in creation-independent order. */
     List<UserAccount> findAll() throws SQLException;
 
@@ -20,6 +23,9 @@ public interface UserRepository {
 
     /** Updates the display name of the given account. */
     void updateDisplayName(String userId, String displayName) throws SQLException;
+
+    /** Updates the recovery email of the given account. */
+    void updateEmail(String userId, String email) throws SQLException;
 
     /** Replaces the password hash and salt of the given account. */
     void updatePassword(String userId, String passwordHash, String passwordSalt)

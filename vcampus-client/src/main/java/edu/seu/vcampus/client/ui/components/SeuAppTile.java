@@ -31,7 +31,7 @@ public final class SeuAppTile extends JPanel {
                 BorderFactory.createLineBorder(SeuTheme.BORDER, 1),
                 BorderFactory.createEmptyBorder(20, 16, 18, 16)));
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        setPreferredSize(new Dimension(180, 160));
+        syncMetrics();
 
         JLabel icon = new JLabel(glyph == null ? "应用" : glyph, SwingConstants.CENTER);
         icon.setFont(SeuTheme.font(Font.BOLD, 28f));
@@ -43,7 +43,7 @@ public final class SeuAppTile extends JPanel {
         titleLabel.setForeground(SeuTheme.TEXT);
 
         JLabel descLabel = new JLabel(
-                "<html><div style='text-align:center;width:140px'>"
+                "<html><div style='text-align:center'>"
                         + (description == null ? "" : description) + "</div></html>",
                 SwingConstants.CENTER);
         descLabel.setFont(SeuTheme.smallFont());
@@ -95,6 +95,12 @@ public final class SeuAppTile extends JPanel {
         titleLabel.addMouseListener(adapter);
         descLabel.addMouseListener(adapter);
         center.addMouseListener(adapter);
+    }
+
+    /** 按当前字号重算卡片尺寸，窗口缩放后由 {@link SeuUiScale} 调用。 */
+    public void syncMetrics() {
+        setPreferredSize(new Dimension(SeuTheme.scaled(180), SeuTheme.scaled(160)));
+        revalidate();
     }
 
     public boolean isHovering() {

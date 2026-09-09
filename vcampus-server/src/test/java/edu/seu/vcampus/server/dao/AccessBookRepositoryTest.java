@@ -49,6 +49,9 @@ public class AccessBookRepositoryTest {
         assertNotNull(records.get(0).getTitle());
         assertEquals("student", records.get(0).getUserId());
         assertEquals("演示学生", records.get(0).getDisplayName());
+        assertEquals(0, records.get(0).getRenewCount());
+        assertTrue(repository.hasOverdueBorrow("student"));
+        assertFalse(repository.hasOverdueBorrow("teacher"));
 
         List<BorrowRecord> active = repository.findActiveBorrowRecords();
         assertEquals(2, active.size());
@@ -125,6 +128,56 @@ public class AccessBookRepositoryTest {
         List<BorrowRecord> aligned = repository.findBorrowRecordsByUser("student");
         assertThirtyDayLoanPeriod(aligned);
         assertTrue(findUnreturnedByIsbn(aligned, "9787020008735").isOverdue());
+    }
+
+    @Test
+    public void addsRenewCountColumnToLegacyBorrowTable() throws Exception {
+        File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
+        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
+        new AccessBookRepository(database);
+        try (Connection connection = database.openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("DROP TABLE [tblBorrowRecord]");
+            statement.execute("CREATE TABLE [tblBorrowRecord] ("
+                    + "[recordId] COUNTER PRIMARY KEY, "
+                    + "[copyId] LONG NOT NULL, "
+                    + "[userId] TEXT(32) NOT NULL, "
+                    + "[borrowTime] TEXT(19) NOT NULL, "
+                    + "[dueTime] TEXT(19) NOT NULL, "
+                    + "[returnTime] TEXT(19))");
+            statement.execute("UPDATE [tblBookCopy] SET [copyStatus] = 'AVAILABLE'");
+        }
+        Date now = new Date();
+        String stamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(now);
+        String due = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(
+                new Date(now.getTime() + 30L * 24 * 60 * 60 * 1000));
+        try (Connection connection = database.openConnection();
+             PreparedStatement copies = connection.prepareStatement(
+                     "SELECT MIN([copyId]) FROM [tblBookCopy] WHERE [isbn] = ?");
+             PreparedStatement insert = connection.prepareStatement(
+                     "INSERT INTO [tblBorrowRecord] ([copyId], [userId], [borrowTime], "
+                             + "[dueTime]) VALUES (?, ?, ?, ?)")) {
+            copies.setString(1, "9787040396621");
+            int copyId;
+            try (ResultSet result = copies.executeQuery()) {
+                assertTrue(result.next());
+                copyId = result.getInt(1);
+            }
+            insert.setInt(1, copyId);
+            insert.setString(2, "student");
+            insert.setString(3, stamp);
+            insert.setString(4, due);
+            assertEquals(1, insert.executeUpdate());
+        }
+
+        AccessBookRepository upgraded = new AccessBookRepository(database);
+        List<BorrowRecord> records = upgraded.findBorrowRecordsByUser("student");
+        assertFalse(records.isEmpty());
+        assertEquals(0, records.get(0).getRenewCount());
+        Date newDue = new Date(now.getTime() + 35L * 24 * 60 * 60 * 1000);
+        assertTrue(upgraded.renewBorrow(records.get(0).getRecordId(), newDue, 0, 1));
+        assertEquals(1, upgraded.findBorrowRecordById(records.get(0).getRecordId()).getRenewCount());
     }
 
     private static boolean hasBorrowUserForeignKey(AccessDatabase database) throws Exception {
