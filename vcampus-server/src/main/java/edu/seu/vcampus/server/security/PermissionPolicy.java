@@ -196,6 +196,11 @@ public final class PermissionPolicy {
         requireSubSystem(Operation.LIBRARY_WISH_SUBMIT,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         requireSubSystem(Operation.LIBRARY_WISH_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_QUERY);
+        requireSubSystem(Operation.LIBRARY_RESERVE_APPLY,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RESERVE_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_PICKUP);
         requireSubSystem(Operation.STORE_PRODUCT_QUERY);
         requireSubSystem(Operation.STORE_ORDER_CREATE,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);

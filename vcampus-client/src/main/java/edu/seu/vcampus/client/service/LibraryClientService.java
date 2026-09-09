@@ -7,6 +7,9 @@ import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReserveDto;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.dto.WishDto;
 import edu.seu.vcampus.common.dto.WishReviewRequest;
@@ -99,6 +102,32 @@ public final class LibraryClientService {
             throw new IOException("服务器返回的数据类型不正确");
         }
         return (BookDto) body;
+    }
+
+    public List<ReserveDto> queryReservations() throws IOException {
+        return listRequest(Operation.LIBRARY_RESERVE_QUERY, null, ReserveDto.class);
+    }
+
+    public ReserveDto applyReservation(String isbn) throws IOException {
+        Object body = request(Operation.LIBRARY_RESERVE_APPLY, new BorrowRequest(isbn)).getBody();
+        if (!(body instanceof ReserveDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (ReserveDto) body;
+    }
+
+    public void reviewReservation(int reservationId, boolean approved) throws IOException {
+        request(Operation.LIBRARY_RESERVE_REVIEW,
+                new ReserveReviewRequest(reservationId, approved));
+    }
+
+    public BorrowRecordDto pickupReservation(int reservationId) throws IOException {
+        Object body = request(Operation.LIBRARY_RESERVE_PICKUP,
+                new ReserveIdRequest(reservationId)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
     }
 
     private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)

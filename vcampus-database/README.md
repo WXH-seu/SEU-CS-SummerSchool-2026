@@ -15,9 +15,9 @@ vcampus-database/vCampus.accdb
 - `tblTeacher`：教师档案。
 - `tblCourse`：实际开课与选课容量、教师、时间信息。
 - `tblCourseEnrollment`：学生选课记录。
-- `tblBook`：图书书目。
-- `tblBookCopy`：馆藏副本。
-- `tblBorrowRecord`：借阅记录。
+- `tblBookWish`：好书推荐。
+- `tblReservation`：预约委托申请。
+- `tblReservationPatron`：预约违约次数与停权截止。
 - `tblOperationLog`：登录与管理员操作审计日志。
 - `tblCatalogSource`：院系、专业和课程快照的官方来源。
 - `tblMajor`：本科专业目录。
@@ -71,7 +71,7 @@ vcampus-database/vCampus.accdb
 | 用户 | `tblUser`、`tblOperationLog` |
 | 学籍 | `tblStudent`、`tblTeacher`、`tblDepartment`、`tblSchoolClass` |
 | 选课 | `tblCourse`、`tblCourseEnrollment` |
-| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`、`tblBookWish`（已自动创建） |
+| 图书馆 | `tblBook`、`tblBookCopy`、`tblBorrowRecord`、`tblBookWish`、`tblReservation`、`tblReservationPatron`（已自动创建） |
 | 商店 | `tblProduct`、`tblCartItem`、`tblOrder`、`tblOrderItem` |
 
 Access 不适合大量并发写入。库存扣减、选课、借书等关键业务应由服务器端使用短事务完成。

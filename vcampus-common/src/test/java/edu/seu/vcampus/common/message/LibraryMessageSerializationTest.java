@@ -5,6 +5,9 @@ import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.ReserveDto;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.dto.WishDto;
 import edu.seu.vcampus.common.dto.WishReviewRequest;
@@ -186,5 +189,60 @@ public class LibraryMessageSerializationTest {
         assertEquals(4, body.getWishId());
         assertEquals(true, body.isApproved());
         assertEquals("9787536692930", body.getBook().getIsbn());
+    }
+
+    @Test
+    public void serializesReserveApplyAndRecord() throws Exception {
+        RequestMessage<BorrowRequest> request = new RequestMessage<BorrowRequest>(
+                Operation.LIBRARY_RESERVE_APPLY, "session", new BorrowRequest("9787020024759"));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        new ObjectOutputStream(bytes).writeObject(request);
+        ObjectInputStream input = new ObjectInputStream(
+                new ByteArrayInputStream(bytes.toByteArray()));
+        RequestMessage<?> restored = (RequestMessage<?>) input.readObject();
+        assertEquals(Operation.LIBRARY_RESERVE_APPLY, restored.getOperation());
+        assertEquals("9787020024759", ((BorrowRequest) restored.getBody()).getIsbn());
+
+        ReserveDto reserve = new ReserveDto(6, "student", "演示学生", "9787020024759",
+                "围城", "钱钟书", 12, ReserveDto.STATUS_HELD,
+                "2026-09-09 09:00:00", "2026-09-09 10:00:00",
+                "2026-09-16 10:00:00", "", 0, "");
+        ResponseMessage<ReserveDto> response =
+                ResponseMessage.success("req-4", "操作成功", reserve);
+        bytes = new ByteArrayOutputStream();
+        new ObjectOutputStream(bytes).writeObject(response);
+        input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()));
+        ResponseMessage<?> restoredResponse = (ResponseMessage<?>) input.readObject();
+        ReserveDto restoredReserve = (ReserveDto) restoredResponse.getBody();
+        assertEquals(6, restoredReserve.getReservationId());
+        assertEquals("演示学生（student）", restoredReserve.getApplicantLabel());
+        assertEquals("待取书", restoredReserve.getStatusName());
+        assertEquals(true, restoredReserve.isHeld());
+        assertEquals(true, restoredReserve.isInProgress());
+    }
+
+    @Test
+    public void serializesReserveReviewAndPickupRequests() throws Exception {
+        RequestMessage<ReserveReviewRequest> review = new RequestMessage<ReserveReviewRequest>(
+                Operation.LIBRARY_RESERVE_REVIEW, "session",
+                new ReserveReviewRequest(6, true));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        new ObjectOutputStream(bytes).writeObject(review);
+        ObjectInputStream input = new ObjectInputStream(
+                new ByteArrayInputStream(bytes.toByteArray()));
+        RequestMessage<?> restored = (RequestMessage<?>) input.readObject();
+        assertEquals(Operation.LIBRARY_RESERVE_REVIEW, restored.getOperation());
+        ReserveReviewRequest reviewBody = (ReserveReviewRequest) restored.getBody();
+        assertEquals(6, reviewBody.getReservationId());
+        assertEquals(true, reviewBody.isApproved());
+
+        RequestMessage<ReserveIdRequest> pickup = new RequestMessage<ReserveIdRequest>(
+                Operation.LIBRARY_RESERVE_PICKUP, "session", new ReserveIdRequest(6));
+        bytes = new ByteArrayOutputStream();
+        new ObjectOutputStream(bytes).writeObject(pickup);
+        input = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()));
+        restored = (RequestMessage<?>) input.readObject();
+        assertEquals(Operation.LIBRARY_RESERVE_PICKUP, restored.getOperation());
+        assertEquals(6, ((ReserveIdRequest) restored.getBody()).getReservationId());
     }
 }

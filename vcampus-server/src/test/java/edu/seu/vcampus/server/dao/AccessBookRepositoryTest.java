@@ -90,6 +90,9 @@ public class AccessBookRepositoryTest {
         assertEquals(1, studentWishes.size());
         assertEquals("百年孤独", studentWishes.get(0).getTitle());
         assertEquals(BookWish.STATUS_REJECTED, studentWishes.get(0).getStatus());
+        assertTrue(repository.findAllReservations().isEmpty());
+        assertEquals(0, repository.findPatronDefaultCount("student"));
+        assertFalse(repository.hasActiveReservation("student", "9787020024759"));
     }
 
     @Test

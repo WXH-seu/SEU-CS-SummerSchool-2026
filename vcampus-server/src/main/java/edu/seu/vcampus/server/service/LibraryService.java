@@ -5,6 +5,9 @@ import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.ReserveDto;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.dto.WishDto;
 import edu.seu.vcampus.common.dto.WishReviewRequest;
@@ -14,6 +17,7 @@ import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.Book;
 import edu.seu.vcampus.server.dao.BookCopy;
 import edu.seu.vcampus.server.dao.BookRepository;
+import edu.seu.vcampus.server.dao.BookReservation;
 import edu.seu.vcampus.server.dao.BookWish;
 import edu.seu.vcampus.server.dao.BorrowRecord;
 
@@ -42,6 +46,7 @@ public final class LibraryService {
     private static final int MAX_RENEWALS = 2;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
     private static final String OVERDUE_BLOCK_MESSAGE = "存在逾期未还图书，请先归还后再借或续借";
+    private static final String SUSPEND_MESSAGE = "预约违约已满 3 次，停权期内不能提交新预约";
 
     private final BookRepository repository;
 
@@ -53,6 +58,7 @@ public final class LibraryService {
                                              BookQueryRequest query)
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
+        settleReservations();
         String keyword = query == null ? null : query.getKeyword();
         boolean includeInactive = query != null && query.isIncludeInactive()
                 && actorRole == SubSystemRole.ADMIN;
@@ -109,6 +115,7 @@ public final class LibraryService {
     public ArrayList<BorrowRecordDto> queryBorrows(String actorUserId, SubSystemRole actorRole)
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
+        settleReservations();
         List<BorrowRecord> records = actorRole == SubSystemRole.ADMIN
                 ? repository.findActiveBorrowRecords()
                 : repository.findBorrowRecordsByUser(actorUserId.trim());
@@ -124,6 +131,7 @@ public final class LibraryService {
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
         requirePatron(actorRole);
+        settleReservations();
         String isbn = requireIsbn(request == null ? null : request.getIsbn());
         Book book = repository.findByIsbn(isbn);
         if (book == null) {
@@ -149,6 +157,7 @@ public final class LibraryService {
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
         requirePatron(actorRole);
+        settleReservations();
         if (request == null || request.getRecordId() <= 0) {
             throw invalid("借阅记录编号无效");
         }
@@ -176,6 +185,7 @@ public final class LibraryService {
             throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
         requirePatron(actorRole);
+        settleReservations();
         if (request == null || request.getRecordId() <= 0) {
             throw invalid("借阅记录编号无效");
         }
@@ -292,6 +302,139 @@ public final class LibraryService {
         return saved;
     }
 
+    public ArrayList<ReserveDto> queryReservations(String actorUserId, SubSystemRole actorRole)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        settleReservations();
+        List<BookReservation> rows = actorRole == SubSystemRole.ADMIN
+                ? repository.findAllReservations()
+                : repository.findReservationsByUser(actorUserId.trim());
+        ArrayList<ReserveDto> result = new ArrayList<ReserveDto>();
+        for (BookReservation row : rows) {
+            result.add(toReserveDto(row));
+        }
+        return result;
+    }
+
+    public ReserveDto applyReservation(String actorUserId, SubSystemRole actorRole,
+                                       BorrowRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requirePatron(actorRole);
+        settleReservations();
+        String isbn = requireIsbn(request == null ? null : request.getIsbn());
+        Book book = repository.findByIsbn(isbn);
+        if (book == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "图书不存在");
+        }
+        if (!book.isActive()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "图书已下架，无法预约");
+        }
+        if (repository.countAvailableCopies(isbn) > 0) {
+            throw new BusinessException(ResponseCode.CONFLICT, "仍有可借副本，请直接借阅");
+        }
+        if (repository.hasActiveBorrow(actorUserId.trim(), isbn)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "已在借阅该图书，无需预约");
+        }
+        if (repository.hasActiveReservation(actorUserId.trim(), isbn)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "已有进行中的预约委托");
+        }
+        if (repository.findEarliestReservableCopy(isbn) == null) {
+            throw new BusinessException(ResponseCode.CONFLICT, "暂无可预约的在借副本");
+        }
+        rejectIfSuspended(actorUserId);
+        BookReservation created = repository.insertReservation(actorUserId.trim(), isbn, new Date());
+        if (created == null) {
+            throw new BusinessException(ResponseCode.SERVER_ERROR, "提交预约失败");
+        }
+        return toReserveDto(created);
+    }
+
+    public void reviewReservation(String actorUserId, SubSystemRole actorRole,
+                                  ReserveReviewRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        requireAdmin(actorRole);
+        settleReservations();
+        if (request == null || request.getReservationId() <= 0) {
+            throw invalid("预约编号无效");
+        }
+        BookReservation reservation = repository.findReservationById(request.getReservationId());
+        if (reservation == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "预约记录不存在");
+        }
+        if (!reservation.isPending()) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该预约已审核");
+        }
+        Date now = new Date();
+        if (!request.isApproved()) {
+            if (!repository.markReservationRejected(reservation.getReservationId(),
+                    actorUserId.trim(), now)) {
+                throw new BusinessException(ResponseCode.CONFLICT, "该预约已审核");
+            }
+            return;
+        }
+        Integer copyId = repository.findEarliestReservableCopy(reservation.getIsbn());
+        if (copyId == null) {
+            throw new BusinessException(ResponseCode.CONFLICT, "暂无可命中的在借副本");
+        }
+        if (!repository.markReservationApproved(reservation.getReservationId(),
+                actorUserId.trim(), copyId.intValue(), now)) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该预约已审核");
+        }
+    }
+
+    public BorrowRecordDto pickupReservation(String actorUserId, SubSystemRole actorRole,
+                                             ReserveIdRequest request)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        settleReservations();
+        if (request == null || request.getReservationId() <= 0) {
+            throw invalid("预约编号无效");
+        }
+        BookReservation reservation = repository.findReservationById(request.getReservationId());
+        if (reservation == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "预约记录不存在");
+        }
+        if (actorRole != SubSystemRole.ADMIN
+                && !actorUserId.trim().equals(reservation.getUserId())) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "只能领取本人的预约");
+        }
+        if (!reservation.isHeld()) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    reservation.getStatus().equals(BookReservation.STATUS_EXPIRED)
+                            ? "保管期满未取，预约已失效"
+                            : "该预约当前不可取书");
+        }
+        String borrower = reservation.getUserId();
+        rejectIfOverdue(borrower);
+        if (repository.hasActiveBorrow(borrower, reservation.getIsbn())) {
+            throw new BusinessException(ResponseCode.CONFLICT, "申请人已在借阅该图书");
+        }
+        Date now = new Date();
+        BorrowRecord created = repository.pickupHeldReservation(
+                reservation.getReservationId(), borrower, now,
+                new Date(now.getTime() + LOAN_PERIOD_MILLIS));
+        if (created == null) {
+            throw new BusinessException(ResponseCode.CONFLICT, "该预约当前不可取书");
+        }
+        return toRecordDto(created);
+    }
+
+    private void settleReservations() throws SQLException {
+        repository.expireHeldReservations(new Date());
+    }
+
+    private void rejectIfSuspended(String actorUserId) throws SQLException, BusinessException {
+        String userId = actorUserId.trim();
+        repository.clearExpiredSuspension(userId, new Date());
+        Date until = repository.findPatronSuspendUntil(userId);
+        if (until != null && !until.before(new Date())) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    SUSPEND_MESSAGE + "（至 " + formatTime(until) + "）");
+        }
+    }
+
     private void rejectIfOverdue(String actorUserId) throws SQLException, BusinessException {
         if (repository.hasOverdueBorrow(actorUserId.trim())) {
             throw new BusinessException(ResponseCode.CONFLICT, OVERDUE_BLOCK_MESSAGE);
@@ -384,6 +527,25 @@ public final class LibraryService {
                 wish.getIsbn() == null ? "" : wish.getIsbn());
     }
 
+    private ReserveDto toReserveDto(BookReservation row) {
+        Integer copyId = row.getCopyId();
+        return new ReserveDto(
+                row.getReservationId(),
+                row.getUserId(),
+                row.getDisplayName(),
+                row.getIsbn(),
+                row.getTitle(),
+                row.getAuthor(),
+                copyId == null ? 0 : copyId.intValue(),
+                row.getStatus(),
+                formatTime(row.getApplyTime()),
+                formatTime(row.getReviewTime()),
+                formatTime(row.getHoldUntilTime()),
+                formatTime(row.getPickupTime()),
+                row.getDefaultCount(),
+                formatTime(row.getSuspendUntilTime()));
+    }
+
     private String formatTime(Date date) {
         if (date == null) {
             return "";
@@ -411,7 +573,7 @@ public final class LibraryService {
 
     private void requirePatron(SubSystemRole actorRole) throws BusinessException {
         if (actorRole == SubSystemRole.ADMIN) {
-            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅、归还、续借或提交推荐");
+            throw new BusinessException(ResponseCode.FORBIDDEN, "管理员不能借阅、归还、续借、提交推荐或预约");
         }
     }
 

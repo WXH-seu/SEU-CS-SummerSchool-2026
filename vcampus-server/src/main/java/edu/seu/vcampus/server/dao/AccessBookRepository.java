@@ -20,6 +20,8 @@ import java.util.List;
 public final class AccessBookRepository implements BookRepository {
     private static final String BORROW_USER_FOREIGN_KEY = "fkBorrowRecordUser";
     private static final String WISH_USER_FOREIGN_KEY = "fkBookWishUser";
+    private static final String RESERVATION_USER_FOREIGN_KEY = "fkReservationUser";
+    private static final String PATRON_USER_FOREIGN_KEY = "fkReservationPatronUser";
     private static final String DEMO_STUDENT_ID = "student";
     private static final String DEMO_TEACHER_ID = "teacher";
     private static final String DEMO_ADMIN_ID = "admin";
@@ -27,6 +29,9 @@ public final class AccessBookRepository implements BookRepository {
     private static final String NOVEL_ISBN = "9787020008735";
     private static final long DAY_MILLIS = 24L * 60 * 60 * 1000;
     private static final int LOAN_PERIOD_DAYS = 30;
+    private static final int HOLD_PERIOD_DAYS = 7;
+    private static final int MAX_DEFAULTS = 3;
+    private static final int SUSPEND_DAYS = 30;
     private static final int DEMO_OVERDUE_BORROW_DAYS_AGO = 40;
     private static final int DEMO_CURRENT_BORROW_DAYS_AGO = 25;
     private static final String TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
@@ -296,7 +301,14 @@ public final class AccessBookRepository implements BookRepository {
                     connection.rollback();
                     return false;
                 }
-                updateCopyStatus(connection, copyId.intValue(), BookCopy.STATUS_AVAILABLE);
+                Integer reservationId = findApprovedReservationIdForCopy(connection, copyId.intValue());
+                if (reservationId != null) {
+                    updateCopyStatus(connection, copyId.intValue(), BookCopy.STATUS_HELD);
+                    Date holdUntil = new Date(returnTime.getTime() + HOLD_PERIOD_DAYS * DAY_MILLIS);
+                    markReservationHeld(connection, reservationId.intValue(), returnTime, holdUntil);
+                } else {
+                    updateCopyStatus(connection, copyId.intValue(), BookCopy.STATUS_AVAILABLE);
+                }
                 connection.commit();
                 return true;
             } catch (SQLException e) {
@@ -329,7 +341,19 @@ public final class AccessBookRepository implements BookRepository {
 
     @Override
     public boolean isRenewalBlockedByReservation(int copyId) throws SQLException {
-        return false;
+        if (copyId <= 0) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM [tblReservation] "
+                + "WHERE [copyId] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, copyId);
+            statement.setString(2, BookReservation.STATUS_APPROVED);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
     }
 
     @Override
@@ -426,6 +450,271 @@ public final class AccessBookRepository implements BookRepository {
         return updateWishStatus(wishId, BookWish.STATUS_REJECTED, reviewerUserId, null, reviewTime);
     }
 
+    @Override
+    public int expireHeldReservations(Date now) throws SQLException {
+        if (now == null) {
+            now = new Date();
+        }
+        final Date cutoff = now;
+        String cutoffText = formatTime(cutoff);
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                List<Integer> reservationIds = new ArrayList<Integer>();
+                List<Integer> copyIds = new ArrayList<Integer>();
+                List<String> userIds = new ArrayList<String>();
+                String select = "SELECT [reservationId], [copyId], [userId] FROM [tblReservation] "
+                        + "WHERE [status] = ? AND [holdUntilTime] IS NOT NULL "
+                        + "AND [holdUntilTime] <> '' AND [holdUntilTime] < ?";
+                try (PreparedStatement statement = connection.prepareStatement(select)) {
+                    statement.setString(1, BookReservation.STATUS_HELD);
+                    statement.setString(2, cutoffText);
+                    try (ResultSet result = statement.executeQuery()) {
+                        while (result.next()) {
+                            reservationIds.add(Integer.valueOf(result.getInt("reservationId")));
+                            copyIds.add(Integer.valueOf(result.getInt("copyId")));
+                            userIds.add(result.getString("userId"));
+                        }
+                    }
+                }
+                for (int i = 0; i < reservationIds.size(); i++) {
+                    updateCopyStatus(connection, copyIds.get(i).intValue(),
+                            BookCopy.STATUS_AVAILABLE);
+                    markReservationExpired(connection, reservationIds.get(i).intValue());
+                    recordDefault(connection, userIds.get(i), cutoff);
+                }
+                connection.commit();
+                return reservationIds.size();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public List<BookReservation> findReservationsByUser(String userId) throws SQLException {
+        if (isBlank(userId)) {
+            return new ArrayList<BookReservation>();
+        }
+        String sql = reservationSelectSql() + " WHERE r.[userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            return sortReservations(mapReservations(statement));
+        }
+    }
+
+    @Override
+    public List<BookReservation> findAllReservations() throws SQLException {
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(reservationSelectSql())) {
+            return sortReservations(mapReservations(statement));
+        }
+    }
+
+    @Override
+    public BookReservation findReservationById(int reservationId) throws SQLException {
+        if (reservationId <= 0) {
+            return null;
+        }
+        String sql = reservationSelectSql() + " WHERE r.[reservationId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, reservationId);
+            List<BookReservation> rows = mapReservations(statement);
+            return rows.isEmpty() ? null : rows.get(0);
+        }
+    }
+
+    @Override
+    public boolean hasActiveReservation(String userId, String isbn) throws SQLException {
+        if (isBlank(userId) || isBlank(isbn)) {
+            return false;
+        }
+        String sql = "SELECT COUNT(*) FROM [tblReservation] WHERE [userId] = ? AND [isbn] = ? "
+                + "AND ([status] = ? OR [status] = ? OR [status] = ?)";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            statement.setString(2, isbn.trim());
+            statement.setString(3, BookReservation.STATUS_PENDING);
+            statement.setString(4, BookReservation.STATUS_APPROVED);
+            statement.setString(5, BookReservation.STATUS_HELD);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
+    }
+
+    @Override
+    public BookReservation insertReservation(String userId, String isbn, Date applyTime)
+            throws SQLException {
+        String sql = "INSERT INTO [tblReservation] ([userId], [isbn], [copyId], [status], "
+                + "[applyTime], [reviewTime], [reviewerUserId], [holdUntilTime], [pickupTime]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        int generatedId;
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql,
+                     Statement.RETURN_GENERATED_KEYS)) {
+            statement.setString(1, userId);
+            statement.setString(2, isbn);
+            statement.setNull(3, Types.INTEGER);
+            statement.setString(4, BookReservation.STATUS_PENDING);
+            statement.setString(5, formatTime(applyTime));
+            statement.setNull(6, Types.VARCHAR);
+            statement.setNull(7, Types.VARCHAR);
+            statement.setNull(8, Types.VARCHAR);
+            statement.setNull(9, Types.VARCHAR);
+            statement.executeUpdate();
+            generatedId = readGeneratedId(statement);
+            if (generatedId <= 0) {
+                generatedId = lookupLatestReservationId(connection, userId, isbn);
+            }
+        }
+        return findReservationById(generatedId);
+    }
+
+    @Override
+    public boolean markReservationApproved(int reservationId, String reviewerUserId, int copyId,
+                                           Date reviewTime) throws SQLException {
+        String sql = "UPDATE [tblReservation] SET [status] = ?, [reviewTime] = ?, "
+                + "[reviewerUserId] = ?, [copyId] = ? "
+                + "WHERE [reservationId] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookReservation.STATUS_APPROVED);
+            statement.setString(2, formatTime(reviewTime));
+            statement.setString(3, reviewerUserId);
+            statement.setInt(4, copyId);
+            statement.setInt(5, reservationId);
+            statement.setString(6, BookReservation.STATUS_PENDING);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public boolean markReservationRejected(int reservationId, String reviewerUserId, Date reviewTime)
+            throws SQLException {
+        String sql = "UPDATE [tblReservation] SET [status] = ?, [reviewTime] = ?, "
+                + "[reviewerUserId] = ? WHERE [reservationId] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookReservation.STATUS_REJECTED);
+            statement.setString(2, formatTime(reviewTime));
+            statement.setString(3, reviewerUserId);
+            statement.setInt(4, reservationId);
+            statement.setString(5, BookReservation.STATUS_PENDING);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public Integer findEarliestReservableCopy(String isbn) throws SQLException {
+        if (isBlank(isbn)) {
+            return null;
+        }
+        String sql = "SELECT c.[copyId] FROM ([tblBookCopy] AS c "
+                + "INNER JOIN [tblBorrowRecord] AS r ON c.[copyId] = r.[copyId]) "
+                + "WHERE c.[isbn] = ? AND c.[copyStatus] = ? "
+                + "AND (r.[returnTime] IS NULL OR r.[returnTime] = '') "
+                + "AND NOT EXISTS (SELECT 1 FROM [tblReservation] AS x "
+                + "WHERE x.[copyId] = c.[copyId] AND x.[status] = ?) "
+                + "ORDER BY r.[dueTime] ASC";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, isbn.trim());
+            statement.setString(2, BookCopy.STATUS_BORROWED);
+            statement.setString(3, BookReservation.STATUS_APPROVED);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return null;
+                }
+                return Integer.valueOf(result.getInt(1));
+            }
+        }
+    }
+
+    @Override
+    public Date findPatronSuspendUntil(String userId) throws SQLException {
+        if (isBlank(userId)) {
+            return null;
+        }
+        String sql = "SELECT [suspendUntil] FROM [tblReservationPatron] WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? parseTime(result.getString("suspendUntil")) : null;
+            }
+        }
+    }
+
+    @Override
+    public int findPatronDefaultCount(String userId) throws SQLException {
+        if (isBlank(userId)) {
+            return 0;
+        }
+        String sql = "SELECT [defaultCount] FROM [tblReservationPatron] WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId.trim());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    @Override
+    public void clearExpiredSuspension(String userId, Date now) throws SQLException {
+        Date until = findPatronSuspendUntil(userId);
+        if (until == null || now == null || !until.before(now)) {
+            return;
+        }
+        String sql = "UPDATE [tblReservationPatron] SET [defaultCount] = 0, [suspendUntil] = ? "
+                + "WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setNull(1, Types.VARCHAR);
+            statement.setString(2, userId.trim());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public BorrowRecord pickupHeldReservation(int reservationId, String borrowerUserId,
+                                              Date borrowTime, Date dueTime)
+            throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                BookReservation reservation = findReservationByIdOn(connection, reservationId);
+                if (reservation == null || !reservation.isHeld() || reservation.getCopyId() == null) {
+                    connection.rollback();
+                    return null;
+                }
+                int copyId = reservation.getCopyId().intValue();
+                updateCopyStatus(connection, copyId, BookCopy.STATUS_BORROWED);
+                int recordId = insertBorrowRecord(connection, copyId, borrowerUserId,
+                        formatTime(borrowTime), formatTime(dueTime));
+                markReservationPickedUp(connection, reservationId, borrowTime);
+                BorrowRecord created = findBorrowRecordById(connection, recordId);
+                if (created == null) {
+                    throw new SQLException("Inserted borrow record was not found: " + recordId);
+                }
+                connection.commit();
+                return created;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
     /**
      * Moves an open record's due time without changing {@code renewCount}.
      * Used by tests to place a loan inside or outside the renewal window.
@@ -441,6 +730,44 @@ public final class AccessBookRepository implements BookRepository {
             statement.setString(1, formatTime(dueTime));
             statement.setInt(2, recordId);
             return statement.executeUpdate() > 0;
+        }
+    }
+
+    /**
+     * Moves a held reservation's deadline. Used by tests to expire a hold.
+     */
+    public boolean forceHoldUntil(int reservationId, Date holdUntil) throws SQLException {
+        if (holdUntil == null) {
+            return false;
+        }
+        String sql = "UPDATE [tblReservation] SET [holdUntilTime] = ? "
+                + "WHERE [reservationId] = ? AND [status] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, formatTime(holdUntil));
+            statement.setInt(2, reservationId);
+            statement.setString(3, BookReservation.STATUS_HELD);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    /** Used by tests to place a patron at a given default / suspension state. */
+    public void forcePatronDefaults(String userId, int defaultCount, Date suspendUntil)
+            throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            ensurePatronRow(connection, userId);
+            String sql = "UPDATE [tblReservationPatron] SET [defaultCount] = ?, [suspendUntil] = ? "
+                    + "WHERE [userId] = ?";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setInt(1, defaultCount);
+                if (suspendUntil == null) {
+                    statement.setNull(2, Types.VARCHAR);
+                } else {
+                    statement.setString(2, formatTime(suspendUntil));
+                }
+                statement.setString(3, userId);
+                statement.executeUpdate();
+            }
         }
     }
 
@@ -495,6 +822,12 @@ public final class AccessBookRepository implements BookRepository {
             }
             if (!tableExists(connection, "tblBookWish")) {
                 createBookWishTable(connection);
+            }
+            if (!tableExists(connection, "tblReservation")) {
+                createReservationTable(connection);
+            }
+            if (!tableExists(connection, "tblReservationPatron")) {
+                createReservationPatronTable(connection);
             }
             migrateBorrowTimesToText(connection);
             ensureBorrowUserForeignKey(connection);
@@ -619,6 +952,33 @@ public final class AccessBookRepository implements BookRepository {
                 + "[reviewerUserId] TEXT(32), "
                 + "[isbn] TEXT(32), "
                 + "CONSTRAINT [" + WISH_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId]))";
+        execute(connection, sql);
+    }
+
+    private void createReservationTable(Connection connection) throws SQLException {
+        String sql = "CREATE TABLE [tblReservation] ("
+                + "[reservationId] COUNTER PRIMARY KEY, "
+                + "[userId] TEXT(32) NOT NULL, "
+                + "[isbn] TEXT(32) NOT NULL, "
+                + "[copyId] LONG, "
+                + "[status] TEXT(16) NOT NULL, "
+                + "[applyTime] TEXT(19) NOT NULL, "
+                + "[reviewTime] TEXT(19), "
+                + "[reviewerUserId] TEXT(32), "
+                + "[holdUntilTime] TEXT(19), "
+                + "[pickupTime] TEXT(19), "
+                + "CONSTRAINT [" + RESERVATION_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId]))";
+        execute(connection, sql);
+    }
+
+    private void createReservationPatronTable(Connection connection) throws SQLException {
+        String sql = "CREATE TABLE [tblReservationPatron] ("
+                + "[userId] TEXT(32) NOT NULL PRIMARY KEY, "
+                + "[defaultCount] INTEGER NOT NULL, "
+                + "[suspendUntil] TEXT(19), "
+                + "CONSTRAINT [" + PATRON_USER_FOREIGN_KEY + "] FOREIGN KEY ([userId]) "
                 + "REFERENCES [tblUser] ([userId]))";
         execute(connection, sql);
     }
@@ -1177,6 +1537,209 @@ public final class AccessBookRepository implements BookRepository {
                     throw new SQLException("Inserted book wish was not found");
                 }
                 return wishId;
+            }
+        }
+    }
+
+    private String reservationSelectSql() {
+        return "SELECT r.[reservationId], r.[userId], u.[displayName], r.[isbn], b.[title], "
+                + "b.[author], r.[copyId], r.[status], r.[applyTime], r.[reviewTime], "
+                + "r.[holdUntilTime], r.[pickupTime], p.[defaultCount], p.[suspendUntil] "
+                + "FROM ((([tblReservation] AS r "
+                + "INNER JOIN [tblBook] AS b ON r.[isbn] = b.[isbn]) "
+                + "INNER JOIN [tblUser] AS u ON r.[userId] = u.[userId]) "
+                + "LEFT JOIN [tblReservationPatron] AS p ON r.[userId] = p.[userId])";
+    }
+
+    private List<BookReservation> mapReservations(PreparedStatement statement) throws SQLException {
+        try (ResultSet result = statement.executeQuery()) {
+            List<BookReservation> rows = new ArrayList<BookReservation>();
+            while (result.next()) {
+                rows.add(mapReservation(result));
+            }
+            return rows;
+        }
+    }
+
+    private BookReservation mapReservation(ResultSet result) throws SQLException {
+        int copyId = result.getInt("copyId");
+        Integer copy = result.wasNull() || copyId <= 0 ? null : Integer.valueOf(copyId);
+        int defaultCount = result.getInt("defaultCount");
+        if (result.wasNull()) {
+            defaultCount = 0;
+        }
+        return new BookReservation(
+                result.getInt("reservationId"),
+                result.getString("userId"),
+                result.getString("displayName"),
+                result.getString("isbn"),
+                result.getString("title"),
+                result.getString("author"),
+                copy,
+                result.getString("status"),
+                parseTime(result.getString("applyTime")),
+                parseTime(result.getString("reviewTime")),
+                parseTime(result.getString("holdUntilTime")),
+                parseTime(result.getString("pickupTime")),
+                defaultCount,
+                parseTime(result.getString("suspendUntil")));
+    }
+
+    private List<BookReservation> sortReservations(List<BookReservation> rows) {
+        Collections.sort(rows, new Comparator<BookReservation>() {
+            @Override
+            public int compare(BookReservation left, BookReservation right) {
+                int progress = (left.isInProgress() ? 0 : 1) - (right.isInProgress() ? 0 : 1);
+                if (progress != 0) {
+                    return progress;
+                }
+                Date leftTime = left.getApplyTime();
+                Date rightTime = right.getApplyTime();
+                if (leftTime == null && rightTime == null) {
+                    return 0;
+                }
+                if (leftTime == null) {
+                    return 1;
+                }
+                if (rightTime == null) {
+                    return -1;
+                }
+                return rightTime.compareTo(leftTime);
+            }
+        });
+        return rows;
+    }
+
+    private BookReservation findReservationByIdOn(Connection connection, int reservationId)
+            throws SQLException {
+        String sql = reservationSelectSql() + " WHERE r.[reservationId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, reservationId);
+            List<BookReservation> rows = mapReservations(statement);
+            return rows.isEmpty() ? null : rows.get(0);
+        }
+    }
+
+    private Integer findApprovedReservationIdForCopy(Connection connection, int copyId)
+            throws SQLException {
+        String sql = "SELECT [reservationId] FROM [tblReservation] "
+                + "WHERE [copyId] = ? AND [status] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, copyId);
+            statement.setString(2, BookReservation.STATUS_APPROVED);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return null;
+                }
+                return Integer.valueOf(result.getInt(1));
+            }
+        }
+    }
+
+    private void markReservationHeld(Connection connection, int reservationId, Date holdStart,
+                                     Date holdUntil) throws SQLException {
+        String sql = "UPDATE [tblReservation] SET [status] = ?, [holdUntilTime] = ? "
+                + "WHERE [reservationId] = ? AND [status] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookReservation.STATUS_HELD);
+            statement.setString(2, formatTime(holdUntil));
+            statement.setInt(3, reservationId);
+            statement.setString(4, BookReservation.STATUS_APPROVED);
+            statement.executeUpdate();
+        }
+    }
+
+    private void markReservationExpired(Connection connection, int reservationId)
+            throws SQLException {
+        String sql = "UPDATE [tblReservation] SET [status] = ? "
+                + "WHERE [reservationId] = ? AND [status] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookReservation.STATUS_EXPIRED);
+            statement.setInt(2, reservationId);
+            statement.setString(3, BookReservation.STATUS_HELD);
+            statement.executeUpdate();
+        }
+    }
+
+    private void markReservationPickedUp(Connection connection, int reservationId, Date pickupTime)
+            throws SQLException {
+        String sql = "UPDATE [tblReservation] SET [status] = ?, [pickupTime] = ? "
+                + "WHERE [reservationId] = ? AND [status] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, BookReservation.STATUS_PICKED_UP);
+            statement.setString(2, formatTime(pickupTime));
+            statement.setInt(3, reservationId);
+            statement.setString(4, BookReservation.STATUS_HELD);
+            statement.executeUpdate();
+        }
+    }
+
+    private void recordDefault(Connection connection, String userId, Date now) throws SQLException {
+        ensurePatronRow(connection, userId);
+        int next = findPatronDefaultCountOn(connection, userId) + 1;
+        String suspend = next >= MAX_DEFAULTS
+                ? formatTime(new Date(now.getTime() + SUSPEND_DAYS * DAY_MILLIS))
+                : null;
+        String sql = "UPDATE [tblReservationPatron] SET [defaultCount] = ?, [suspendUntil] = ? "
+                + "WHERE [userId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, next);
+            if (suspend == null) {
+                statement.setNull(2, Types.VARCHAR);
+            } else {
+                statement.setString(2, suspend);
+            }
+            statement.setString(3, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    private void ensurePatronRow(Connection connection, String userId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblReservationPatron] WHERE [userId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next() && result.getInt(1) > 0) {
+                    return;
+                }
+            }
+        }
+        String insert = "INSERT INTO [tblReservationPatron] ([userId], [defaultCount], "
+                + "[suspendUntil]) VALUES (?, ?, ?)";
+        try (PreparedStatement statement = connection.prepareStatement(insert)) {
+            statement.setString(1, userId);
+            statement.setInt(2, 0);
+            statement.setNull(3, Types.VARCHAR);
+            statement.executeUpdate();
+        }
+    }
+
+    private int findPatronDefaultCountOn(Connection connection, String userId) throws SQLException {
+        String sql = "SELECT [defaultCount] FROM [tblReservationPatron] WHERE [userId] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt(1) : 0;
+            }
+        }
+    }
+
+    private int lookupLatestReservationId(Connection connection, String userId, String isbn)
+            throws SQLException {
+        String sql = "SELECT MAX([reservationId]) FROM [tblReservation] "
+                + "WHERE [userId] = ? AND [isbn] = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            statement.setString(2, isbn);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new SQLException("Inserted reservation was not found");
+                }
+                int id = result.getInt(1);
+                if (result.wasNull()) {
+                    throw new SQLException("Inserted reservation was not found");
+                }
+                return id;
             }
         }
     }

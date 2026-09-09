@@ -4,6 +4,8 @@ import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
 import edu.seu.vcampus.common.dto.WishReviewRequest;
 import edu.seu.vcampus.common.dto.WishSubmitRequest;
@@ -26,7 +28,9 @@ public final class LibraryRequestHandler {
             Operation.LIBRARY_BOOK_DELETE, Operation.LIBRARY_BORROW,
             Operation.LIBRARY_RETURN, Operation.LIBRARY_RENEW,
             Operation.LIBRARY_BORROW_QUERY, Operation.LIBRARY_WISH_QUERY,
-            Operation.LIBRARY_WISH_SUBMIT, Operation.LIBRARY_WISH_REVIEW);
+            Operation.LIBRARY_WISH_SUBMIT, Operation.LIBRARY_WISH_REVIEW,
+            Operation.LIBRARY_RESERVE_QUERY, Operation.LIBRARY_RESERVE_APPLY,
+            Operation.LIBRARY_RESERVE_REVIEW, Operation.LIBRARY_RESERVE_PICKUP);
 
     private final LibraryService service;
 
@@ -76,6 +80,18 @@ public final class LibraryRequestHandler {
                     }
                     return success(request, "OK");
                 }
+                case LIBRARY_RESERVE_QUERY:
+                    return success(request, service.queryReservations(actorUserId, actorRole));
+                case LIBRARY_RESERVE_APPLY:
+                    return success(request, service.applyReservation(
+                            actorUserId, actorRole, body(request, BorrowRequest.class)));
+                case LIBRARY_RESERVE_REVIEW:
+                    service.reviewReservation(actorUserId, actorRole,
+                            body(request, ReserveReviewRequest.class));
+                    return success(request, "OK");
+                case LIBRARY_RESERVE_PICKUP:
+                    return success(request, service.pickupReservation(
+                            actorUserId, actorRole, body(request, ReserveIdRequest.class)));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的图书馆操作");
