@@ -14,6 +14,7 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SectionAudienceDto;
 import edu.seu.vcampus.common.dto.SectionRosterEntry;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
@@ -234,6 +235,26 @@ final class CourseCatalogPanel extends JPanel {
         return CourseDto.ATTEMPT_RETAKE.equals(attemptType) ? "重修" : "首修";
     }
 
+    private String scheduleText(SectionScheduleDto schedule) {
+        return schedule.getWeekStart() + "-" + schedule.getWeekEnd() + "周 "
+                + weekdayName(schedule.getWeekday()) + " "
+                + schedule.getPeriodStart() + "-" + schedule.getPeriodEnd()
+                + " 节 · " + blankTo(schedule.getLocation(), "未填地点");
+    }
+
+    private String weekdayName(int weekday) {
+        switch (weekday) {
+            case 1: return "周一";
+            case 2: return "周二";
+            case 3: return "周三";
+            case 4: return "周四";
+            case 5: return "周五";
+            case 6: return "周六";
+            case 7: return "周日";
+            default: return "周" + weekday;
+        }
+    }
+
     private void selectSelected() {
         final CourseDto course = selectedRow();
         if (course == null) {
@@ -350,8 +371,14 @@ final class CourseCatalogPanel extends JPanel {
         detailRow(html, "重修名额（软池）",
                 course.getRetakeEnrolled() + " / " + course.getRetakeCapacity());
         detailRow(html, "学期", course.getSemesterName());
-        detailRow(html, "上课时间", course.getClassTime());
-        detailRow(html, "上课地点", blankTo(course.getLocation(), "未填写"));
+        if (course.getSchedules() == null || course.getSchedules().isEmpty()) {
+            detailRow(html, "上课时间", course.getClassTime());
+            detailRow(html, "上课地点", blankTo(course.getLocation(), "未填写"));
+        } else {
+            for (SectionScheduleDto schedule : course.getSchedules()) {
+                detailRow(html, "上课时段", scheduleText(schedule));
+            }
+        }
         detailRow(html, "选课窗口", windowFull(course));
         detailRow(html, "课程简介", blankTo(course.getDescription(), "无"));
         detailRow(html, "选课受众", audienceText(course));

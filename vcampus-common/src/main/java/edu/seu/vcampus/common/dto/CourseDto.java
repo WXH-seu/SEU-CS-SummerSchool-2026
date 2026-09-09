@@ -52,6 +52,7 @@ public final class CourseDto implements Serializable {
     private final boolean selected;
     private final String reason;
     private final List<SectionAudienceDto> audiences;
+    private final List<SectionScheduleDto> schedules;
 
     public CourseDto(String sectionId, String courseId, String courseName, String description,
                      String teacherId, String teacherName, String departmentId,
@@ -64,7 +65,41 @@ public final class CourseDto implements Serializable {
                 teacherId, teacherName, departmentId, departmentName, credit, courseNature,
                 capacity, capacity, capacity, 0, 0, enrolledCount, null,
                 semesterName, classTime, location, selectionStartTime, selectionEndTime,
-                active, selected, reason, audiences);
+                active, selected, reason, audiences,
+                new ArrayList<SectionScheduleDto>());
+    }
+
+    public CourseDto(String sectionId, String courseId, String courseName, String description,
+                     String teacherId, String teacherName, String departmentId,
+                     String departmentName, double credit, String courseNature,
+                     int capacity, int enrolledCount, String semesterName, String classTime,
+                     String location, String selectionStartTime, String selectionEndTime,
+                     boolean active, boolean selected, String reason,
+                     List<SectionAudienceDto> audiences,
+                     List<SectionScheduleDto> schedules) {
+        this(sectionId, courseId, courseName, description,
+                teacherId, teacherName, departmentId, departmentName, credit, courseNature,
+                capacity, capacity, capacity, 0, 0, enrolledCount, null,
+                semesterName, classTime, location, selectionStartTime, selectionEndTime,
+                active, selected, reason, audiences, schedules);
+    }
+
+    public CourseDto(String sectionId, String courseId, String courseName, String description,
+                     String teacherId, String teacherName, String departmentId,
+                     String departmentName, double credit, String courseNature,
+                     int capacity, int firstAttemptCapacity, int retakeCapacity,
+                     int firstAttemptEnrolled, int retakeEnrolled, int enrolledCount,
+                     String attemptType, String semesterName, String classTime,
+                     String location, String selectionStartTime, String selectionEndTime,
+                     boolean active, boolean selected, String reason,
+                     List<SectionAudienceDto> audiences,
+                     List<SectionScheduleDto> schedules) {
+        this(sectionId, courseId, courseName, description,
+                teacherId, teacherName, departmentId, departmentName, credit, courseNature,
+                capacity, firstAttemptCapacity, retakeCapacity,
+                firstAttemptEnrolled, retakeEnrolled, enrolledCount, attemptType,
+                semesterName, classTime, location, selectionStartTime, selectionEndTime,
+                active, selected, reason, audiences, schedules, true);
     }
 
     public CourseDto(String sectionId, String courseId, String courseName, String description,
@@ -76,6 +111,25 @@ public final class CourseDto implements Serializable {
                      String location, String selectionStartTime, String selectionEndTime,
                      boolean active, boolean selected, String reason,
                      List<SectionAudienceDto> audiences) {
+        this(sectionId, courseId, courseName, description,
+                teacherId, teacherName, departmentId, departmentName, credit, courseNature,
+                capacity, firstAttemptCapacity, retakeCapacity,
+                firstAttemptEnrolled, retakeEnrolled, enrolledCount, attemptType,
+                semesterName, classTime, location, selectionStartTime, selectionEndTime,
+                active, selected, reason, audiences,
+                new ArrayList<SectionScheduleDto>());
+    }
+
+    private CourseDto(String sectionId, String courseId, String courseName, String description,
+                      String teacherId, String teacherName, String departmentId,
+                      String departmentName, double credit, String courseNature,
+                      int capacity, int firstAttemptCapacity, int retakeCapacity,
+                      int firstAttemptEnrolled, int retakeEnrolled, int enrolledCount,
+                      String attemptType, String semesterName, String classTime,
+                      String location, String selectionStartTime, String selectionEndTime,
+                      boolean active, boolean selected, String reason,
+                      List<SectionAudienceDto> audiences,
+                      List<SectionScheduleDto> schedules, boolean ignored) {
         this.sectionId = sectionId;
         this.courseId = courseId;
         this.courseName = courseName;
@@ -104,6 +158,9 @@ public final class CourseDto implements Serializable {
         this.audiences = audiences == null
                 ? new ArrayList<SectionAudienceDto>()
                 : new ArrayList<SectionAudienceDto>(audiences);
+        this.schedules = schedules == null
+                ? new ArrayList<SectionScheduleDto>()
+                : new ArrayList<SectionScheduleDto>(schedules);
     }
 
     public String getSectionId() {
@@ -213,5 +270,9 @@ public final class CourseDto implements Serializable {
 
     public List<SectionAudienceDto> getAudiences() {
         return Collections.unmodifiableList(audiences);
+    }
+
+    public List<SectionScheduleDto> getSchedules() {
+        return Collections.unmodifiableList(schedules);
     }
 }

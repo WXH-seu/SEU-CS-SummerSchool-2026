@@ -6,12 +6,14 @@ import edu.seu.vcampus.common.dto.CourseEnrollmentDto;
 import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.SectionAudienceDto;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.SectionRosterEntry;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.CourseRepository;
 import edu.seu.vcampus.server.dao.EnrolledStudentTime;
+import edu.seu.vcampus.server.dao.EnrolledStudentSchedule;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -117,7 +119,7 @@ public final class CourseService {
                 throw new BusinessException(ResponseCode.CONFLICT,
                         "你已经选了同一门课程的其他教学班");
             }
-            if (hasConflictWithEnrolled(studentId, course.getClassTime())) {
+            if (conflictsWithEnrolled(studentId, course)) {
                 throw new BusinessException(ResponseCode.CONFLICT, "与已选课程上课时间冲突");
             }
             String attemptType = repository.hasCompletedCourse(
@@ -166,31 +168,53 @@ public final class CourseService {
                 if (existing != null && classTimeChanged(existing, course)) {
                     List<EnrolledStudentTime> conflicts =
                             new ArrayList<EnrolledStudentTime>();
-                    for (EnrolledStudentTime row
-                            : repository.findEnrolledStudentsOtherClassTimes(
-                                    sectionId.trim())) {
-                        if (timesConflict(classTime, row.getClassTime())) {
-                            conflicts.add(row);
+                    if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
+                        for (EnrolledStudentSchedule row
+                                : repository.findEnrolledStudentsOtherSchedules(
+                                        sectionId.trim())) {
+                            if (overlapsAny(course.getSchedules(),
+                                    java.util.Collections.singletonList(
+                                            row.getSchedule()))) {
+                                conflicts.add(new EnrolledStudentTime(
+                                        row.getStudentId(), row.getFullName(),
+                                        ""));
+                            }
+                        }
+                    } else {
+                        for (EnrolledStudentTime row
+                                : repository.findEnrolledStudentsOtherClassTimes(
+                                        sectionId.trim())) {
+                            if (timesConflict(classTime, row.getClassTime())) {
+                                conflicts.add(row);
+                            }
                         }
                     }
                     if (!conflicts.isEmpty()) {
                         throw conflictFor(conflicts);
                     }
                 }
-                ensureTeacherAvailable(course.getTeacherId(), classTime, sectionId.trim());
+                ensureTeacherAvailable(course, sectionId.trim());
                 return repository.saveSection(course);
             }
         }
-        ensureTeacherAvailable(course.getTeacherId(), classTime, "");
+        ensureTeacherAvailable(course, "");
         return repository.saveSection(course);
     }
 
-    private void ensureTeacherAvailable(String teacherId, String classTime,
-                                        String excludeSectionId)
+    private void ensureTeacherAvailable(CourseDto course, String excludeSectionId)
             throws SQLException, BusinessException {
+        if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
+            if (overlapsAny(course.getSchedules(),
+                    repository.findTeacherSectionSchedules(
+                            course.getTeacherId(), excludeSectionId))) {
+                throw new BusinessException(ResponseCode.CONFLICT,
+                        "该教师在该时段已有其他教学班上课，未保存");
+            }
+            return;
+        }
         for (String taughtTime : repository.findTeacherSectionClassTimes(
-                teacherId, excludeSectionId)) {
-            if (timesConflict(classTime, taughtTime)) {
+                course.getTeacherId(), excludeSectionId)) {
+            if (timesConflict(course.getClassTime(), taughtTime)) {
                 throw new BusinessException(ResponseCode.CONFLICT,
                         "该教师在该时段已有其他教学班上课，未保存");
             }
@@ -224,6 +248,39 @@ public final class CourseService {
             }
         }
         return false;
+    }
+
+    private boolean conflictsWithEnrolled(String studentId, CourseDto course)
+            throws SQLException {
+        if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
+            return overlapsAny(course.getSchedules(),
+                    repository.findStudentEnrolledSchedules(studentId));
+        }
+        return hasConflictWithEnrolled(studentId, course.getClassTime());
+    }
+
+    private boolean overlapsAny(List<SectionScheduleDto> candidate,
+                                List<SectionScheduleDto> enrolled) {
+        for (SectionScheduleDto mine : candidate) {
+            for (SectionScheduleDto other : enrolled) {
+                if (slotsOverlap(mine, other)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean slotsOverlap(SectionScheduleDto first, SectionScheduleDto second) {
+        if (first.getWeekday() != second.getWeekday()) {
+            return false;
+        }
+        if (first.getPeriodEnd() < second.getPeriodStart()
+                || second.getPeriodEnd() < first.getPeriodStart()) {
+            return false;
+        }
+        return first.getWeekStart() <= second.getWeekEnd()
+                && second.getWeekStart() <= first.getWeekEnd();
     }
 
     /**
@@ -285,6 +342,8 @@ public final class CourseService {
         List<CourseDto> sections = repository.findSections(withActiveOnly(query, true));
         Set<String> enrolledSectionIds = new HashSet<String>();
         Set<String> enrolledClassTimes = new HashSet<String>();
+        List<SectionScheduleDto> enrolledSchedules =
+                repository.findStudentEnrolledSchedules(student.getStudentId());
         for (CourseEnrollmentDto enrollment : repository.findSchedule(student.getStudentId())) {
             enrolledSectionIds.add(enrollment.getSectionId());
             enrolledClassTimes.add(enrollment.getClassTime());
@@ -300,13 +359,15 @@ public final class CourseService {
                     student.getStudentId(), section.getCourseId())
                     ? CourseDto.ATTEMPT_RETAKE : CourseDto.ATTEMPT_FIRST;
             CourseDto annotated = annotate(section, attemptType);
-            visible.add(withStudentState(annotated, selected, enrolledClassTimes));
+            visible.add(withStudentState(
+                    annotated, selected, enrolledClassTimes, enrolledSchedules));
         }
         return visible;
     }
 
     private CourseDto withStudentState(CourseDto course, boolean selected,
-                                       Set<String> enrolledClassTimes)
+                                       Set<String> enrolledClassTimes,
+                                       List<SectionScheduleDto> enrolledSchedules)
             throws BusinessException {
         String reason = null;
         if (selected) {
@@ -317,12 +378,21 @@ public final class CourseService {
                 reason = (CourseDto.ATTEMPT_RETAKE.equals(course.getAttemptType())
                         ? "重修" : "首修") + "名额已满";
             }
-            if (reason == null && course.getClassTime() != null
-                    && enrolledClassTimes.contains(course.getClassTime())) {
+            if (reason == null && timeClash(course, enrolledClassTimes,
+                    enrolledSchedules)) {
                 reason = "与已选课程时间冲突";
             }
         }
         return copyFull(course, course.getAttemptType(), selected, reason);
+    }
+
+    private boolean timeClash(CourseDto course, Set<String> enrolledClassTimes,
+                              List<SectionScheduleDto> enrolledSchedules) {
+        if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
+            return overlapsAny(course.getSchedules(), enrolledSchedules);
+        }
+        return course.getClassTime() != null
+                && enrolledClassTimes.contains(course.getClassTime());
     }
 
     private boolean poolFree(CourseDto course) {
@@ -370,7 +440,8 @@ public final class CourseService {
                 firstEnrolled, retakeEnrolled, enrolled, attemptType,
                 source.getSemesterName(), source.getClassTime(), source.getLocation(),
                 source.getSelectionStartTime(), source.getSelectionEndTime(),
-                source.isActive(), selected, reason, source.getAudiences());
+                source.isActive(), selected, reason, source.getAudiences(),
+                source.getSchedules());
     }
 
     private String windowReason(CourseDto course) throws BusinessException {
@@ -426,8 +497,13 @@ public final class CourseService {
     private void validateCourse(CourseDto course) throws SQLException, BusinessException {
         if (course == null || isBlank(course.getCourseId()) || isBlank(course.getCourseName())
                 || isBlank(course.getTeacherId()) || isBlank(course.getDepartmentId())
-                || isBlank(course.getSemesterName()) || isBlank(course.getClassTime())) {
-            throw invalid("课程编号、名称、教师、开课院系、学期和上课时间不能为空");
+                || isBlank(course.getSemesterName())) {
+            throw invalid("课程编号、名称、教师、开课院系和学期不能为空");
+        }
+        List<SectionScheduleDto> scheduleSlots = course.getSchedules();
+        if ((scheduleSlots == null || scheduleSlots.isEmpty())
+                && isBlank(course.getClassTime())) {
+            throw invalid("至少需要填写一个上课时段");
         }
         if (course.getCredit() <= 0 || course.getCredit() > 20) {
             throw invalid("学分必须在 0 到 20 之间");
@@ -444,6 +520,7 @@ public final class CourseService {
         if (!NATURES.contains(course.getCourseNature())) {
             throw invalid("课程性质必须为必修、限选、任选或通选");
         }
+        validateSchedules(course);
         validateWindow(course);
         validateAudiences(course);
         if (!repository.teacherExists(course.getTeacherId())) {
@@ -467,6 +544,22 @@ public final class CourseService {
         LocalDateTime endTime = parseTime(end, "选课结束时间");
         if (startTime.isAfter(endTime)) {
             throw invalid("选课结束时间不能早于开始时间");
+        }
+    }
+
+    private void validateSchedules(CourseDto course) throws BusinessException {
+        List<SectionScheduleDto> schedules = course.getSchedules();
+        if (schedules == null || schedules.isEmpty()) {
+            return;
+        }
+        for (SectionScheduleDto schedule : schedules) {
+            if (schedule.getWeekday() < 1 || schedule.getWeekday() > 7
+                    || schedule.getPeriodStart() < 1
+                    || schedule.getPeriodStart() > schedule.getPeriodEnd()
+                    || schedule.getWeekStart() < 1
+                    || schedule.getWeekStart() > schedule.getWeekEnd()) {
+                throw invalid("上课时段格式不正确：星期 1-7、节次与周次须为正且起止有序");
+            }
         }
     }
 
