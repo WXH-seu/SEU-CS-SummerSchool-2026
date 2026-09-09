@@ -70,10 +70,9 @@ public final class CourseService {
             if (teacherId == null) {
                 return new ArrayList<CourseDto>();
             }
-            return new ArrayList<CourseDto>(repository.findSections(
-                    withTeacher(query, teacherId)));
+            return annotateAll(repository.findSections(withTeacher(query, teacherId)), null);
         }
-        return new ArrayList<CourseDto>(repository.findSections(query));
+        return annotateAll(repository.findSections(query), null);
     }
 
     public ArrayList<CourseEnrollmentDto> querySchedule(String userId,
@@ -118,15 +117,30 @@ public final class CourseService {
                 throw new BusinessException(ResponseCode.CONFLICT,
                         "你已经选了同一门课程的其他教学班");
             }
-            if (repository.countEnrolled(sectionId) >= course.getCapacity()) {
-                throw new BusinessException(ResponseCode.CONFLICT, "课程容量已满");
-            }
             if (hasConflictWithEnrolled(studentId, course.getClassTime())) {
                 throw new BusinessException(ResponseCode.CONFLICT, "与已选课程上课时间冲突");
             }
-            repository.insertEnrollment(studentId, sectionId,
+            String attemptType = repository.hasCompletedCourse(
+                    studentId, course.getCourseId())
+                    ? CourseDto.ATTEMPT_RETAKE : CourseDto.ATTEMPT_FIRST;
+            enforcePoolCapacity(course, attemptType);
+            repository.insertEnrollment(studentId, sectionId, attemptType,
                     UUID.randomUUID().toString().replace("-", ""),
                     LocalDateTime.now().format(ENROLL_TIME_FORMAT));
+        }
+    }
+
+    private void enforcePoolCapacity(CourseDto course, String attemptType)
+            throws SQLException, BusinessException {
+        edu.seu.vcampus.server.dao.AttemptCounts counts =
+                repository.countAttempts(course.getSectionId());
+        boolean poolFree = CourseDto.ATTEMPT_FIRST.equals(attemptType)
+                ? counts.getFirstAttemptCount() < course.getFirstAttemptCapacity()
+                : counts.getRetakeCount() < course.getRetakeCapacity();
+        boolean totalFree = counts.getTotal() < course.getCapacity();
+        if (!poolFree && !totalFree) {
+            String label = CourseDto.ATTEMPT_FIRST.equals(attemptType) ? "首修" : "重修";
+            throw new BusinessException(ResponseCode.CONFLICT, label + "名额已满");
         }
     }
 
@@ -282,7 +296,11 @@ public final class CourseService {
                 continue;
             }
             boolean selected = enrolledSectionIds.contains(section.getSectionId());
-            visible.add(withStudentState(section, selected, enrolledClassTimes));
+            String attemptType = repository.hasCompletedCourse(
+                    student.getStudentId(), section.getCourseId())
+                    ? CourseDto.ATTEMPT_RETAKE : CourseDto.ATTEMPT_FIRST;
+            CourseDto annotated = annotate(section, attemptType);
+            visible.add(withStudentState(annotated, selected, enrolledClassTimes));
         }
         return visible;
     }
@@ -295,23 +313,64 @@ public final class CourseService {
             reason = "已选";
         } else {
             reason = windowReason(course);
-            if (reason == null
-                    && course.getEnrolledCount() >= course.getCapacity()) {
-                reason = "课程容量已满";
+            if (reason == null && !poolFree(course) && !totalFree(course)) {
+                reason = (CourseDto.ATTEMPT_RETAKE.equals(course.getAttemptType())
+                        ? "重修" : "首修") + "名额已满";
             }
             if (reason == null && course.getClassTime() != null
                     && enrolledClassTimes.contains(course.getClassTime())) {
                 reason = "与已选课程时间冲突";
             }
         }
-        return new CourseDto(course.getSectionId(), course.getCourseId(),
-                course.getCourseName(), course.getDescription(), course.getTeacherId(),
-                course.getTeacherName(), course.getDepartmentId(), course.getDepartmentName(),
-                course.getCredit(), course.getCourseNature(), course.getCapacity(),
-                course.getEnrolledCount(), course.getSemesterName(), course.getClassTime(),
-                course.getLocation(), course.getSelectionStartTime(),
-                course.getSelectionEndTime(), course.isActive(), selected, reason,
-                course.getAudiences());
+        return copyFull(course, course.getAttemptType(), selected, reason);
+    }
+
+    private boolean poolFree(CourseDto course) {
+        if (CourseDto.ATTEMPT_RETAKE.equals(course.getAttemptType())) {
+            return course.getRetakeEnrolled() < course.getRetakeCapacity();
+        }
+        return course.getFirstAttemptEnrolled() < course.getFirstAttemptCapacity();
+    }
+
+    private boolean totalFree(CourseDto course) {
+        return course.getEnrolledCount() < course.getCapacity();
+    }
+
+    private ArrayList<CourseDto> annotateAll(List<CourseDto> sections, String attemptType)
+            throws SQLException {
+        ArrayList<CourseDto> annotated = new ArrayList<CourseDto>();
+        for (CourseDto section : sections) {
+            annotated.add(annotate(section, attemptType));
+        }
+        return annotated;
+    }
+
+    private CourseDto annotate(CourseDto section, String attemptType) throws SQLException {
+        edu.seu.vcampus.server.dao.AttemptCounts counts =
+                repository.countAttempts(section.getSectionId());
+        return copyFull(section, attemptType, counts.getFirstAttemptCount(),
+                counts.getRetakeCount(), counts.getTotal(), section.isSelected(),
+                section.getReason());
+    }
+
+    private CourseDto copyFull(CourseDto source, String attemptType,
+                               boolean selected, String reason) {
+        return copyFull(source, attemptType, source.getFirstAttemptEnrolled(),
+                source.getRetakeEnrolled(), source.getEnrolledCount(), selected, reason);
+    }
+
+    private CourseDto copyFull(CourseDto source, String attemptType,
+                               int firstEnrolled, int retakeEnrolled, int enrolled,
+                               boolean selected, String reason) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                source.getFirstAttemptCapacity(), source.getRetakeCapacity(),
+                firstEnrolled, retakeEnrolled, enrolled, attemptType,
+                source.getSemesterName(), source.getClassTime(), source.getLocation(),
+                source.getSelectionStartTime(), source.getSelectionEndTime(),
+                source.isActive(), selected, reason, source.getAudiences());
     }
 
     private String windowReason(CourseDto course) throws BusinessException {
@@ -375,6 +434,12 @@ public final class CourseService {
         }
         if (course.getCapacity() <= 0 || course.getCapacity() > 1000) {
             throw invalid("容量必须在 1 到 1000 之间");
+        }
+        if (course.getFirstAttemptCapacity() < 0
+                || course.getFirstAttemptCapacity() > course.getCapacity()
+                || course.getRetakeCapacity() < 0
+                || course.getRetakeCapacity() > course.getCapacity()) {
+            throw invalid("首修 / 重修名额必须在 0 到最大容量之间");
         }
         if (!NATURES.contains(course.getCourseNature())) {
             throw invalid("课程性质必须为必修、限选、任选或通选");

@@ -7,13 +7,24 @@ import java.util.List;
 
 /**
  * One course section row shared by client and server. A section binds one
- * offering (teacher / time / capacity / audience) to a catalog course, so the
- * row carries both catalog fields (name, credit) and offering fields.
- * {@code selected} and {@code reason} are computed for the requesting student
- * only; they stay {@code false} / {@code null} for staff and administrators.
+ * offering (teacher / capacity / audience) to a catalog course, so the row
+ * carries both catalog fields (name, credit) and offering fields.
+ *
+ * <p>Capacity is split into a hard maximum ({@code capacity}) plus soft
+ * priority quotas for first attempts ({@code firstAttemptCapacity}) and
+ * retakes ({@code retakeCapacity}). A student whose own pool is full may still
+ * select while the total count is below the maximum.
+ *
+ * <p>{@code attemptType}, {@code firstAttemptEnrolled} and
+ * {@code retakeEnrolled} let the client render the quota that applies to the
+ * requesting student; {@code selected} and {@code reason} are computed for
+ * that student only.
  */
 public final class CourseDto implements Serializable {
     private static final long serialVersionUID = 1L;
+
+    public static final String ATTEMPT_FIRST = "FIRST";
+    public static final String ATTEMPT_RETAKE = "RETAKE";
 
     private final String sectionId;
     private final String courseId;
@@ -26,7 +37,12 @@ public final class CourseDto implements Serializable {
     private final double credit;
     private final String courseNature;
     private final int capacity;
+    private final int firstAttemptCapacity;
+    private final int retakeCapacity;
+    private final int firstAttemptEnrolled;
+    private final int retakeEnrolled;
     private final int enrolledCount;
+    private final String attemptType;
     private final String semesterName;
     private final String classTime;
     private final String location;
@@ -44,6 +60,22 @@ public final class CourseDto implements Serializable {
                      String location, String selectionStartTime, String selectionEndTime,
                      boolean active, boolean selected, String reason,
                      List<SectionAudienceDto> audiences) {
+        this(sectionId, courseId, courseName, description,
+                teacherId, teacherName, departmentId, departmentName, credit, courseNature,
+                capacity, capacity, capacity, 0, 0, enrolledCount, null,
+                semesterName, classTime, location, selectionStartTime, selectionEndTime,
+                active, selected, reason, audiences);
+    }
+
+    public CourseDto(String sectionId, String courseId, String courseName, String description,
+                     String teacherId, String teacherName, String departmentId,
+                     String departmentName, double credit, String courseNature,
+                     int capacity, int firstAttemptCapacity, int retakeCapacity,
+                     int firstAttemptEnrolled, int retakeEnrolled, int enrolledCount,
+                     String attemptType, String semesterName, String classTime,
+                     String location, String selectionStartTime, String selectionEndTime,
+                     boolean active, boolean selected, String reason,
+                     List<SectionAudienceDto> audiences) {
         this.sectionId = sectionId;
         this.courseId = courseId;
         this.courseName = courseName;
@@ -55,7 +87,12 @@ public final class CourseDto implements Serializable {
         this.credit = credit;
         this.courseNature = courseNature;
         this.capacity = capacity;
+        this.firstAttemptCapacity = firstAttemptCapacity;
+        this.retakeCapacity = retakeCapacity;
+        this.firstAttemptEnrolled = firstAttemptEnrolled;
+        this.retakeEnrolled = retakeEnrolled;
         this.enrolledCount = enrolledCount;
+        this.attemptType = attemptType;
         this.semesterName = semesterName;
         this.classTime = classTime;
         this.location = location;
@@ -109,12 +146,36 @@ public final class CourseDto implements Serializable {
         return courseNature;
     }
 
+    /** 最大容量（总人数硬上限）。 */
     public int getCapacity() {
         return capacity;
     }
 
+    /** 首修优先名额（软池）。 */
+    public int getFirstAttemptCapacity() {
+        return firstAttemptCapacity;
+    }
+
+    /** 重修优先名额（软池）。 */
+    public int getRetakeCapacity() {
+        return retakeCapacity;
+    }
+
+    public int getFirstAttemptEnrolled() {
+        return firstAttemptEnrolled;
+    }
+
+    public int getRetakeEnrolled() {
+        return retakeEnrolled;
+    }
+
     public int getEnrolledCount() {
         return enrolledCount;
+    }
+
+    /** 当前请求学生的修读类型；非学生视角为 {@code null}。 */
+    public String getAttemptType() {
+        return attemptType;
     }
 
     public String getSemesterName() {

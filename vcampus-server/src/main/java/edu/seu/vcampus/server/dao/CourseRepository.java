@@ -44,10 +44,17 @@ public interface CourseRepository {
 
     int countEnrolled(String sectionId) throws SQLException;
 
-    void insertEnrollment(String studentId, String sectionId,
+    AttemptCounts countAttempts(String sectionId) throws SQLException;
+
+    void insertEnrollment(String studentId, String sectionId, String attemptType,
                           String enrollmentId, String enrollTime) throws SQLException;
 
     boolean deleteEnrollment(String studentId, String enrollmentId) throws SQLException;
+
+    boolean hasCompletedCourse(String studentId, String courseId) throws SQLException;
+
+    void addCourseRecord(String studentId, String courseId,
+                         String semesterName, String gradeStatus) throws SQLException;
 
     List<CourseEnrollmentDto> findSchedule(String studentId) throws SQLException;
 

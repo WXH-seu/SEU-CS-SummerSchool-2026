@@ -42,6 +42,10 @@ final class CourseEditorDialog {
         JTextField credit = field(value == null ? "3.0" : String.valueOf(value.getCredit()), true);
         JTextField capacity = field(value == null ? "30" : String.valueOf(value.getCapacity()),
                 true);
+        JTextField firstCap = field(value == null
+                ? "30" : String.valueOf(value.getFirstAttemptCapacity()), true);
+        JTextField retakeCap = field(value == null
+                ? "30" : String.valueOf(value.getRetakeCapacity()), true);
         JTextField semester = field(value == null ? "2026-2027-1" : value.getSemesterName(),
                 true);
         JTextField classTime = field(value == null ? "" : value.getClassTime(), true);
@@ -126,7 +130,9 @@ final class CourseEditorDialog {
         addRow(form, "开课院系*", department);
         addRow(form, "学分*", credit);
         addRow(form, "课程性质*", nature);
-        addRow(form, "容量*", capacity);
+        addRow(form, "最大容量*", capacity);
+        addRow(form, "首修名额（软池）*", firstCap);
+        addRow(form, "重修名额（软池）*", retakeCap);
         addRow(form, "学期*", semester);
         addRow(form, "上课时间*", classTime);
         addRow(form, "上课地点", location);
@@ -163,7 +169,11 @@ final class CourseEditorDialog {
                 text(id), text(name), text(description),
                 selectedId(teacher), null, selectedId(department), null,
                 parseCredit(credit), String.valueOf(nature.getSelectedItem()),
-                parseCapacity(capacity), value == null ? 0 : value.getEnrolledCount(),
+                parseCapacity(capacity), parsePool(firstCap), parsePool(retakeCap),
+                value == null ? 0 : value.getFirstAttemptEnrolled(),
+                value == null ? 0 : value.getRetakeEnrolled(),
+                value == null ? 0 : value.getEnrolledCount(),
+                value == null ? null : value.getAttemptType(),
                 text(semester), text(classTime), text(location),
                 text(start), text(end), active.isSelected(), false, null, audiences);
     }
@@ -317,6 +327,18 @@ final class CourseEditorDialog {
             return Integer.parseInt(text(field));
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("容量必须是整数");
+        }
+    }
+
+    private static int parsePool(JTextField field) {
+        try {
+            int value = Integer.parseInt(text(field));
+            if (value < 0) {
+                throw new IllegalArgumentException("名额不能为负数");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("名额必须是整数");
         }
     }
 

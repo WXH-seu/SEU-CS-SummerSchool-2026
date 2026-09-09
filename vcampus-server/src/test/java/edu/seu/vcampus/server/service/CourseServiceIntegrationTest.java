@@ -277,6 +277,43 @@ public class CourseServiceIntegrationTest {
     }
 
     @Test
+    public void retakeUsesOwnPoolAndCanOverflowToMaxCapacity() throws Exception {
+        String stu2 = createStudent("stu2", "20260003");
+        String stu3 = createStudent("stu3", "20260004");
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCoursePools("CS601", "重修分流", "2026-09-01 08:00",
+                        "2026-12-31 23:59", "周日 5-6 节", 2, 1, 0,
+                        allAudience()));
+        courseRepository.addCourseRecord("20260001", "CS601", "2025-2026-1", "未通过");
+        String sectionId = section.getSectionId();
+
+        // 20260001 has a failed record for CS601 -> retake pool (capacity 0),
+        // but the total is below the maximum, so it may overflow.
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(sectionId));
+        service.selectCourse(stu2, SubSystemRole.STUDENT,
+                new CourseSelectRequest(sectionId));
+        assertEquals(2, courseRepository.countEnrolled(sectionId));
+        try {
+            service.selectCourse(stu3, SubSystemRole.STUDENT,
+                    new CourseSelectRequest(sectionId));
+            fail("A third first-attempt student should be rejected when total is full");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("名额已满"));
+        }
+
+        List<edu.seu.vcampus.common.dto.SectionRosterEntry> roster =
+                service.queryRoster(teacher.getUserId(), eff(teacher), sectionId);
+        assertEquals(2, roster.size());
+        long retakes = roster.stream()
+                .filter(row -> CourseDto.ATTEMPT_RETAKE.equals(row.getAttemptType()))
+                .count();
+        assertEquals(1, retakes);
+        assertTrue(roster.stream().anyMatch(row -> "13800000001".equals(row.getPhone())));
+    }
+
+    @Test
     public void natureFilterAndValidationWork() throws Exception {
         service.saveCourse(admin.getUserId(), eff(admin),
                 demoCourse("CS401", "通识数学", "2026-09-01 08:00", "2026-12-31 23:59",
@@ -384,12 +421,16 @@ public class CourseServiceIntegrationTest {
     }
 
     private String createSecondStudent(String userId) throws Exception {
+        return createStudent(userId, "20260003");
+    }
+
+    private String createStudent(String userId, String studentId) throws Exception {
         PasswordHasher hasher = new PasswordHasher();
         String salt = hasher.newSalt();
         userRepository.insert(new UserAccount(userId, hasher.hash("secret123", salt),
                 salt, "第二名学生", Role.STUDENT, true));
         academicService.saveStudent(admin.getUserId(), effAcademic(admin),
-                new StudentDto("20260003", userId, "第二名学生", "女",
+                new StudentDto(studentId, userId, "第二名学生", "女",
                         "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
         return userId;
     }
@@ -412,6 +453,18 @@ public class CourseServiceIntegrationTest {
                                  String nature) {
         return new CourseDto(null, courseId, courseName, "测试课程",
                 "T0001", null, "CS", null, 3.0, nature, capacity, 0,
+                "2026-2027-1", classTime, "教1-201", start, end,
+                true, false, null, audiences);
+    }
+
+    private CourseDto demoCoursePools(String courseId, String courseName,
+                                      String start, String end, String classTime,
+                                      int capacity, int firstAttemptCapacity,
+                                      int retakeCapacity,
+                                      List<SectionAudienceDto> audiences) {
+        return new CourseDto(null, courseId, courseName, "测试课程",
+                "T0001", null, "CS", null, 3.0, "必修",
+                capacity, firstAttemptCapacity, retakeCapacity, 0, 0, 0, null,
                 "2026-2027-1", classTime, "教1-201", start, end,
                 true, false, null, audiences);
     }
