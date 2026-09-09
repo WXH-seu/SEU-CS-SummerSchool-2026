@@ -16,6 +16,8 @@ public enum Operation implements Serializable {
     USER_LIST_QUERY,
     USER_STATUS_UPDATE,
     USER_AUDIT_QUERY,
+    USER_FORGOT_PASSWORD,
+    USER_RESET_PASSWORD,
     STUDENT_QUERY,
     STUDENT_SAVE,
     STUDENT_IMPORT,

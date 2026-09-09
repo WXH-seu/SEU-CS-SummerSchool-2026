@@ -146,6 +146,8 @@ public final class PermissionPolicy {
     private void installDefaults() {
         markPublic(Operation.PING);
         markPublic(Operation.USER_LOGIN);
+        markPublic(Operation.USER_FORGOT_PASSWORD);
+        markPublic(Operation.USER_RESET_PASSWORD);
 
         // Account management is super-admin only. The sub-system admin (SUBSYSADMIN)
         // only operates business sub-systems and cannot register users or

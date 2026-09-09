@@ -111,7 +111,7 @@ public class RequestDispatcherTest {
     public void registerRequiresSession() {
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, null,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.UNAUTHORIZED, response.getCode());
     }
 
@@ -120,7 +120,7 @@ public class RequestDispatcherTest {
         String token = login("student", "student123");
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, token,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
     }
 
@@ -129,7 +129,7 @@ public class RequestDispatcherTest {
         String token = login("admin", "admin123");
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, token,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
     }
 
@@ -139,7 +139,7 @@ public class RequestDispatcherTest {
 
         ResponseMessage<?> registered = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.SUCCESS, registered.getCode());
         AccountInfo created = (AccountInfo) registered.getBody();
         assertEquals("stu2026", created.getUserId());
@@ -147,7 +147,7 @@ public class RequestDispatcherTest {
 
         ResponseMessage<?> duplicate = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.CONFLICT, duplicate.getCode());
 
         String studentToken = login("stu2026", "secret123");
@@ -159,7 +159,7 @@ public class RequestDispatcherTest {
     public void csvImportWorksForSuperAdmin() {
         String superToken = login("superadmin", "super123");
         UserImportRequest payload = new UserImportRequest(Arrays.asList(
-                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT),
+                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT, "计算机学院"),
                 new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER)));
         ResponseMessage<?> response = dispatcher.dispatch(
                 new RequestMessage<UserImportRequest>(Operation.USER_IMPORT_CSV, superToken, payload));

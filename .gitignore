@@ -32,3 +32,4 @@ credentials.txt
 .tmp-compile/
 vcampus-common/bin/
 vcampus-server/vcampus-database/
+vcampus-server/mail.properties

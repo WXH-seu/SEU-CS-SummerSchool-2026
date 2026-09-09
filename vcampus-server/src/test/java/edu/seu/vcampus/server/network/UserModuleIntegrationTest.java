@@ -112,7 +112,7 @@ public class UserModuleIntegrationTest {
         String registerAsAdmin = loginAs(client, "superadmin", "super123");
         ResponseMessage<?> registered = client.request(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, registerAsAdmin,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.SUCCESS, registered.getCode());
         assertEquals("stu2026", ((AccountInfo) registered.getBody()).getUserId());
 

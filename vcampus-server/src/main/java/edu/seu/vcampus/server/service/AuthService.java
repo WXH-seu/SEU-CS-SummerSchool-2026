@@ -15,6 +15,7 @@ import edu.seu.vcampus.server.dao.UserRepository;
 import edu.seu.vcampus.server.security.PasswordHasher;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
+import javax.mail.MessagingException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,13 +49,25 @@ public final class AuthService {
     private final PasswordHasher passwordHasher;
     private final SessionRegistry sessionRegistry;
     private final AuditService auditService;
+    private final MailService mailService;
+    private final PasswordResetService passwordResetService;
 
     public AuthService(UserRepository userRepository, PasswordHasher passwordHasher,
                        SessionRegistry sessionRegistry, AuditService auditService) {
+        this(userRepository, passwordHasher, sessionRegistry, auditService, null, null);
+    }
+
+    public AuthService(UserRepository userRepository, PasswordHasher passwordHasher,
+                       SessionRegistry sessionRegistry, AuditService auditService,
+                       MailService mailService, PasswordResetService passwordResetService) {
         this.userRepository = userRepository;
         this.passwordHasher = passwordHasher;
         this.sessionRegistry = sessionRegistry;
         this.auditService = auditService;
+        this.mailService = mailService;
+        this.passwordResetService = passwordResetService == null
+                ? new PasswordResetService(5 * 60 * 1000L)
+                : passwordResetService;
     }
 
     /**
@@ -150,15 +163,28 @@ public final class AuthService {
         return toInfo(findActiveAccount(userId));
     }
 
-    /** Updates the display name and returns the refreshed account. */
+    /** Updates the display name (keeping the current email) and refreshes the account. */
     public AccountInfo updateProfile(String userId, String displayName)
+            throws SQLException, AuthException {
+        return updateProfile(userId, displayName, null);
+    }
+
+    /** Updates the display name and optionally the recovery email. */
+    public AccountInfo updateProfile(String userId, String displayName, String email)
             throws SQLException, AuthException {
         String normalized = trimToNull(displayName);
         if (normalized == null) {
             throw new AuthException(ResponseCode.INVALID_REQUEST, "显示名不能为空");
         }
-        findActiveAccount(userId);
+        UserAccount account = findActiveAccount(userId);
         userRepository.updateDisplayName(userId, normalized);
+        String newEmail = normalizeEmail(email);
+        // A blank submission keeps the existing address so a profile save never
+        // silently clears the recovery mailbox.
+        String emailToStore = newEmail.isEmpty() ? account.getEmail() : newEmail;
+        if (!emailToStore.equals(account.getEmail())) {
+            userRepository.updateEmail(userId, emailToStore);
+        }
         return toInfo(findActiveAccount(userId));
     }
 
@@ -188,6 +214,10 @@ public final class AuthService {
             throws SQLException, AuthException {
         try {
             UserAccount account = findActiveAccount(userId);
+            if (account.getRole() == Role.SUPER_ADMIN) {
+                throw new AuthException(ResponseCode.FORBIDDEN,
+                        "超级管理员账号不允许注销，以防系统失去最高权限");
+            }
             if (password == null
                     || !passwordHasher.matches(password,
                             account.getPasswordSalt(), account.getPasswordHash())) {
@@ -244,6 +274,64 @@ public final class AuthService {
         sessionRegistry.remove(sessionToken);
     }
 
+    /**
+     * Validates that the email is bound to an account and emails a reset code.
+     * Returns the target account (so the dispatch can audit) when it exists.
+     */
+    public String requestPasswordReset(String email) throws SQLException, AuthException {
+        if (mailService == null) {
+            throw new AuthException(ResponseCode.SERVER_ERROR, "邮件服务未配置，请联系管理员");
+        }
+        String normalized = trimToNull(email);
+        if (normalized == null) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST, "邮箱不能为空");
+        }
+        UserAccount account = userRepository.findByEmail(normalized);
+        if (account == null) {
+            throw new AuthException(ResponseCode.NOT_FOUND, "该邮箱未绑定任何账号");
+        }
+        String code = passwordResetService.create(normalized);
+        try {
+            mailService.sendVerificationCode(normalized, code);
+            auditService.recordOperation("FORGOT_PASSWORD", account.getUserId(),
+                    account.getUserId(), true, "已发送密码重置验证码");
+        } catch (MessagingException e) {
+            LOGGER.log(Level.WARNING, "Password reset mail failed for " + normalized, e);
+            auditService.recordOperation("FORGOT_PASSWORD", account.getUserId(),
+                    account.getUserId(), false, "邮件发送失败");
+            throw new AuthException(ResponseCode.SERVER_ERROR, "验证码邮件发送失败，请稍后重试");
+        }
+        return account.getUserId();
+    }
+
+    /** Verifies the emailed code and resets the password for the matched account. */
+    public void resetPassword(String email, String code, String newPassword)
+            throws SQLException, AuthException {
+        String normalized = trimToNull(email);
+        String normalizedCode = trimToNull(code);
+        String newPass = trimToNull(newPassword);
+        if (normalized == null || normalizedCode == null || newPass == null) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST, "邮箱、验证码与新密码不能为空");
+        }
+        if (!passwordResetService.verify(normalized, normalizedCode)) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST, "验证码错误或已过期");
+        }
+        if (newPass.length() < MIN_PASSWORD_LENGTH) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST,
+                    "密码长度不能少于 " + MIN_PASSWORD_LENGTH + " 位");
+        }
+        UserAccount account = userRepository.findByEmail(normalized);
+        if (account == null) {
+            throw new AuthException(ResponseCode.NOT_FOUND, "该邮箱未绑定任何账号");
+        }
+        String salt = passwordHasher.newSalt();
+        userRepository.updatePassword(account.getUserId(),
+                passwordHasher.hash(newPass, salt), salt);
+        sessionRegistry.removeAllForUser(account.getUserId());
+        auditService.recordOperation("RESET_PASSWORD", account.getUserId(),
+                account.getUserId(), true, "通过验证码重置密码");
+    }
+
     private AccountInfo createAccount(RegisterRequest request) throws SQLException, AuthException {
         if (request == null) {
             throw new AuthException(ResponseCode.INVALID_REQUEST, "注册信息不能为空");
@@ -266,10 +354,14 @@ public final class AuthService {
             throw new AuthException(ResponseCode.INVALID_REQUEST,
                     "子系统管理员至少需要勾选一个子系统");
         }
+        if (request.getRole() == Role.STUDENT && isBlank(request.getDepartment())) {
+            throw new AuthException(ResponseCode.INVALID_REQUEST,
+                    "学生必须填写学院（院系），用于学籍自动分班");
+        }
         String salt = passwordHasher.newSalt();
         UserAccount account = new UserAccount(userId,
                 passwordHasher.hash(password, salt), salt, displayName,
-                request.getRole(), true, scopes);
+                request.getRole(), true, scopes, normalizeDepartment(request.getDepartment()));
         userRepository.insert(account);
         return toInfo(account);
     }
@@ -314,7 +406,8 @@ public final class AuthService {
 
     private AccountInfo toInfo(UserAccount account) {
         return new AccountInfo(account.getUserId(), account.getDisplayName(),
-                account.getRole(), account.isActive(), account.getAdminScopes());
+                account.getRole(), account.isActive(), account.getAdminScopes(),
+                account.getDepartment(), account.getEmail());
     }
 
     private String safeUserId(RegisterRequest request) {
@@ -331,5 +424,20 @@ public final class AuthService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String normalizeDepartment(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? "" : trimmed;
+    }
+
+    private String normalizeEmail(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim();
     }
 }

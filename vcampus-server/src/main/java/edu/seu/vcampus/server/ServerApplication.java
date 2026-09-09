@@ -23,6 +23,8 @@ import edu.seu.vcampus.server.service.AuthService;
 import edu.seu.vcampus.server.service.CourseService;
 import edu.seu.vcampus.server.service.CurriculumCatalogService;
 import edu.seu.vcampus.server.service.LibraryService;
+import edu.seu.vcampus.server.service.MailService;
+import edu.seu.vcampus.server.service.PasswordResetService;
 import edu.seu.vcampus.server.service.StoreService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 
@@ -50,8 +52,16 @@ public final class ServerApplication {
         AccessBookRepository bookRepository = new AccessBookRepository(database);
         AccessStoreRepository storeRepository = new AccessStoreRepository(database);
         SessionRegistry sessions = new SessionRegistry();
+        MailService mailService = MailService.tryLoadDefault();
+        PasswordResetService passwordResetService = new PasswordResetService(5 * 60 * 1000L);
         AuthService authService =
-                new AuthService(userRepository, passwordHasher, sessions, auditService);
+                new AuthService(userRepository, passwordHasher, sessions, auditService,
+                        mailService, passwordResetService);
+        if (mailService != null) {
+            LOGGER.info("Password-reset mail service enabled");
+        } else {
+            LOGGER.warning("Password-reset mail service disabled (mail.properties missing)");
+        }
         PermissionPolicy permissionPolicy = new PermissionPolicy();
         AcademicService academicService = new AcademicService(academicRepository, userRepository);
         CurriculumCatalogService catalogService =

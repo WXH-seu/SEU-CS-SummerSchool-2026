@@ -55,7 +55,7 @@ public class AuthServiceTest {
     @Test
     public void superAdminCreatesStudentAccount() throws Exception {
         AccountInfo created = authService.register(
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         assertNotNull(created);
         assertEquals("stu2026", created.getUserId());
@@ -66,7 +66,7 @@ public class AuthServiceTest {
     @Test
     public void rejectsDuplicateRegistration() throws Exception {
         RegisterRequest request =
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT);
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院");
         authService.register(request, ADMIN_ACTOR, OPERATOR);
         try {
             authService.register(request, ADMIN_ACTOR, OPERATOR);
@@ -98,7 +98,7 @@ public class AuthServiceTest {
     public void adminAndTeacherCannotRegisterAccount() throws Exception {
         for (Role actor : new Role[]{Role.TEACHER, Role.SUBSYSADMIN}) {
             try {
-                authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+                authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                         actor, "someone");
                 fail(actor + " must not register accounts");
             } catch (AuthException e) {
@@ -109,7 +109,7 @@ public class AuthServiceTest {
 
     @Test
     public void changesPasswordAndInvalidatesOldOne() throws Exception {
-        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         authService.changePassword("stu2026", "secret123", "newpass456");
         assertNotNull(authService.login(new LoginRequest("stu2026", "newpass456")));
@@ -123,7 +123,7 @@ public class AuthServiceTest {
 
     @Test
     public void deletesAccountAndRemovesSessions() throws Exception {
-        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         LoginResponse session = authService.login(new LoginRequest("stu2026", "secret123"));
         authService.deleteAccount("stu2026", "secret123");
@@ -138,7 +138,7 @@ public class AuthServiceTest {
 
     @Test
     public void updatesProfileAndListsUsers() throws Exception {
-        authService.register(new RegisterRequest("stu2026", "secret123", "旧名字", Role.STUDENT),
+        authService.register(new RegisterRequest("stu2026", "secret123", "旧名字", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         assertEquals("新名字",
                 authService.updateProfile("stu2026", "新名字").getDisplayName());
@@ -148,7 +148,7 @@ public class AuthServiceTest {
 
     @Test
     public void disablesAndEnablesAccount() throws Exception {
-        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         authService.updateUserStatus("superadmin", "stu2026", false, Role.SUPER_ADMIN);
         try {
@@ -190,10 +190,10 @@ public class AuthServiceTest {
     @Test
     public void importsUsersFromCsvWithPerRowFailures() throws Exception {
         List<RegisterRequest> users = Arrays.asList(
-                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT),
-                new RegisterRequest("s002", "secret123", "学生二", Role.STUDENT),
-                new RegisterRequest("s001", "secret123", "重复账号", Role.STUDENT),
-                new RegisterRequest("s003", "12", "短密码", Role.STUDENT),
+                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT, "计算机学院"),
+                new RegisterRequest("s002", "secret123", "学生二", Role.STUDENT, "计算机学院"),
+                new RegisterRequest("s001", "secret123", "重复账号", Role.STUDENT, "计算机学院"),
+                new RegisterRequest("s003", "12", "短密码", Role.STUDENT, "计算机学院"),
                 new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER));
         UserImportResponse response = authService.importUsers(
                 new edu.seu.vcampus.common.dto.UserImportRequest(users), ADMIN_ACTOR, OPERATOR);
@@ -216,7 +216,7 @@ public class AuthServiceTest {
 
     @Test
     public void recordsLoginAndOperationsAudit() throws Exception {
-        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT),
+        authService.register(new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院"),
                 ADMIN_ACTOR, OPERATOR);
         try {
             authService.login(new LoginRequest("stu2026", "wrong"));

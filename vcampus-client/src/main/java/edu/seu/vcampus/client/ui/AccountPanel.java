@@ -67,6 +67,7 @@ public final class AccountPanel extends JPanel {
     private final JLabel scopeLabel = new JLabel();
 
     private final JTextField displayNameField = new JTextField(16);
+    private final JTextField emailField = new JTextField(16);
     private final JPasswordField oldPasswordField = new JPasswordField(16);
     private final JPasswordField newPasswordField = new JPasswordField(16);
     private final JPasswordField confirmPasswordField = new JPasswordField(16);
@@ -200,32 +201,36 @@ public final class AccountPanel extends JPanel {
         constraints.gridx = 1;
         panel.add(displayNameField, constraints);
         constraints.gridy = 2;
+        panel.add(new JLabel("联系邮箱"), constraints);
+        constraints.gridx = 1;
+        panel.add(emailField, constraints);
+        constraints.gridy = 3;
         JButton saveNameButton = new JButton("保存显示名");
         panel.add(saveNameButton, constraints);
         saveNameButton.addActionListener(event -> updateProfile());
 
         constraints.gridx = 0;
-        constraints.gridy = 3;
+        constraints.gridy = 4;
         constraints.gridwidth = 2;
         JLabel passwordTitle = new JLabel("修改密码");
         passwordTitle.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(passwordTitle, constraints);
         constraints.gridwidth = 1;
-        constraints.gridy = 4;
+        constraints.gridy = 5;
         panel.add(new JLabel("原密码"), constraints);
         constraints.gridx = 1;
         panel.add(oldPasswordField, constraints);
         constraints.gridx = 0;
-        constraints.gridy = 5;
+        constraints.gridy = 6;
         panel.add(new JLabel("新密码"), constraints);
         constraints.gridx = 1;
         panel.add(newPasswordField, constraints);
         constraints.gridx = 0;
-        constraints.gridy = 6;
+        constraints.gridy = 7;
         panel.add(new JLabel("确认新密码"), constraints);
         constraints.gridx = 1;
         panel.add(confirmPasswordField, constraints);
-        constraints.gridy = 7;
+        constraints.gridy = 8;
         JButton changePasswordButton = new JButton("修改密码");
         panel.add(changePasswordButton, constraints);
         changePasswordButton.addActionListener(event -> changePassword());
@@ -442,6 +447,8 @@ public final class AccountPanel extends JPanel {
         roleLabel.setText(RoleNames.of(info.getRole()));
         activeLabel.setText(info.isActive() ? "正常" : "已禁用");
         scopeLabel.setText(scopesOf(info));
+        displayNameField.setText(info.getDisplayName());
+        emailField.setText(info.getEmail());
     }
 
     /** Renders a human-readable list of granted sub-systems for an administrator. */
@@ -468,11 +475,12 @@ public final class AccountPanel extends JPanel {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
+        final String email = emailField.getText().trim();
         setBusy(true);
         new SwingWorker<AccountInfo, Void>() {
             @Override
             protected AccountInfo doInBackground() throws Exception {
-                return service.updateProfile(session.getSessionToken(), displayName);
+                return service.updateProfile(session.getSessionToken(), displayName, email);
             }
 
             @Override
