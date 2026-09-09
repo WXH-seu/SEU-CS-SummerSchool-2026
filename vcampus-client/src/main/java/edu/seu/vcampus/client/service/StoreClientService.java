@@ -1,6 +1,7 @@
 package edu.seu.vcampus.client.service;
 
 import edu.seu.vcampus.client.network.ClientConnection;
+import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
@@ -15,6 +16,7 @@ import edu.seu.vcampus.common.message.ResponseMessage;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,6 +44,27 @@ public final class StoreClientService {
 
     public List<CartItemDto> queryCart() throws IOException {
         return listRequest(Operation.STORE_CART_QUERY, null, CartItemDto.class);
+    }
+
+    public List<String> queryCategories() throws IOException {
+        return listRequest(Operation.STORE_CATEGORY_QUERY, null, String.class);
+    }
+
+    public BigDecimal queryBalance() throws IOException {
+        Object responseBody = request(Operation.STORE_BALANCE_QUERY, null).getBody();
+        if (!(responseBody instanceof BigDecimal)) {
+            throw new IOException("服务器返回的数据格式不正确");
+        }
+        return (BigDecimal) responseBody;
+    }
+
+    public BigDecimal rechargeBalance(BalanceRechargeRequest rechargeRequest) throws IOException {
+        Object responseBody = request(
+                Operation.STORE_BALANCE_RECHARGE, rechargeRequest).getBody();
+        if (!(responseBody instanceof BigDecimal)) {
+            throw new IOException("服务器返回的数据格式不正确");
+        }
+        return (BigDecimal) responseBody;
     }
 
     public void updateCart(String productId, int quantity) throws IOException {

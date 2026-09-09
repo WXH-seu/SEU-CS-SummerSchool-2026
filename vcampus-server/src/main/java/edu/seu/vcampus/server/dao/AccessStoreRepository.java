@@ -33,6 +33,28 @@ public final class AccessStoreRepository implements StoreRepository {
         this.database = database;
         initializeSchema();
         seedDemoData();
+        ensureBalanceColumn();
+    }
+
+    @Override
+    public List<String> findCategories(boolean activeOnly) throws SQLException {
+        String sql = "SELECT DISTINCT [category] FROM [tblProduct] "
+                + "WHERE [category] IS NOT NULL AND [category] <> ''"
+                + (activeOnly ? " AND [active] = ?" : "")
+                + " ORDER BY [category]";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (activeOnly) {
+                statement.setBoolean(1, Boolean.TRUE);
+            }
+            try (ResultSet result = statement.executeQuery()) {
+                List<String> categories = new ArrayList<String>();
+                while (result.next()) {
+                    categories.add(result.getString(1));
+                }
+                return categories;
+            }
+        }
     }
 
     @Override
@@ -194,11 +216,17 @@ public final class AccessStoreRepository implements StoreRepository {
                 if (items.isEmpty()) {
                     throw new SQLException("请先勾选要结算的商品");
                 }
+                if (!tryDeductBalance(connection, userId, total)) {
+                    throw new SQLException("余额不足，请先充值");
+                }
                 String now = LocalDateTime.now().format(ORDER_TIME_FORMAT);
                 insertOrder(connection, orderId, userId, money(total), "已付款", now);
                 for (OrderItemDto item : items) {
                     insertOrderItem(connection, item);
-                    deductStock(connection, item.getProductId(), item.getQuantity());
+                    if (!tryDeductStock(connection, item.getProductId(), item.getQuantity())) {
+                        throw new SQLException("库存不足：" + item.getProductName()
+                                + "（已被抢购，请刷新后重试）");
+                    }
                 }
                 clearCartItems(connection, userId, settledProducts);
                 connection.commit();
@@ -370,13 +398,83 @@ public final class AccessStoreRepository implements StoreRepository {
         }
     }
 
-    private void deductStock(Connection connection, String productId, int quantity)
+    /** 余额条件扣减：余额不足时返回 false，避免并发下透支。 */
+    private boolean tryDeductBalance(Connection connection, String userId, BigDecimal amount)
             throws SQLException {
-        String sql = "UPDATE [tblProduct] SET [stock] = [stock] - ? WHERE [productId] = ?";
+        String sql = "UPDATE [tblUser] SET [balance] = COALESCE([balance], 0) - ? "
+                + "WHERE [userId] = ? AND COALESCE([balance], 0) >= ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBigDecimal(1, money(amount));
+            statement.setString(2, userId);
+            statement.setBigDecimal(3, money(amount));
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    /** 库存条件扣减：库存不足时返回 false，避免多客户端同时抢最后一件导致超卖。 */
+    private boolean tryDeductStock(Connection connection, String productId, int quantity)
+            throws SQLException {
+        String sql = "UPDATE [tblProduct] SET [stock] = [stock] - ? "
+                + "WHERE [productId] = ? AND [stock] >= ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, quantity);
             statement.setString(2, productId);
+            statement.setInt(3, quantity);
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    @Override
+    public BigDecimal findBalance(String userId) throws SQLException {
+        String sql = "SELECT COALESCE([balance], 0) AS [balance] "
+                + "FROM [tblUser] WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getBigDecimal("balance") : BigDecimal.ZERO;
+            }
+        }
+    }
+
+    @Override
+    public BigDecimal rechargeBalance(String userId, BigDecimal amount) throws SQLException {
+        String update = "UPDATE [tblUser] SET [balance] = COALESCE([balance], 0) + ? "
+                + "WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(update)) {
+            statement.setBigDecimal(1, money(amount));
+            statement.setString(2, userId);
             statement.executeUpdate();
+        }
+        return findBalance(userId);
+    }
+
+    /** 为旧库补充 balance 列，并给演示账号一笔初始余额。 */
+    private void ensureBalanceColumn() throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!columnExists(connection, "tblUser", "balance")) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("ALTER TABLE [tblUser] ADD COLUMN [balance] CURRENCY");
+                }
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(
+                        "UPDATE [tblUser] SET [balance] = 100 WHERE [balance] IS NULL");
+            }
+        }
+    }
+
+    private boolean columnExists(Connection connection, String table, String column)
+            throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, table, "%")) {
+            while (columns.next()) {
+                if (column.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
