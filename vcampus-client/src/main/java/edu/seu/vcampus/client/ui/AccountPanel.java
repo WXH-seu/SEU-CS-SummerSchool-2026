@@ -5,6 +5,7 @@ import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserCsvParser;
 import edu.seu.vcampus.client.service.UserClientService;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.UserImportFailure;
@@ -16,7 +17,6 @@ import edu.seu.vcampus.common.enums.SubSystem;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
-import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -47,12 +47,11 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Account management screen: shows the current account, allows the user to
- * update the display name, change the password and deregister the account.
- * Administrators additionally see a user management tab to enable or disable
- * accounts.
+ * 账号管理模块：查看当前账号、修改显示名与密码；普通用户可注销账号。
+ * 超级管理员额外拥有用户管理与操作日志页签，不显示刷新按钮与注销页签。
  */
-public final class AccountFrame extends JFrame {
+public final class AccountPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
     private static final int MIN_PASSWORD_LENGTH = 6;
 
     private final ClientConfig config;
@@ -68,6 +67,7 @@ public final class AccountFrame extends JFrame {
     private final JLabel scopeLabel = new JLabel();
 
     private final JTextField displayNameField = new JTextField(16);
+    private final JTextField emailField = new JTextField(16);
     private final JPasswordField oldPasswordField = new JPasswordField(16);
     private final JPasswordField newPasswordField = new JPasswordField(16);
     private final JPasswordField confirmPasswordField = new JPasswordField(16);
@@ -95,17 +95,24 @@ public final class AccountFrame extends JFrame {
     };
     private final JTable logTable = new JTable(logTableModel);
 
-    public AccountFrame(ClientConfig config, MainFrame mainFrame,
+    public AccountPanel(ClientConfig config, MainFrame mainFrame,
                         ClientConnection connection, LoginResponse session) {
-        super("账号管理 - " + session.getDisplayName());
+        super(new BorderLayout());
+        if (config == null || mainFrame == null || connection == null || session == null) {
+            throw new IllegalArgumentException("account panel arguments are required");
+        }
         this.config = config;
         this.mainFrame = mainFrame;
         this.connection = connection;
         this.service = new UserClientService(connection);
         this.session = session;
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(680, 560);
-        setLocationRelativeTo(mainFrame);
+        setOpaque(false);
+        setBackground(SeuTheme.PAGE_BG);
+        setBorder(SeuTheme.pageBorder());
+        userTable.setFont(SeuTheme.bodyFont());
+        userTable.setRowHeight(SeuTheme.scaled(32));
+        logTable.setFont(SeuTheme.bodyFont());
+        logTable.setRowHeight(SeuTheme.scaled(32));
         buildUi();
     }
 
@@ -113,12 +120,14 @@ public final class AccountFrame extends JFrame {
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("我的账号", createProfileTab());
         tabs.addTab("修改资料", createEditTab());
-        tabs.addTab("注销账号", createDeregisterTab());
+        if (session.getRole() != Role.SUPER_ADMIN) {
+            tabs.addTab("注销账号", createDeregisterTab());
+        }
         if (session.getRole() == Role.SUPER_ADMIN) {
             tabs.addTab("用户管理", createUserAdminTab());
             tabs.addTab("操作日志", createAuditTab());
         }
-        setContentPane(tabs);
+        add(tabs, BorderLayout.CENTER);
     }
 
     private JPanel createProfileTab() {
@@ -153,17 +162,21 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(scopeLabel, constraints);
 
-        JButton refreshButton = new JButton("刷新");
         constraints.gridx = 0;
-        constraints.gridy = 5;
         constraints.gridwidth = 2;
         constraints.anchor = GridBagConstraints.CENTER;
-        panel.add(refreshButton, constraints);
-        refreshButton.addActionListener(event -> refreshAccount());
+        int nextRow = 5;
+        if (session.getRole() != Role.SUPER_ADMIN) {
+            JButton refreshButton = new JButton("刷新");
+            constraints.gridy = nextRow;
+            panel.add(refreshButton, constraints);
+            refreshButton.addActionListener(event -> refreshAccount());
+            nextRow++;
+        }
 
         JLabel tip = new JLabel("账号、角色、权限范围与状态由系统统一管理，不可自行修改。");
-        tip.setFont(tip.getFont().deriveFont(Font.PLAIN, 12f));
-        constraints.gridy = 6;
+        tip.setFont(SeuTheme.smallFont());
+        constraints.gridy = nextRow;
         panel.add(tip, constraints);
 
         refreshAccount();
@@ -180,7 +193,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridy = 0;
         constraints.gridwidth = 2;
         JLabel nameTitle = new JLabel("修改显示名");
-        nameTitle.setFont(nameTitle.getFont().deriveFont(Font.BOLD, 15f));
+        nameTitle.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(nameTitle, constraints);
         constraints.gridwidth = 1;
         constraints.gridy = 1;
@@ -188,32 +201,36 @@ public final class AccountFrame extends JFrame {
         constraints.gridx = 1;
         panel.add(displayNameField, constraints);
         constraints.gridy = 2;
-        JButton saveNameButton = new JButton("保存显示名");
+        panel.add(new JLabel("找回邮箱"), constraints);
+        constraints.gridx = 1;
+        panel.add(emailField, constraints);
+        constraints.gridy = 3;
+        JButton saveNameButton = new JButton("保存资料");
         panel.add(saveNameButton, constraints);
         saveNameButton.addActionListener(event -> updateProfile());
 
         constraints.gridx = 0;
-        constraints.gridy = 3;
+        constraints.gridy = 4;
         constraints.gridwidth = 2;
         JLabel passwordTitle = new JLabel("修改密码");
-        passwordTitle.setFont(passwordTitle.getFont().deriveFont(Font.BOLD, 15f));
+        passwordTitle.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(passwordTitle, constraints);
         constraints.gridwidth = 1;
-        constraints.gridy = 4;
+        constraints.gridy = 5;
         panel.add(new JLabel("原密码"), constraints);
         constraints.gridx = 1;
         panel.add(oldPasswordField, constraints);
         constraints.gridx = 0;
-        constraints.gridy = 5;
+        constraints.gridy = 6;
         panel.add(new JLabel("新密码"), constraints);
         constraints.gridx = 1;
         panel.add(newPasswordField, constraints);
         constraints.gridx = 0;
-        constraints.gridy = 6;
+        constraints.gridy = 7;
         panel.add(new JLabel("确认新密码"), constraints);
         constraints.gridx = 1;
         panel.add(confirmPasswordField, constraints);
-        constraints.gridy = 7;
+        constraints.gridy = 8;
         JButton changePasswordButton = new JButton("修改密码");
         panel.add(changePasswordButton, constraints);
         changePasswordButton.addActionListener(event -> changePassword());
@@ -230,7 +247,7 @@ public final class AccountFrame extends JFrame {
         constraints.gridy = 0;
         constraints.gridwidth = 2;
         JLabel title = new JLabel("注销当前账号");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+        title.setFont(SeuTheme.font(Font.BOLD, 15f));
         panel.add(title, constraints);
         constraints.gridwidth = 1;
         constraints.gridy = 1;
@@ -430,6 +447,13 @@ public final class AccountFrame extends JFrame {
         roleLabel.setText(RoleNames.of(info.getRole()));
         activeLabel.setText(info.isActive() ? "正常" : "已禁用");
         scopeLabel.setText(scopesOf(info));
+        // 仅在字段为空时预填，避免异步刷新覆盖用户正在输入的内容。
+        if (displayNameField.getText().trim().isEmpty()) {
+            displayNameField.setText(info.getDisplayName());
+        }
+        if (emailField.getText().trim().isEmpty()) {
+            emailField.setText(info.getEmail());
+        }
     }
 
     /** Renders a human-readable list of granted sub-systems for an administrator. */
@@ -456,11 +480,12 @@ public final class AccountFrame extends JFrame {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
+        final String email = emailField.getText().trim();
         setBusy(true);
         new SwingWorker<AccountInfo, Void>() {
             @Override
             protected AccountInfo doInBackground() throws Exception {
-                return service.updateProfile(session.getSessionToken(), displayName);
+                return service.updateProfile(session.getSessionToken(), displayName, email);
             }
 
             @Override
@@ -470,8 +495,11 @@ public final class AccountFrame extends JFrame {
                     AccountInfo info = get();
                     renderInfo(info);
                     mainFrame.updateDisplayName(info.getDisplayName());
-                    JOptionPane.showMessageDialog(AccountFrame.this,
-                            "显示名已更新为：" + info.getDisplayName(), "提示",
+                    String detail = (info.getEmail() == null || info.getEmail().isEmpty())
+                            ? "显示名已更新为：" + info.getDisplayName()
+                            : "资料已更新：显示名 " + info.getDisplayName()
+                                    + "，找回邮箱 " + info.getEmail();
+                    JOptionPane.showMessageDialog(AccountPanel.this, detail, "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -522,7 +550,7 @@ public final class AccountFrame extends JFrame {
                     oldPasswordField.setText("");
                     newPasswordField.setText("");
                     confirmPasswordField.setText("");
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "密码修改成功，下次登录请使用新密码", "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                 } catch (InterruptedException e) {
@@ -561,7 +589,7 @@ public final class AccountFrame extends JFrame {
                 Arrays.fill(passwordChars, '\0');
                 try {
                     get();
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "账号已注销，感谢使用虚拟校园", "注销成功",
                             JOptionPane.INFORMATION_MESSAGE);
                     returnToLogin();
@@ -638,7 +666,7 @@ public final class AccountFrame extends JFrame {
                 setBusy(false);
                 try {
                     get();
-                    JOptionPane.showMessageDialog(AccountFrame.this,
+                    JOptionPane.showMessageDialog(AccountPanel.this,
                             "账号 " + userId + " 已" + action, "提示",
                             JOptionPane.INFORMATION_MESSAGE);
                     loadUsers();
@@ -653,7 +681,6 @@ public final class AccountFrame extends JFrame {
 
     private void returnToLogin() {
         mainFrame.dispose();
-        dispose();
         try {
             connection.close();
         } catch (Exception ignored) {

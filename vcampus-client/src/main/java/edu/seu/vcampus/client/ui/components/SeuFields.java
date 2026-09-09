@@ -19,7 +19,7 @@ public final class SeuFields {
 
     public static JTextField text(int columns) {
         JTextField field = new JTextField(columns);
-        styleTextField(field, 34);
+        styleTextField(field, SeuTheme.scaled(34));
         return field;
     }
 
@@ -31,7 +31,7 @@ public final class SeuFields {
 
     public static JPasswordField password(int columns) {
         JPasswordField field = new JPasswordField(columns);
-        styleTextField(field, 34);
+        styleTextField(field, SeuTheme.scaled(34));
         return field;
     }
 
@@ -74,7 +74,7 @@ public final class SeuFields {
         wrap.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(SeuTheme.FIELD_BORDER, 1),
                 BorderFactory.createEmptyBorder(2, 4, 2, 8)));
-        wrap.setPreferredSize(new Dimension(320, 48));
+        wrap.setPreferredSize(new Dimension(SeuTheme.scaled(320), SeuTheme.scaled(48)));
         wrap.putClientProperty("JComponent.roundRect", Boolean.TRUE);
         wrap.add(field, BorderLayout.CENTER);
         wrap.add(toggle, BorderLayout.EAST);
@@ -86,7 +86,7 @@ public final class SeuFields {
         combo.setFont(SeuTheme.bodyFont());
         combo.setBackground(SeuTheme.SURFACE);
         combo.setForeground(SeuTheme.TEXT);
-        combo.setPreferredSize(new Dimension(combo.getPreferredSize().width, 34));
+        combo.setPreferredSize(new Dimension(combo.getPreferredSize().width, SeuTheme.scaled(34)));
         return combo;
     }
 
@@ -95,21 +95,24 @@ public final class SeuFields {
         field.setForeground(SeuTheme.TEXT);
         field.setBackground(SeuTheme.SURFACE);
         field.setCaretColor(SeuTheme.PRIMARY);
-        field.setMargin(new Insets(6, 10, 6, 10));
+        field.setMargin(new Insets(SeuTheme.scaled(6), SeuTheme.scaled(10),
+                SeuTheme.scaled(6), SeuTheme.scaled(10)));
         field.setPreferredSize(new Dimension(field.getPreferredSize().width, height));
         field.putClientProperty("JTextField.placeholderText", null);
     }
 
     private static void stylePillField(JTextField field) {
-        styleTextField(field, 48);
+        styleTextField(field, SeuTheme.scaled(48));
         field.setFont(SeuTheme.font(java.awt.Font.PLAIN, 15f));
-        field.setMargin(new Insets(10, 18, 10, 18));
+        field.setMargin(new Insets(SeuTheme.scaled(10), SeuTheme.scaled(18),
+                SeuTheme.scaled(10), SeuTheme.scaled(18)));
         field.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(SeuTheme.FIELD_BORDER, 1),
-                BorderFactory.createEmptyBorder(10, 18, 10, 18)));
+                BorderFactory.createEmptyBorder(SeuTheme.scaled(10), SeuTheme.scaled(18),
+                        SeuTheme.scaled(10), SeuTheme.scaled(18))));
         field.putClientProperty("JComponent.roundRect", Boolean.TRUE);
-        field.setPreferredSize(new Dimension(320, 48));
-        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        field.setPreferredSize(new Dimension(SeuTheme.scaled(320), SeuTheme.scaled(48)));
+        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, SeuTheme.scaled(48)));
     }
 
     /**

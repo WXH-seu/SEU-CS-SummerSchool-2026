@@ -1,5 +1,6 @@
 package edu.seu.vcampus.client.ui;
 
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
 import javax.swing.BorderFactory;
@@ -21,7 +22,7 @@ public final class ModulePanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(36, 40, 36, 40));
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 26f));
+        titleLabel.setFont(SeuTheme.font(Font.BOLD, 26f));
         add(titleLabel, BorderLayout.NORTH);
 
         String roleDescription = effectiveRole == null ? ""
@@ -30,7 +31,7 @@ public final class ModulePanel extends JPanel {
                 "<html><div style='text-align:center'>" + description + roleDescription
                         + "<br><br>模块接口已预留，可独立开发并接入。</div></html>",
                 SwingConstants.CENTER);
-        descriptionLabel.setFont(descriptionLabel.getFont().deriveFont(16f));
+        descriptionLabel.setFont(SeuTheme.font(Font.PLAIN, 16f));
         add(descriptionLabel, BorderLayout.CENTER);
     }
 }

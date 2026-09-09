@@ -24,6 +24,8 @@ import java.util.UUID;
 
 /** Access-backed implementation of the store repository. */
 public final class AccessStoreRepository implements StoreRepository {
+    private static final String CART_USER_FOREIGN_KEY = "fkCartUser";
+    private static final String ORDER_USER_FOREIGN_KEY = "fkOrderUser";
     private static final DateTimeFormatter ORDER_TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -33,6 +35,28 @@ public final class AccessStoreRepository implements StoreRepository {
         this.database = database;
         initializeSchema();
         seedDemoData();
+        ensureBalanceColumn();
+    }
+
+    @Override
+    public List<String> findCategories(boolean activeOnly) throws SQLException {
+        String sql = "SELECT DISTINCT [category] FROM [tblProduct] "
+                + "WHERE [category] IS NOT NULL AND [category] <> ''"
+                + (activeOnly ? " AND [active] = ?" : "")
+                + " ORDER BY [category]";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (activeOnly) {
+                statement.setBoolean(1, Boolean.TRUE);
+            }
+            try (ResultSet result = statement.executeQuery()) {
+                List<String> categories = new ArrayList<String>();
+                while (result.next()) {
+                    categories.add(result.getString(1));
+                }
+                return categories;
+            }
+        }
     }
 
     @Override
@@ -194,11 +218,17 @@ public final class AccessStoreRepository implements StoreRepository {
                 if (items.isEmpty()) {
                     throw new SQLException("请先勾选要结算的商品");
                 }
+                if (!tryDeductBalance(connection, userId, total)) {
+                    throw new SQLException("余额不足，请先充值");
+                }
                 String now = LocalDateTime.now().format(ORDER_TIME_FORMAT);
                 insertOrder(connection, orderId, userId, money(total), "已付款", now);
                 for (OrderItemDto item : items) {
                     insertOrderItem(connection, item);
-                    deductStock(connection, item.getProductId(), item.getQuantity());
+                    if (!tryDeductStock(connection, item.getProductId(), item.getQuantity())) {
+                        throw new SQLException("库存不足：" + item.getProductName()
+                                + "（已被抢购，请刷新后重试）");
+                    }
                 }
                 clearCartItems(connection, userId, settledProducts);
                 connection.commit();
@@ -250,6 +280,9 @@ public final class AccessStoreRepository implements StoreRepository {
 
     private void initializeSchema() throws SQLException {
         try (Connection connection = database.openConnection()) {
+            if (!tableExists(connection, "tblUser")) {
+                throw new SQLException("商店模块初始化前必须先初始化用户表 tblUser");
+            }
             if (!tableExists(connection, "tblProduct")) {
                 execute(connection, "CREATE TABLE [tblProduct] ("
                         + "[productId] TEXT(20) NOT NULL PRIMARY KEY, "
@@ -264,6 +297,8 @@ public final class AccessStoreRepository implements StoreRepository {
                         + "[userId] TEXT(32) NOT NULL, [productId] TEXT(20) NOT NULL, "
                         + "[quantity] INTEGER NOT NULL, "
                         + "CONSTRAINT [uqCartUserProduct] UNIQUE ([userId], [productId]), "
+                        + "CONSTRAINT [" + CART_USER_FOREIGN_KEY + "] "
+                        + "FOREIGN KEY ([userId]) REFERENCES [tblUser] ([userId]), "
                         + "CONSTRAINT [fkCartProduct] FOREIGN KEY ([productId]) "
                         + "REFERENCES [tblProduct] ([productId]))");
             }
@@ -271,7 +306,9 @@ public final class AccessStoreRepository implements StoreRepository {
                 execute(connection, "CREATE TABLE [tblOrder] ("
                         + "[orderId] TEXT(40) NOT NULL PRIMARY KEY, "
                         + "[userId] TEXT(32) NOT NULL, [totalAmount] CURRENCY NOT NULL, "
-                        + "[statusName] TEXT(16) NOT NULL, [orderTime] TEXT(19) NOT NULL)");
+                        + "[statusName] TEXT(16) NOT NULL, [orderTime] TEXT(19) NOT NULL, "
+                        + "CONSTRAINT [" + ORDER_USER_FOREIGN_KEY + "] "
+                        + "FOREIGN KEY ([userId]) REFERENCES [tblUser] ([userId]))");
             }
             if (!tableExists(connection, "tblOrderItem")) {
                 execute(connection, "CREATE TABLE [tblOrderItem] ("
@@ -284,6 +321,33 @@ public final class AccessStoreRepository implements StoreRepository {
                         + "CONSTRAINT [fkOrderItemProduct] FOREIGN KEY ([productId]) "
                         + "REFERENCES [tblProduct] ([productId]))");
             }
+            ensureUserForeignKey(connection, "tblCartItem", CART_USER_FOREIGN_KEY);
+            ensureUserForeignKey(connection, "tblOrder", ORDER_USER_FOREIGN_KEY);
+        }
+    }
+
+    /** Adds user relations when upgrading databases created before version 1.6. */
+    private void ensureUserForeignKey(Connection connection, String table,
+                                      String constraintName) throws SQLException {
+        if (hasUserForeignKey(connection, table)) {
+            return;
+        }
+        execute(connection, "ALTER TABLE [" + table + "] ADD CONSTRAINT ["
+                + constraintName + "] FOREIGN KEY ([userId]) "
+                + "REFERENCES [tblUser] ([userId])");
+    }
+
+    private boolean hasUserForeignKey(Connection connection, String table)
+            throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -370,13 +434,83 @@ public final class AccessStoreRepository implements StoreRepository {
         }
     }
 
-    private void deductStock(Connection connection, String productId, int quantity)
+    /** 余额条件扣减：余额不足时返回 false，避免并发下透支。 */
+    private boolean tryDeductBalance(Connection connection, String userId, BigDecimal amount)
             throws SQLException {
-        String sql = "UPDATE [tblProduct] SET [stock] = [stock] - ? WHERE [productId] = ?";
+        String sql = "UPDATE [tblUser] SET [balance] = COALESCE([balance], 0) - ? "
+                + "WHERE [userId] = ? AND COALESCE([balance], 0) >= ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBigDecimal(1, money(amount));
+            statement.setString(2, userId);
+            statement.setBigDecimal(3, money(amount));
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    /** 库存条件扣减：库存不足时返回 false，避免多客户端同时抢最后一件导致超卖。 */
+    private boolean tryDeductStock(Connection connection, String productId, int quantity)
+            throws SQLException {
+        String sql = "UPDATE [tblProduct] SET [stock] = [stock] - ? "
+                + "WHERE [productId] = ? AND [stock] >= ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, quantity);
             statement.setString(2, productId);
+            statement.setInt(3, quantity);
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    @Override
+    public BigDecimal findBalance(String userId) throws SQLException {
+        String sql = "SELECT COALESCE([balance], 0) AS [balance] "
+                + "FROM [tblUser] WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getBigDecimal("balance") : BigDecimal.ZERO;
+            }
+        }
+    }
+
+    @Override
+    public BigDecimal rechargeBalance(String userId, BigDecimal amount) throws SQLException {
+        String update = "UPDATE [tblUser] SET [balance] = COALESCE([balance], 0) + ? "
+                + "WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(update)) {
+            statement.setBigDecimal(1, money(amount));
+            statement.setString(2, userId);
             statement.executeUpdate();
+        }
+        return findBalance(userId);
+    }
+
+    /** 为旧库补充 balance 列，并给演示账号一笔初始余额。 */
+    private void ensureBalanceColumn() throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!columnExists(connection, "tblUser", "balance")) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("ALTER TABLE [tblUser] ADD COLUMN [balance] CURRENCY");
+                }
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(
+                        "UPDATE [tblUser] SET [balance] = 100 WHERE [balance] IS NULL");
+            }
+        }
+    }
+
+    private boolean columnExists(Connection connection, String table, String column)
+            throws SQLException {
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, table, "%")) {
+            while (columns.next()) {
+                if (column.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

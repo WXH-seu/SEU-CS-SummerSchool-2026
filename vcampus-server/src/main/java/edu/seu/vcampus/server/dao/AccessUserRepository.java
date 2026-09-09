@@ -35,7 +35,7 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public UserAccount findById(String userId) throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active], [adminScopes] "
+                + "[displayName], [roleName], [active], [adminScopes], [department], [email] "
                 + "FROM [tblUser] WHERE [userId] = ?";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -49,7 +49,7 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public List<UserAccount> findAll() throws SQLException {
         String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active], [adminScopes] "
+                + "[displayName], [roleName], [active], [adminScopes], [department], [email] "
                 + "FROM [tblUser] ORDER BY [userId]";
         List<UserAccount> users = new ArrayList<UserAccount>();
         try (Connection connection = database.openConnection();
@@ -65,7 +65,8 @@ public final class AccessUserRepository implements UserRepository {
     @Override
     public void insert(UserAccount account) throws SQLException {
         String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                + "[displayName], [roleName], [active], [adminScopes], [department], [email]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, account.getUserId());
@@ -75,7 +76,23 @@ public final class AccessUserRepository implements UserRepository {
             statement.setString(5, account.getRole().name());
             statement.setBoolean(6, account.isActive());
             statement.setString(7, serializeScopes(account.getAdminScopes()));
+            statement.setString(8, account.getDepartment());
+            statement.setString(9, account.getEmail());
             statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public UserAccount findByEmail(String email) throws SQLException {
+        String sql = "SELECT [userId], [passwordHash], [passwordSalt], "
+                + "[displayName], [roleName], [active], [adminScopes], [department], [email] "
+                + "FROM [tblUser] WHERE [email] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, email);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? mapRow(result) : null;
+            }
         }
     }
 
@@ -85,6 +102,17 @@ public final class AccessUserRepository implements UserRepository {
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, displayName);
+            statement.setString(2, userId);
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void updateEmail(String userId, String email) throws SQLException {
+        String sql = "UPDATE [tblUser] SET [email] = ? WHERE [userId] = ?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, email);
             statement.setString(2, userId);
             statement.executeUpdate();
         }
@@ -133,7 +161,9 @@ public final class AccessUserRepository implements UserRepository {
                 result.getString("displayName"),
                 parseRole(result.getString("roleName")),
                 result.getBoolean("active"),
-                parseScopes(result.getString("adminScopes")));
+                parseScopes(result.getString("adminScopes")),
+                result.getString("department"),
+                result.getString("email"));
     }
 
     /** Maps a stored role name, tolerating the legacy {@code ADMIN} value. */
@@ -178,6 +208,8 @@ public final class AccessUserRepository implements UserRepository {
                 createUserTable(connection);
             } else {
                 ensureScopeColumn(connection);
+                ensureDepartmentColumn(connection);
+                ensureEmailColumn(connection);
             }
             if (countUsers(connection) == 0) {
                 insertDemoUsers(connection);
@@ -205,7 +237,9 @@ public final class AccessUserRepository implements UserRepository {
                 + "[displayName] TEXT(64) NOT NULL, "
                 + "[roleName] TEXT(16) NOT NULL, "
                 + "[active] YESNO NOT NULL, "
-                + "[adminScopes] TEXT(64))";
+                + "[adminScopes] TEXT(64), "
+                + "[department] TEXT(64), "
+                + "[email] TEXT(64))";
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);
         }
@@ -230,6 +264,44 @@ public final class AccessUserRepository implements UserRepository {
         }
     }
 
+    /** Migrates databases created before the student-department attribute. */
+    private void ensureDepartmentColumn(Connection connection) throws SQLException {
+        boolean present = false;
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, "tblUser", "%")) {
+            while (columns.next()) {
+                if ("department".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+        if (!present) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE [tblUser] ADD COLUMN [department] TEXT(64)");
+            }
+        }
+    }
+
+    /** Migrates databases created before the account email attribute. */
+    private void ensureEmailColumn(Connection connection) throws SQLException {
+        boolean present = false;
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                null, null, "tblUser", "%")) {
+            while (columns.next()) {
+                if ("email".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+        if (!present) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE [tblUser] ADD COLUMN [email] TEXT(64)");
+            }
+        }
+    }
+
     private int countUsers(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM [tblUser]")) {
@@ -238,18 +310,23 @@ public final class AccessUserRepository implements UserRepository {
     }
 
     private void insertDemoUsers(Connection connection) throws SQLException {
-        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN, null);
+        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN, null, "",
+                "superadmin@vcampus.local");
         insertUser(connection, "admin", "admin123", "子系统管理员", Role.SUBSYSADMIN,
-                "student,course,library,store");
-        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT, null);
-        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER, null);
+                "student,course,library,store", "", "admin@vcampus.local");
+        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT, null,
+                "计算机科学与工程学院", "student@vcampus.local");
+        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER, null, "",
+                "teacher@vcampus.local");
     }
 
     private void insertUser(Connection connection, String userId, String password,
-                            String displayName, Role role, String adminScopes) throws SQLException {
+                            String displayName, Role role, String adminScopes, String department,
+                            String email) throws SQLException {
         String salt = passwordHasher.newSalt();
         String sql = "INSERT INTO [tblUser] ([userId], [passwordHash], [passwordSalt], "
-                + "[displayName], [roleName], [active], [adminScopes]) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                + "[displayName], [roleName], [active], [adminScopes], [department], [email]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, userId);
             statement.setString(2, passwordHasher.hash(password, salt));
@@ -258,6 +335,8 @@ public final class AccessUserRepository implements UserRepository {
             statement.setString(5, role.name());
             statement.setBoolean(6, true);
             statement.setString(7, adminScopes == null ? "" : adminScopes);
+            statement.setString(8, department == null ? "" : department);
+            statement.setString(9, email == null ? "" : email);
             statement.executeUpdate();
         }
     }

@@ -2,8 +2,10 @@ package edu.seu.vcampus.server.dispatcher;
 
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.AcademicQueryRequest;
+import edu.seu.vcampus.common.dto.CatalogQueryRequest;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.dto.MajorDto;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.dto.UserImportRequest;
@@ -16,6 +18,7 @@ import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
+import edu.seu.vcampus.server.dao.AccessCurriculumCatalogRepository;
 import edu.seu.vcampus.server.dao.AccessOperationLogRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
@@ -24,6 +27,7 @@ import edu.seu.vcampus.server.security.PermissionPolicy;
 import edu.seu.vcampus.server.service.AcademicService;
 import edu.seu.vcampus.server.service.AuditService;
 import edu.seu.vcampus.server.service.AuthService;
+import edu.seu.vcampus.server.service.CurriculumCatalogService;
 import edu.seu.vcampus.server.session.SessionRegistry;
 import org.junit.Before;
 import org.junit.Rule;
@@ -56,8 +60,11 @@ public class RequestDispatcherTest {
                 .getAbsolutePath();
         AccessDatabase database = new AccessDatabase(db);
         AccessUserRepository repository = new AccessUserRepository(database, passwordHasher);
+        AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
         AcademicRequestHandler academicHandler = new AcademicRequestHandler(
-                new AcademicService(new AccessAcademicRepository(database), repository));
+                new AcademicService(academicRepository, repository),
+                new CurriculumCatalogService(
+                        new AccessCurriculumCatalogRepository(database)));
         AuditService auditService = new AuditService(new AccessOperationLogRepository(db));
         SessionRegistry sessions = new SessionRegistry();
         AuthService authService = new AuthService(repository, passwordHasher, sessions, auditService);
@@ -80,6 +87,19 @@ public class RequestDispatcherTest {
     }
 
     @Test
+    public void studentCanQueryReviewedMajorCatalog() {
+        String token = login("student", "student123");
+        ResponseMessage<?> response = dispatcher.dispatch(
+                new RequestMessage<CatalogQueryRequest>(Operation.CATALOG_MAJOR_QUERY, token,
+                        new CatalogQueryRequest("计算机", "CS", null, true)));
+
+        assertEquals(ResponseCode.SUCCESS, response.getCode());
+        List<?> majors = (List<?>) response.getBody();
+        assertEquals(1, majors.size());
+        assertEquals("080901", ((MajorDto) majors.get(0)).getMajorId());
+    }
+
+    @Test
     public void missingSessionIsRejectedWithUnauthorized() {
         ResponseMessage<?> response = dispatcher.dispatch(
                 new RequestMessage<Serializable>(Operation.USER_ACCOUNT_QUERY, "bad-token", null));
@@ -91,7 +111,7 @@ public class RequestDispatcherTest {
     public void registerRequiresSession() {
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, null,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.UNAUTHORIZED, response.getCode());
     }
 
@@ -100,7 +120,7 @@ public class RequestDispatcherTest {
         String token = login("student", "student123");
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, token,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
     }
 
@@ -109,7 +129,7 @@ public class RequestDispatcherTest {
         String token = login("admin", "admin123");
         ResponseMessage<?> response = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, token,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.FORBIDDEN, response.getCode());
     }
 
@@ -119,7 +139,7 @@ public class RequestDispatcherTest {
 
         ResponseMessage<?> registered = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.SUCCESS, registered.getCode());
         AccountInfo created = (AccountInfo) registered.getBody();
         assertEquals("stu2026", created.getUserId());
@@ -127,7 +147,7 @@ public class RequestDispatcherTest {
 
         ResponseMessage<?> duplicate = dispatcher.dispatch(new RequestMessage<RegisterRequest>(
                 Operation.USER_REGISTER, superToken,
-                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT)));
+                new RegisterRequest("stu2026", "secret123", "新同学", Role.STUDENT, "计算机学院")));
         assertEquals(ResponseCode.CONFLICT, duplicate.getCode());
 
         String studentToken = login("stu2026", "secret123");
@@ -139,7 +159,7 @@ public class RequestDispatcherTest {
     public void csvImportWorksForSuperAdmin() {
         String superToken = login("superadmin", "super123");
         UserImportRequest payload = new UserImportRequest(Arrays.asList(
-                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT),
+                new RegisterRequest("s001", "secret123", "学生一", Role.STUDENT, "计算机学院"),
                 new RegisterRequest("t001", "secret123", "教师一", Role.TEACHER)));
         ResponseMessage<?> response = dispatcher.dispatch(
                 new RequestMessage<UserImportRequest>(Operation.USER_IMPORT_CSV, superToken, payload));

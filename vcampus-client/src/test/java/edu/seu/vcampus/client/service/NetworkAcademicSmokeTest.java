@@ -3,6 +3,8 @@ package edu.seu.vcampus.client.service;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
+import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.message.RequestMessage;
 import edu.seu.vcampus.common.message.ResponseMessage;
@@ -12,6 +14,7 @@ import org.junit.Test;
 import java.io.Serializable;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /** Optional live-server smoke test for login and academic queries. */
@@ -29,6 +32,9 @@ public class NetworkAcademicSmokeTest {
             AcademicClientService service =
                     new AcademicClientService(connection, session.getSessionToken());
             assertFalse(service.queryStudents(null).isEmpty());
+            StudentDto updated = service.updateOwnProfile(new StudentProfileUpdateRequest(
+                    "男", "2008-01-01", "13800000001", "student@vcampus.local"));
+            assertEquals("20260001", updated.getStudentId());
             connection.request(new RequestMessage<Serializable>(
                     Operation.USER_LOGOUT, session.getSessionToken(), null));
         } finally {

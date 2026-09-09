@@ -4,6 +4,10 @@ import edu.seu.vcampus.common.dto.AcademicQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SchoolClassDto;
 import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.StudentImportFailure;
+import edu.seu.vcampus.common.dto.StudentImportRequest;
+import edu.seu.vcampus.common.dto.StudentImportResponse;
+import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -23,6 +27,8 @@ import java.util.Set;
 public final class AcademicService {
     private static final Set<String> STUDENT_STATUSES = new HashSet<String>(
             Arrays.asList("在读", "休学", "毕业", "退学"));
+    private static final Set<String> GENDERS = new HashSet<String>(
+            Arrays.asList("男", "女", "其他"));
 
     private final AcademicRepository repository;
     private final UserRepository userRepository;
@@ -57,8 +63,15 @@ public final class AcademicService {
     public ArrayList<DepartmentDto> queryDepartments(String actorUserId, SubSystemRole actorRole,
                                                       boolean activeOnly)
             throws SQLException, BusinessException {
+        return queryDepartments(actorUserId, actorRole,
+                new AcademicQueryRequest(null, null, null, activeOnly));
+    }
+
+    public ArrayList<DepartmentDto> queryDepartments(String actorUserId, SubSystemRole actorRole,
+                                                      AcademicQueryRequest query)
+            throws SQLException, BusinessException {
         requireActor(actorUserId, actorRole);
-        return new ArrayList<DepartmentDto>(repository.findDepartments(activeOnly));
+        return new ArrayList<DepartmentDto>(repository.findDepartments(query));
     }
 
     public ArrayList<SchoolClassDto> queryClasses(String actorUserId, SubSystemRole actorRole,
@@ -69,12 +82,74 @@ public final class AcademicService {
         return new ArrayList<SchoolClassDto>(classes);
     }
 
-    public void saveStudent(String actorUserId, SubSystemRole actorRole, StudentDto student)
+    public synchronized void saveStudent(String actorUserId, SubSystemRole actorRole,
+                                         StudentDto student)
             throws SQLException, BusinessException {
         requireAdmin(actorUserId, actorRole);
-        validateStudent(student);
-        validateLinkedUser(student.getUserId());
-        repository.saveStudent(student);
+        StudentDto prepared = assignClassWhenNeeded(student);
+        validateStudent(prepared);
+        validateLinkedUser(prepared.getUserId());
+        repository.saveStudent(prepared);
+    }
+
+    public synchronized StudentImportResponse importStudents(
+            String actorUserId, SubSystemRole actorRole, StudentImportRequest request)
+            throws BusinessException {
+        requireAdmin(actorUserId, actorRole);
+        if (request == null || request.getStudents().isEmpty()) {
+            throw invalid("导入文件中没有学生记录");
+        }
+        int imported = 0;
+        List<StudentImportFailure> failures = new ArrayList<StudentImportFailure>();
+        Set<String> batchIds = new HashSet<String>();
+        List<StudentDto> students = request.getStudents();
+        for (int index = 0; index < students.size(); index++) {
+            StudentDto student = students.get(index);
+            String studentId = student == null ? null : student.getStudentId();
+            try {
+                if (isBlank(studentId) || !batchIds.add(studentId.trim())) {
+                    throw invalid("学号为空或在本次文件中重复");
+                }
+                if (repository.studentExists(studentId.trim())) {
+                    throw new BusinessException(ResponseCode.CONFLICT, "学号已存在");
+                }
+                StudentDto prepared = assignClassWhenNeeded(student);
+                validateStudent(prepared);
+                validateLinkedUser(prepared.getUserId());
+                repository.saveStudent(prepared);
+                imported++;
+            } catch (BusinessException e) {
+                failures.add(new StudentImportFailure(
+                        index + 1, studentId, e.getMessage()));
+            } catch (SQLException e) {
+                failures.add(new StudentImportFailure(
+                        index + 1, studentId, "数据库写入失败：" + e.getMessage()));
+            }
+        }
+        return new StudentImportResponse(imported, failures);
+    }
+
+    public synchronized StudentDto updateOwnProfile(
+            String actorUserId, SubSystemRole actorRole, StudentProfileUpdateRequest profile)
+            throws SQLException, BusinessException {
+        requireActor(actorUserId, actorRole);
+        if (actorRole != SubSystemRole.STUDENT) {
+            throw new BusinessException(ResponseCode.FORBIDDEN, "仅学生可以修改本人学籍资料");
+        }
+        if (profile == null) {
+            throw invalid("个人资料不能为空");
+        }
+        StudentDto current = repository.findStudentByUserId(actorUserId);
+        if (current == null) {
+            throw new BusinessException(ResponseCode.NOT_FOUND, "未找到当前账号对应的学籍");
+        }
+        StudentDto updated = new StudentDto(current.getStudentId(), current.getUserId(),
+                current.getFullName(), profile.getGender(), profile.getBirthDate(),
+                current.getDepartmentId(), current.getClassId(), current.getEnrollmentYear(),
+                current.getStatus(), profile.getPhone(), profile.getEmail());
+        validateStudent(updated);
+        repository.saveStudent(updated);
+        return updated;
     }
 
     public void saveTeacher(String actorUserId, SubSystemRole actorRole, TeacherDto teacher)
@@ -106,6 +181,9 @@ public final class AcademicService {
             throw invalid("班级编号、名称和院系不能为空");
         }
         validateYear(schoolClass.getGradeYear(), "年级");
+        if (schoolClass.getCapacity() <= 0) {
+            throw invalid("班级容量必须大于 0");
+        }
         if (!repository.departmentExists(schoolClass.getDepartmentId())) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "所属院系不存在");
         }
@@ -116,6 +194,10 @@ public final class AcademicService {
             throws SQLException, BusinessException {
         requireAdmin(actorUserId, actorRole);
         requireId(studentId);
+        if (repository.studentIsReferenced(studentId)) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "学生仍有选课记录，请先处理关联数据");
+        }
         if (!repository.deleteStudent(studentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "学生记录不存在");
         }
@@ -125,6 +207,10 @@ public final class AcademicService {
             throws SQLException, BusinessException {
         requireAdmin(actorUserId, actorRole);
         requireId(teacherId);
+        if (repository.teacherIsReferenced(teacherId)) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "教师仍有授课课程，请先处理关联数据");
+        }
         if (!repository.deleteTeacher(teacherId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "教师记录不存在");
         }
@@ -135,7 +221,8 @@ public final class AcademicService {
         requireAdmin(actorUserId, actorRole);
         requireId(departmentId);
         if (repository.departmentIsReferenced(departmentId)) {
-            throw new BusinessException(ResponseCode.CONFLICT, "院系仍被班级或人员引用，请先停用");
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "院系仍被班级、人员、专业或课程引用，请先停用");
         }
         if (!repository.deleteDepartment(departmentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "院系记录不存在");
@@ -161,6 +248,9 @@ public final class AcademicService {
             throw invalid("学号、姓名、性别、院系、班级和学籍状态不能为空");
         }
         validateYear(student.getEnrollmentYear(), "入学年份");
+        if (!GENDERS.contains(student.getGender().trim())) {
+            throw invalid("性别必须为男、女或其他");
+        }
         if (!STUDENT_STATUSES.contains(student.getStatus().trim())) {
             throw invalid("学籍状态必须为在读、休学、毕业或退学");
         }
@@ -203,6 +293,27 @@ public final class AcademicService {
         if (userRepository.findById(userId.trim()) == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "关联登录账号不存在");
         }
+    }
+
+    private StudentDto assignClassWhenNeeded(StudentDto student)
+            throws SQLException, BusinessException {
+        if (student == null || !isBlank(student.getClassId())) {
+            return student;
+        }
+        if (isBlank(student.getDepartmentId())) {
+            throw invalid("自动分班前必须选择学院");
+        }
+        validateYear(student.getEnrollmentYear(), "入学年份");
+        String classId = repository.findAvailableClassId(
+                student.getDepartmentId().trim(), student.getEnrollmentYear());
+        if (classId == null) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "该学院和入学年份没有可用班级，请管理员先新建班级或增加容量");
+        }
+        return new StudentDto(student.getStudentId(), student.getUserId(),
+                student.getFullName(), student.getGender(), student.getBirthDate(),
+                student.getDepartmentId(), classId, student.getEnrollmentYear(),
+                student.getStatus(), student.getPhone(), student.getEmail());
     }
 
     private void requireActor(String actorUserId, SubSystemRole actorRole)

@@ -11,15 +11,22 @@ public final class SchoolClassDto implements Serializable {
     private final String departmentId;
     private final int gradeYear;
     private final String counselor;
+    private final int capacity;
     private final boolean active;
 
     public SchoolClassDto(String classId, String className, String departmentId,
                           int gradeYear, String counselor, boolean active) {
+        this(classId, className, departmentId, gradeYear, counselor, 50, active);
+    }
+
+    public SchoolClassDto(String classId, String className, String departmentId,
+                          int gradeYear, String counselor, int capacity, boolean active) {
         this.classId = classId;
         this.className = className;
         this.departmentId = departmentId;
         this.gradeYear = gradeYear;
         this.counselor = counselor;
+        this.capacity = capacity;
         this.active = active;
     }
 
@@ -41,6 +48,10 @@ public final class SchoolClassDto implements Serializable {
 
     public String getCounselor() {
         return counselor;
+    }
+
+    public int getCapacity() {
+        return capacity;
     }
 
     public boolean isActive() {

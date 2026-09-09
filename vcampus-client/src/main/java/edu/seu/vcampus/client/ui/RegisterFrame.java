@@ -3,6 +3,7 @@ package edu.seu.vcampus.client.ui;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserClientService;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.enums.Role;
@@ -42,7 +43,7 @@ public final class RegisterFrame extends JFrame {
 
     private final ClientConnection connection;
     private final String sessionToken;
-    private final AccountFrame parent;
+    private final AccountPanel parent;
     private final JTextField userIdField = new JTextField(16);
     private final JTextField displayNameField = new JTextField(16);
     private final JPasswordField passwordField = new JPasswordField(16);
@@ -53,7 +54,7 @@ public final class RegisterFrame extends JFrame {
     private final JButton registerButton = new JButton("创建账号");
     private final JLabel statusLabel = new JLabel(" ");
 
-    public RegisterFrame(ClientConnection connection, String sessionToken, AccountFrame parent) {
+    public RegisterFrame(ClientConnection connection, String sessionToken, AccountPanel parent) {
         super("注册用户 - 管理员");
         this.connection = connection;
         this.sessionToken = sessionToken;
@@ -70,7 +71,7 @@ public final class RegisterFrame extends JFrame {
         root.setBorder(BorderFactory.createEmptyBorder(26, 38, 22, 38));
 
         JLabel title = new JLabel("注册用户", JLabel.CENTER);
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 21f));
+        title.setFont(SeuTheme.font(Font.BOLD, 21f));
         root.add(title, BorderLayout.NORTH);
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -114,7 +115,7 @@ public final class RegisterFrame extends JFrame {
         form.add(scopePanel, constraints);
         constraints.gridy = 5;
         JLabel scopeHint = new JLabel("仅子系统管理员需要勾选，可多选");
-        scopeHint.setFont(scopeHint.getFont().deriveFont(Font.PLAIN, 11f));
+        scopeHint.setFont(SeuTheme.font(Font.PLAIN, 11f));
         constraints.gridx = 1;
         constraints.gridwidth = 2;
         form.add(scopeHint, constraints);

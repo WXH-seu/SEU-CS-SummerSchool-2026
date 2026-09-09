@@ -13,17 +13,20 @@ import java.util.List;
  * <p>Expected format (UTF-8, UTF-8 BOM tolerated, comma-separated):</p>
  *
  * <pre>
- *   账号,密码,显示名[,角色]
+ *   账号,密码,显示名[,角色[,学院]]
  * </pre>
  *
  * <p>The optional role column accepts {@code STUDENT}/{@code TEACHER} or the
  * Chinese equivalents {@code 学生}/{@code 教师}; it defaults to
- * {@link Role#STUDENT} when omitted. <strong>Administrator roles
+ * {@link Role#STUDENT} when omitted. The optional final column is the student's
+ * 学院/院系 (department), used by the 学籍 module for automatic class
+ * assignment; it is required for students (a student missing the college is
+ * rejected by the server during registration). <strong>Administrator roles
  * ({@link Role#SUBSYSADMIN}/{@link Role#SUPER_ADMIN}) cannot be imported by CSV
  * and are rejected</strong>: administrators must be registered manually so that
  * their sub-system scopes can be chosen. Blank lines, {@code #} comments and an
  * optional header row are ignored. Any malformed row raises an
- * {@link IllegalArgumentException} carrying the row number.
+ * {@link IllegalArgumentException} carrying the row number.</p>
  */
 public final class UserCsvParser {
     private UserCsvParser() {
@@ -57,7 +60,8 @@ public final class UserCsvParser {
                         "第 " + (i + 1) + " 行：账号、密码、显示名不能为空");
             }
             Role role = columns.length >= 4 ? parseRole(trimCell(columns[3])) : Role.STUDENT;
-            result.add(new RegisterRequest(userId, password, displayName, role));
+            String department = columns.length >= 5 ? trimCell(columns[4]) : "";
+            result.add(new RegisterRequest(userId, password, displayName, role, department));
         }
         if (result.isEmpty()) {
             throw new IllegalArgumentException("未解析到任何用户数据");

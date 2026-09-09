@@ -3,11 +3,13 @@ package edu.seu.vcampus.client.service;
 import edu.seu.vcampus.client.network.ClientConnection;
 import edu.seu.vcampus.common.dto.AccountInfo;
 import edu.seu.vcampus.common.dto.DeleteAccountRequest;
+import edu.seu.vcampus.common.dto.ForgotPasswordRequest;
 import edu.seu.vcampus.common.dto.LoginRequest;
 import edu.seu.vcampus.common.dto.LoginResponse;
 import edu.seu.vcampus.common.dto.PasswordChangeRequest;
 import edu.seu.vcampus.common.dto.ProfileUpdateRequest;
 import edu.seu.vcampus.common.dto.RegisterRequest;
+import edu.seu.vcampus.common.dto.ResetPasswordRequest;
 import edu.seu.vcampus.common.dto.UserImportRequest;
 import edu.seu.vcampus.common.dto.UserImportResponse;
 import edu.seu.vcampus.common.dto.UserListResponse;
@@ -73,6 +75,14 @@ public final class UserClientService {
         return (AccountInfo) response.getBody();
     }
 
+    /** Updates the display name and recovery email, returning the refreshed account. */
+    public AccountInfo updateProfile(String sessionToken, String displayName, String email)
+            throws IOException, ClientServiceException {
+        ResponseMessage<?> response = send(Operation.USER_PROFILE_UPDATE, sessionToken,
+                new ProfileUpdateRequest(displayName, email));
+        return (AccountInfo) response.getBody();
+    }
+
     /** Verifies the old password and replaces it with the new one. */
     public void changePassword(String sessionToken, String oldPassword, String newPassword)
             throws IOException, ClientServiceException {
@@ -110,6 +120,18 @@ public final class UserClientService {
     /** Ends the server-side session. */
     public void logout(String sessionToken) throws IOException, ClientServiceException {
         send(Operation.USER_LOGOUT, sessionToken, null);
+    }
+
+    /** Requests a password-reset verification code for the given email. */
+    public void forgotPassword(String email) throws IOException, ClientServiceException {
+        send(Operation.USER_FORGOT_PASSWORD, null, new ForgotPasswordRequest(email));
+    }
+
+    /** Verifies the emailed code and resets the password. */
+    public void resetPassword(String email, String code, String newPassword)
+            throws IOException, ClientServiceException {
+        send(Operation.USER_RESET_PASSWORD, null,
+                new ResetPasswordRequest(email, code, newPassword));
     }
 
     private <T extends Serializable> ResponseMessage<?> send(

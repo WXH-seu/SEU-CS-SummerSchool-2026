@@ -1,6 +1,7 @@
 package edu.seu.vcampus.server.service;
 
 import edu.seu.vcampus.common.dto.CartUpdateRequest;
+import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.ProductDto;
@@ -18,6 +19,8 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.Collections;
 
@@ -33,18 +36,25 @@ public class StoreServiceIntegrationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private StoreService service;
+    private AccessDatabase database;
     private UserAccount admin;
     private UserAccount studentAccount;
 
     @Before
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
-        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        database = new AccessDatabase(file.getAbsolutePath());
         AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
         AccessStoreRepository store = new AccessStoreRepository(database);
         service = new StoreService(store);
         admin = users.findById("admin");
         studentAccount = users.findById("student");
+    }
+
+    @Test
+    public void cartAndOrderReferenceExistingUsers() throws Exception {
+        assertTrue(hasUserForeignKey("tblCartItem"));
+        assertTrue(hasUserForeignKey("tblOrder"));
     }
 
     @Test
@@ -62,6 +72,8 @@ public class StoreServiceIntegrationTest {
         service.updateCart(studentAccount, new CartUpdateRequest("P001", 2));
         service.updateCart(studentAccount, new CartUpdateRequest("P002", 1));
         assertEquals(2, service.queryCart(studentAccount).size());
+        assertEquals(0, new BigDecimal("100.00").compareTo(
+                service.queryBalance(studentAccount)));
 
         OrderDto order = service.createOrder(studentAccount,
                 new OrderCreateRequest(Arrays.asList("P001", "P002")));
@@ -72,7 +84,51 @@ public class StoreServiceIntegrationTest {
         assertTrue(service.queryCart(studentAccount).isEmpty());
         assertEquals(98, findProduct("P001").getStock());
         assertEquals(49, findProduct("P002").getStock());
+        assertEquals(0, new BigDecimal("50.00").compareTo(
+                service.queryBalance(studentAccount)));
         assertEquals(1, service.queryOrders(studentAccount).size());
+    }
+
+    @Test
+    public void rechargeValidatesAmountAndChannel() throws Exception {
+        BigDecimal balance = service.rechargeBalance(studentAccount,
+                new BalanceRechargeRequest(new BigDecimal("200.00"), "一卡通充值"));
+        assertEquals(0, new BigDecimal("300.00").compareTo(balance));
+
+        assertInvalidRecharge(new BigDecimal("0.00"), "微信");
+        assertInvalidRecharge(new BigDecimal("-1.00"), "微信");
+        assertInvalidRecharge(new BigDecimal("1.234"), "微信");
+        assertInvalidRecharge(new BigDecimal("10001.00"), "银行卡");
+        assertInvalidRecharge(new BigDecimal("50.00"), "现金");
+    }
+
+    private void assertInvalidRecharge(BigDecimal amount, String channel) throws Exception {
+        try {
+            service.rechargeBalance(studentAccount,
+                    new BalanceRechargeRequest(amount, channel));
+            fail("Invalid recharge should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
+    }
+
+    @Test
+    public void insufficientBalanceRollsBackWithoutSideEffects() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P003", 3));
+        try {
+            service.createOrder(studentAccount,
+                    new OrderCreateRequest(Collections.singletonList("P003")));
+            fail("Insufficient balance should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("余额不足"));
+        }
+        // 订单不生成、购物车仍在、库存不扣、余额不变。
+        assertEquals(1, service.queryCart(studentAccount).size());
+        assertEquals(30, findProduct("P003").getStock());
+        assertEquals(0, new BigDecimal("100.00").compareTo(
+                service.queryBalance(studentAccount)));
+        assertTrue(service.queryOrders(studentAccount).isEmpty());
     }
 
     @Test
@@ -91,6 +147,8 @@ public class StoreServiceIntegrationTest {
 
         assertEquals(98, findProduct("P001").getStock());
         assertEquals(50, findProduct("P002").getStock());
+        assertEquals(0, new BigDecimal("75.00").compareTo(
+                service.queryBalance(studentAccount)));
         assertEquals(2, service.queryCart(studentAccount).size());
     }
 
@@ -182,5 +240,19 @@ public class StoreServiceIntegrationTest {
             }
         }
         return null;
+    }
+
+    private boolean hasUserForeignKey(String table) throws Exception {
+        try (Connection connection = database.openConnection();
+             ResultSet keys = connection.getMetaData().getImportedKeys(null, null, table)) {
+            while (keys.next()) {
+                if ("userId".equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && "tblUser".equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && "userId".equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

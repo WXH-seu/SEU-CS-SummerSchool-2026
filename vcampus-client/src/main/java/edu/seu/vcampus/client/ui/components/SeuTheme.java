@@ -8,12 +8,15 @@ import javax.swing.border.Border;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Insets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 东南大学信息服务门户风格的客户端主题常量与 FlatLaf 安装入口。
  *
  * <p>颜色取自门户截图：顶栏深绿、导航金黄强调、主按钮绿、白底内容区。
  * 各模块应优先引用本类常量，避免散落魔法色值。
+ * {@link #font(int, float)} 会随主窗口大小缩放，由 {@link SeuUiScale} 在拉伸窗口时更新。
  */
 public final class SeuTheme {
     /** 顶栏 / 主品牌绿（门户 Header）。 */
@@ -64,6 +67,16 @@ public final class SeuTheme {
     public static final float FONT_SMALL = 12f;
 
     private static boolean installed;
+    private static float uiScale = 1f;
+    private static final String[] LAF_FONT_KEYS = {
+            "Label.font", "Button.font", "ToggleButton.font", "RadioButton.font",
+            "CheckBox.font", "ComboBox.font", "List.font", "Table.font",
+            "TableHeader.font", "TextField.font", "PasswordField.font",
+            "FormattedTextField.font", "TextArea.font", "TabbedPane.font",
+            "TitledBorder.font", "ToolTip.font", "OptionPane.font",
+            "Spinner.font", "Tree.font"
+    };
+    private static final Map<String, Font> BASE_LAF_FONTS = new LinkedHashMap<String, Font>();
 
     private SeuTheme() {
     }
@@ -77,6 +90,7 @@ public final class SeuTheme {
         }
         FlatLightLaf.setup();
         applyUiDefaults();
+        captureBaseLafFonts();
         installed = true;
     }
 
@@ -130,13 +144,45 @@ public final class SeuTheme {
         UIManager.put("TabbedPane.focusColor", PRIMARY);
     }
 
-    /** 基于当前 LookAndFeel 派生指定样式与字号的字体。 */
+    private static void captureBaseLafFonts() {
+        BASE_LAF_FONTS.clear();
+        for (int i = 0; i < LAF_FONT_KEYS.length; i++) {
+            String key = LAF_FONT_KEYS[i];
+            Font font = UIManager.getFont(key);
+            if (font != null) {
+                BASE_LAF_FONTS.put(key, font);
+            }
+        }
+    }
+
+    static void applyUiScaleToLookAndFeel(float scale) {
+        for (Map.Entry<String, Font> entry : BASE_LAF_FONTS.entrySet()) {
+            Font base = entry.getValue();
+            UIManager.put(entry.getKey(), base.deriveFont(base.getSize2D() * scale));
+        }
+    }
+
+    /** 当前窗口字号缩放（1.0 对应设计稿 1200×720）。 */
+    public static float uiScale() {
+        return uiScale;
+    }
+
+    static void setUiScale(float scale) {
+        uiScale = scale < 0.5f ? 0.5f : scale;
+    }
+
+    /** 将设计稿像素换算为当前窗口下的像素。 */
+    public static int scaled(int designPx) {
+        return Math.max(1, Math.round(designPx * uiScale));
+    }
+
+    /** 基于当前 LookAndFeel 派生指定样式与字号的字体（已含窗口缩放）。 */
     public static Font font(int style, float size) {
         Font base = UIManager.getFont("Label.font");
         if (base == null) {
             base = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
         }
-        return base.deriveFont(style, size);
+        return base.deriveFont(style, size * uiScale);
     }
 
     public static Font titleFont() {

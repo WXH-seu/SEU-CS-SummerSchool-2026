@@ -21,6 +21,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.util.Date;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -34,6 +35,7 @@ public class LibraryServiceIntegrationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private LibraryService service;
+    private AccessBookRepository books;
     private UserAccount studentAccount;
     private UserAccount teacherAccount;
     private UserAccount adminAccount;
@@ -48,6 +50,7 @@ public class LibraryServiceIntegrationTest {
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
         AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
         AccessBookRepository books = new AccessBookRepository(database);
+        this.books = books;
         service = new LibraryService(books);
         studentAccount = users.findById("student");
         teacherAccount = users.findById("teacher");
@@ -182,6 +185,7 @@ public class LibraryServiceIntegrationTest {
 
     @Test
     public void studentBorrowsThenCannotBorrowSameTitleAgain() throws Exception {
+        returnStudentOverdueDemo();
         String isbn = "9787040202489";
         int available = findByIsbn(service.queryBooks(
                 "student", SubSystemRole.STUDENT, null), isbn).getAvailableCopies();
@@ -281,6 +285,7 @@ public class LibraryServiceIntegrationTest {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
 
+        returnStudentOverdueDemo();
         BorrowRecordDto first = service.borrowBook(
                 "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
         try {
@@ -290,6 +295,136 @@ public class LibraryServiceIntegrationTest {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
         }
         service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(first.getRecordId()));
+    }
+
+    @Test
+    public void studentRenewsWithinWindowUpToTwice() throws Exception {
+        returnStudentOverdueDemo();
+        BorrowRecordDto created = service.borrowBook(
+                "student", SubSystemRole.STUDENT, new BorrowRequest("9787040202489"));
+        assertEquals(0, created.getRenewCount());
+        try {
+            service.renewBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(created.getRecordId()));
+            fail("Renewal outside the last 10 days should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        placeInRenewWindow(created.getRecordId());
+        BorrowRecordDto first = service.renewBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(created.getRecordId()));
+        assertEquals(1, first.getRenewCount());
+        assertFalse(first.isOverdue());
+
+        placeInRenewWindow(created.getRecordId());
+        BorrowRecordDto second = service.renewBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(created.getRecordId()));
+        assertEquals(2, second.getRenewCount());
+
+        placeInRenewWindow(created.getRecordId());
+        try {
+            service.renewBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(created.getRecordId()));
+            fail("Third renewal should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+        service.returnBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(created.getRecordId()));
+    }
+
+    @Test
+    public void overdueAccountCannotBorrowOrRenewUntilReturned() throws Exception {
+        try {
+            service.borrowBook("student", SubSystemRole.STUDENT,
+                    new BorrowRequest("9787040202489"));
+            fail("Overdue account should not borrow");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        BorrowRecordDto math = findRecordByIsbn(
+                service.queryBorrows("student", SubSystemRole.STUDENT), "9787040396621");
+        try {
+            service.renewBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(math.getRecordId()));
+            fail("Overdue account should not renew another title");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        BorrowRecordDto teachers = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787040202489"));
+        assertEquals("9787040202489", teachers.getIsbn());
+        service.returnBook("teacher", SubSystemRole.TEACHER,
+                new ReturnRequest(teachers.getRecordId()));
+
+        returnStudentOverdueDemo();
+        BorrowRecordDto created = service.borrowBook(
+                "student", SubSystemRole.STUDENT, new BorrowRequest("9787040202489"));
+        assertEquals("9787040202489", created.getIsbn());
+        placeInRenewWindow(math.getRecordId());
+        BorrowRecordDto renewed = service.renewBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(math.getRecordId()));
+        assertEquals(1, renewed.getRenewCount());
+        service.returnBook("student", SubSystemRole.STUDENT,
+                new ReturnRequest(created.getRecordId()));
+    }
+
+    @Test
+    public void rejectsOverdueReturnedForeignAndAdminRenewals() throws Exception {
+        BorrowRecordDto overdue = findRecordByIsbn(
+                service.queryBorrows("student", SubSystemRole.STUDENT), "9787020008735");
+        try {
+            service.renewBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(overdue.getRecordId()));
+            fail("Overdue record should not be renewed");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        BorrowRecordDto created = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787040202489"));
+        placeInRenewWindow(created.getRecordId());
+        try {
+            service.renewBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(created.getRecordId()));
+            fail("Student should not renew another user's record");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+        try {
+            service.renewBook(adminAccount.getUserId(), eff(adminAccount),
+                    new ReturnRequest(created.getRecordId()));
+            fail("Administrator should not renew");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        service.returnBook("teacher", SubSystemRole.TEACHER,
+                new ReturnRequest(created.getRecordId()));
+        try {
+            service.renewBook("teacher", SubSystemRole.TEACHER,
+                    new ReturnRequest(created.getRecordId()));
+            fail("Returned record should not be renewed");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+    }
+
+    private void placeInRenewWindow(int recordId) throws Exception {
+        Date due = new Date(System.currentTimeMillis() + 5L * 24 * 60 * 60 * 1000);
+        assertTrue(books.forceDueTime(recordId, due));
+    }
+
+    private void returnStudentOverdueDemo() throws Exception {
+        BorrowRecordDto overdue = findRecordByIsbn(
+                service.queryBorrows("student", SubSystemRole.STUDENT), "9787020008735");
+        if (!overdue.isReturned()) {
+            service.returnBook("student", SubSystemRole.STUDENT,
+                    new ReturnRequest(overdue.getRecordId()));
+        }
     }
 
     private BorrowRecordDto findRecordByIsbn(List<BorrowRecordDto> records, String isbn) {

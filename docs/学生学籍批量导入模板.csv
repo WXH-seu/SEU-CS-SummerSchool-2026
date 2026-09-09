@@ -1,0 +1,3 @@
+studentId,userId,fullName,gender,birthDate,departmentId,classId,enrollmentYear,status,phone,email
+20260002,,张三,男,2008-03-15,CS,,2026,在读,13800000003,zhangsan@example.com
+20260003,,李四,女,2008-05-20,CS,,2026,在读,13800000004,lisi@example.com

@@ -32,7 +32,7 @@ import java.util.concurrent.ExecutionException;
 
 /**
  * 身份认证中心风格登录页。网络请求在 {@link SwingWorker} 中执行。
- * 「记住密码」仅作版式展示；「修改密码」提示登录后前往账号管理。
+ * 「记住密码」仅作版式展示；「忘记密码」打开邮箱找回密码流程。
  */
 public final class LoginFrame extends JFrame {
     private final ClientConfig config;
@@ -41,7 +41,7 @@ public final class LoginFrame extends JFrame {
     private final JPanel passwordRow = SeuFields.pillPasswordWithToggle(passwordField);
     private final JButton loginButton = SeuButtons.pillPrimary("登 录");
     private final JCheckBox rememberPassword = new JCheckBox("记住密码");
-    private final JButton changePasswordLink = SeuButtons.link("修改密码");
+    private final JButton changePasswordLink = SeuButtons.link("忘记密码");
     private final JLabel statusLabel = SeuLabels.muted(" ");
 
     public LoginFrame(ClientConfig config) {
@@ -126,8 +126,8 @@ public final class LoginFrame extends JFrame {
 
         getRootPane().setDefaultButton(loginButton);
         loginButton.addActionListener(event -> login());
-        changePasswordLink.addActionListener(event -> SeuMessages.info(this,
-                "请先登录，再在右上角「账号管理」中修改密码。"));
+        changePasswordLink.addActionListener(event ->
+                new ForgotPasswordFrame(config).setVisible(true));
         rememberPassword.addActionListener(event -> {
             if (rememberPassword.isSelected()) {
                 SeuMessages.info(this, "当前版本仅作界面展示，不会在本地保存密码。");
