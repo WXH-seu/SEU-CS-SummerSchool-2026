@@ -11,6 +11,7 @@ import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
+import edu.seu.vcampus.common.dto.ReserveDto;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
 import javax.swing.JButton;
@@ -36,10 +37,12 @@ public final class LibraryCatalogPanel extends JPanel {
     private final LibraryClientService service;
     private final SubSystemRole effectiveRole;
     private final Runnable onBorrowed;
+    private final Runnable onReserved;
     private final JTextField keyword = SeuFields.text(18);
     private final JCheckBox includeInactive = new JCheckBox("含已下架");
     private final JButton searchButton = SeuButtons.primary("查询");
     private final JButton borrowButton = SeuButtons.accent("借阅");
+    private final JButton reserveButton = SeuButtons.secondary("预约");
     private final JButton addButton = SeuButtons.secondary("新增");
     private final JButton editButton = SeuButtons.secondary("编辑");
     private final JButton deleteButton = SeuButtons.danger("删除");
@@ -50,7 +53,7 @@ public final class LibraryCatalogPanel extends JPanel {
     private List<BookSummary> rows = new ArrayList<BookSummary>();
 
     public LibraryCatalogPanel(LibraryClientService service, SubSystemRole effectiveRole,
-                               Runnable onBorrowed) {
+                               Runnable onBorrowed, Runnable onReserved) {
         super(new BorderLayout(0, SeuTheme.SPACE_MD));
         this.service = service;
         if (effectiveRole == null) {
@@ -58,6 +61,7 @@ public final class LibraryCatalogPanel extends JPanel {
         }
         this.effectiveRole = effectiveRole;
         this.onBorrowed = onBorrowed;
+        this.onReserved = onReserved;
         setBackground(SeuTheme.PAGE_BG);
         setBorder(SeuTheme.pageBorder());
         buildUi();
@@ -77,6 +81,7 @@ public final class LibraryCatalogPanel extends JPanel {
         filters.add(includeInactive);
         filters.add(searchButton);
         filters.add(borrowButton);
+        filters.add(reserveButton);
         filters.add(addButton);
         filters.add(editButton);
         filters.add(deleteButton);
@@ -99,6 +104,7 @@ public final class LibraryCatalogPanel extends JPanel {
         editButton.setVisible(administrator);
         deleteButton.setVisible(administrator);
         borrowButton.setVisible(!administrator);
+        reserveButton.setVisible(!administrator);
     }
 
     private void bindActions() {
@@ -106,6 +112,7 @@ public final class LibraryCatalogPanel extends JPanel {
         keyword.addActionListener(event -> refresh());
         includeInactive.addActionListener(event -> refresh());
         borrowButton.addActionListener(event -> borrowSelected());
+        reserveButton.addActionListener(event -> reserveSelected());
         addButton.addActionListener(event -> editBook(null));
         editButton.addActionListener(event -> editSelectedBook());
         deleteButton.addActionListener(event -> deleteSelectedBook());
@@ -212,6 +219,52 @@ public final class LibraryCatalogPanel extends JPanel {
         }.execute();
     }
 
+    private void reserveSelected() {
+        final BookSummary book = selectedBook();
+        if (book == null) {
+            return;
+        }
+        if (!book.isActive()) {
+            showError("图书已下架，无法预约");
+            return;
+        }
+        if (book.getAvailableCopies() > 0) {
+            showError("仍有可借副本，请直接借阅");
+            return;
+        }
+        if (!SeuMessages.confirm(this,
+                "「" + book.getTitle() + "」暂无可借副本，确定提交预约委托吗？")) {
+            return;
+        }
+        setBusy(true, "正在提交预约……");
+        new SwingWorker<ReserveDto, Void>() {
+            @Override
+            protected ReserveDto doInBackground() throws Exception {
+                return service.applyReservation(book.getIsbn());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    ReserveDto created = get();
+                    SeuMessages.info(LibraryCatalogPanel.this, "已提交预约",
+                            "「" + created.getTitle() + "」已进入待审列表");
+                    if (onReserved != null) {
+                        onReserved.run();
+                    }
+                    refresh();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    showError("预约被中断");
+                    setBusy(false, "预约失败");
+                } catch (ExecutionException e) {
+                    showError(messageOf(e));
+                    setBusy(false, "预约失败");
+                }
+            }
+        }.execute();
+    }
+
     private void editSelectedBook() {
         BookSummary book = selectedBook();
         if (book != null) {
@@ -308,6 +361,7 @@ public final class LibraryCatalogPanel extends JPanel {
         keyword.setEnabled(!busy);
         includeInactive.setEnabled(!busy);
         borrowButton.setEnabled(!busy);
+        reserveButton.setEnabled(!busy);
         addButton.setEnabled(!busy);
         editButton.setEnabled(!busy);
         deleteButton.setEnabled(!busy);

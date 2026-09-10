@@ -4,6 +4,7 @@ package edu.seu.vcampus.server.dao;
 public final class BookCopy {
     public static final String STATUS_AVAILABLE = "AVAILABLE";
     public static final String STATUS_BORROWED = "BORROWED";
+    public static final String STATUS_HELD = "HELD";
 
     private final int copyId;
     private final String isbn;
@@ -29,5 +30,9 @@ public final class BookCopy {
 
     public boolean isAvailable() {
         return STATUS_AVAILABLE.equals(copyStatus);
+    }
+
+    public boolean isHeld() {
+        return STATUS_HELD.equals(copyStatus);
     }
 }

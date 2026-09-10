@@ -7,13 +7,14 @@ import javax.swing.SwingConstants;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.event.ActionListener;
 
 /**
  * 门户二级导航条：深绿底，激活项金黄块（对齐信息服务门户「应用中心」样式）。
+ * 页签按可用宽度均分，窗口缩小时仍保持全部可见。
  */
 public final class SeuNavBar extends JPanel {
     /** 导航选中回调。 */
@@ -27,7 +28,7 @@ public final class SeuNavBar extends JPanel {
     private int activeIndex;
 
     public SeuNavBar(String[] keys, String[] labels, SelectionListener listener) {
-        super(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        super(new GridLayout(1, keys == null ? 1 : keys.length, 0, 0));
         if (keys == null || labels == null || keys.length != labels.length || keys.length == 0) {
             throw new IllegalArgumentException("keys/labels required and must match");
         }
@@ -37,8 +38,6 @@ public final class SeuNavBar extends JPanel {
         this.activeIndex = 0;
 
         setBackground(SeuTheme.PRIMARY);
-        setBorder(BorderFactory.createEmptyBorder(0, SeuTheme.scaled(SeuTheme.SPACE_LG),
-                0, SeuTheme.scaled(SeuTheme.SPACE_LG)));
         setOpaque(true);
 
         for (int i = 0; i < labels.length; i++) {
@@ -51,6 +50,7 @@ public final class SeuNavBar extends JPanel {
             button.setOpaque(true);
             button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             button.setHorizontalAlignment(SwingConstants.CENTER);
+            button.setToolTipText(labels[i]);
             button.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(java.awt.event.ActionEvent event) {
@@ -67,23 +67,40 @@ public final class SeuNavBar extends JPanel {
         refreshStyles();
     }
 
-    /** 按当前字号重算导航按钮尺寸，窗口缩放后由 {@link SeuUiScale} 调用。 */
+    /** 按当前字号重算导航条高度，窗口缩放后由 {@link SeuUiScale} 调用。 */
     public void syncMetrics() {
         setBorder(BorderFactory.createEmptyBorder(0, SeuTheme.scaled(SeuTheme.SPACE_LG),
                 0, SeuTheme.scaled(SeuTheme.SPACE_LG)));
         int padV = SeuTheme.scaled(12);
-        int padH = SeuTheme.scaled(22);
-        int extra = SeuTheme.scaled(28);
-        int minWidth = SeuTheme.scaled(110);
+        int padH = SeuTheme.scaled(8);
         int height = SeuTheme.scaled(44);
         for (int i = 0; i < buttons.length; i++) {
             JButton button = buttons[i];
             button.setMargin(new Insets(padV, padH, padV, padH));
-            button.setPreferredSize(null);
-            int width = Math.max(button.getPreferredSize().width + extra, minWidth);
-            button.setPreferredSize(new Dimension(width, height));
+            button.setPreferredSize(new Dimension(1, height));
+            button.setMinimumSize(new Dimension(1, height));
         }
         revalidate();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        Dimension size = super.getPreferredSize();
+        int height = barHeight();
+        if (size == null) {
+            return new Dimension(0, height);
+        }
+        return new Dimension(size.width, height);
+    }
+
+    @Override
+    public Dimension getMinimumSize() {
+        return new Dimension(0, barHeight());
+    }
+
+    private int barHeight() {
+        Insets insets = getInsets();
+        return SeuTheme.scaled(44) + insets.top + insets.bottom;
     }
 
     public void setActiveKey(String key) {

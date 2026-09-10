@@ -200,6 +200,7 @@ public final class AccountPanel extends JPanel {
         panel.add(new JLabel("新显示名"), constraints);
         constraints.gridx = 1;
         panel.add(displayNameField, constraints);
+        constraints.gridx = 0;
         constraints.gridy = 2;
         panel.add(new JLabel("找回邮箱"), constraints);
         constraints.gridx = 1;

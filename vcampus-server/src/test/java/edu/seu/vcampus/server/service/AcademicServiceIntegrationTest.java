@@ -10,6 +10,7 @@ import edu.seu.vcampus.common.dto.StudentProfileUpdateRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
+import edu.seu.vcampus.server.dao.AccessBookRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
@@ -32,10 +33,12 @@ public class AcademicServiceIntegrationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private AcademicService service;
+    private File databaseFile;
+
     @Before
     public void setUp() throws Exception {
-        File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
-        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        databaseFile = new File(temporaryFolder.getRoot(), "vCampus.accdb");
+        AccessDatabase database = new AccessDatabase(databaseFile.getAbsolutePath());
         AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
         AccessAcademicRepository academics = new AccessAcademicRepository(database);
         service = new AcademicService(academics, users);
@@ -130,6 +133,32 @@ public class AcademicServiceIntegrationTest {
         assertEquals("TEST-02", service.queryStudents("admin", SubSystemRole.ADMIN,
                 new AcademicQueryRequest("20269902", null, null, false))
                 .get(0).getClassId());
+    }
+
+    @Test
+    public void cannotDeleteStudentOrTeacherWithLibraryRecords() throws Exception {
+        new AccessBookRepository(new AccessDatabase(databaseFile.getAbsolutePath()));
+        try {
+            service.deleteStudent("admin", SubSystemRole.ADMIN, "20260001");
+            fail("Student with borrow and wish records should not be deleted");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("借阅"));
+        }
+        try {
+            service.deleteTeacher("admin", SubSystemRole.ADMIN, "T0001");
+            fail("Teacher with a pending wish should not be deleted");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("借阅"));
+        }
+
+        service.saveStudent("admin", SubSystemRole.ADMIN,
+                new StudentDto("20260099", null, "无图书馆记录学生", "男",
+                        "2008-01-01", "CS", "CS2026-01", 2026, "在读", "", ""));
+        service.deleteStudent("admin", SubSystemRole.ADMIN, "20260099");
+        assertTrue(service.queryStudents("admin", SubSystemRole.ADMIN,
+                new AcademicQueryRequest("20260099", null, null, false)).isEmpty());
     }
 
     private StudentDto student(String studentId, String name) {

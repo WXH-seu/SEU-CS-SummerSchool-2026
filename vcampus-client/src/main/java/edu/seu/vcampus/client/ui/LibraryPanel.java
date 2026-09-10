@@ -11,7 +11,8 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 
 /**
- * 图书馆入口：书目检索；学生和教师看「我的借阅」，管理员看「全部借阅」。
+ * 图书馆入口：书目检索；学生和教师看「我的借阅」，管理员看「全部借阅」；
+ * 师生提交好书推荐与预约委托，管理员审核引进、预约和取书。
  */
 public final class LibraryPanel extends JPanel {
     private static final long serialVersionUID = 1L;
@@ -19,6 +20,8 @@ public final class LibraryPanel extends JPanel {
     private final JTabbedPane tabs = new JTabbedPane();
     private final LibraryCatalogPanel catalogPanel;
     private final LibraryBorrowPanel borrowPanel;
+    private final LibraryWishPanel wishPanel;
+    private final LibraryReservePanel reservePanel;
 
     public LibraryPanel(LibraryClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout());
@@ -32,15 +35,36 @@ public final class LibraryPanel extends JPanel {
             public void run() {
                 showBorrowTab();
             }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                showReserveTab();
+            }
         });
         tabs.addTab("书目", catalogPanel);
         borrowPanel = new LibraryBorrowPanel(service, new Runnable() {
             @Override
             public void run() {
                 catalogPanel.refresh();
+                reservePanel.refresh();
             }
         }, admin);
         tabs.addTab(admin ? "全部借阅" : "我的借阅", borrowPanel);
+        wishPanel = new LibraryWishPanel(service, effectiveRole, new Runnable() {
+            @Override
+            public void run() {
+                catalogPanel.refresh();
+            }
+        });
+        tabs.addTab("好书推荐", wishPanel);
+        reservePanel = new LibraryReservePanel(service, effectiveRole, new Runnable() {
+            @Override
+            public void run() {
+                catalogPanel.refresh();
+                borrowPanel.refresh();
+            }
+        });
+        tabs.addTab(admin ? "预约委托" : "我的预约", reservePanel);
         add(tabs, BorderLayout.CENTER);
         tabs.addChangeListener(new ChangeListener() {
             @Override
@@ -51,8 +75,13 @@ public final class LibraryPanel extends JPanel {
     }
 
     private void showBorrowTab() {
-        tabs.setSelectedIndex(1);
+        tabs.setSelectedComponent(borrowPanel);
         borrowPanel.refresh();
+    }
+
+    private void showReserveTab() {
+        tabs.setSelectedComponent(reservePanel);
+        reservePanel.refresh();
     }
 
     private void refreshSelected() {
@@ -61,6 +90,10 @@ public final class LibraryPanel extends JPanel {
             ((LibraryCatalogPanel) selected).refresh();
         } else if (selected instanceof LibraryBorrowPanel) {
             ((LibraryBorrowPanel) selected).refresh();
+        } else if (selected instanceof LibraryWishPanel) {
+            ((LibraryWishPanel) selected).refresh();
+        } else if (selected instanceof LibraryReservePanel) {
+            ((LibraryReservePanel) selected).refresh();
         }
     }
 }

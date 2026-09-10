@@ -192,6 +192,15 @@ public final class PermissionPolicy {
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         // Patrons see their own records; administrators see every unreturned copy.
         requireSubSystem(Operation.LIBRARY_BORROW_QUERY);
+        requireSubSystem(Operation.LIBRARY_WISH_QUERY);
+        requireSubSystem(Operation.LIBRARY_WISH_SUBMIT,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_WISH_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_QUERY);
+        requireSubSystem(Operation.LIBRARY_RESERVE_APPLY,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RESERVE_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_PICKUP);
         requireSubSystem(Operation.STORE_PRODUCT_QUERY);
         requireSubSystem(Operation.STORE_ORDER_CREATE,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);

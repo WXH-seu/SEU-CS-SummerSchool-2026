@@ -4,7 +4,11 @@ import edu.seu.vcampus.common.dto.BookDto;
 import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BorrowRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
+import edu.seu.vcampus.common.dto.WishReviewRequest;
+import edu.seu.vcampus.common.dto.WishSubmitRequest;
 import edu.seu.vcampus.common.enums.Operation;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -23,7 +27,10 @@ public final class LibraryRequestHandler {
             Operation.LIBRARY_BOOK_QUERY, Operation.LIBRARY_BOOK_SAVE,
             Operation.LIBRARY_BOOK_DELETE, Operation.LIBRARY_BORROW,
             Operation.LIBRARY_RETURN, Operation.LIBRARY_RENEW,
-            Operation.LIBRARY_BORROW_QUERY);
+            Operation.LIBRARY_BORROW_QUERY, Operation.LIBRARY_WISH_QUERY,
+            Operation.LIBRARY_WISH_SUBMIT, Operation.LIBRARY_WISH_REVIEW,
+            Operation.LIBRARY_RESERVE_QUERY, Operation.LIBRARY_RESERVE_APPLY,
+            Operation.LIBRARY_RESERVE_REVIEW, Operation.LIBRARY_RESERVE_PICKUP);
 
     private final LibraryService service;
 
@@ -60,6 +67,31 @@ public final class LibraryRequestHandler {
                             actorUserId, actorRole, body(request, ReturnRequest.class)));
                 case LIBRARY_BORROW_QUERY:
                     return success(request, service.queryBorrows(actorUserId, actorRole));
+                case LIBRARY_WISH_QUERY:
+                    return success(request, service.queryWishes(actorUserId, actorRole));
+                case LIBRARY_WISH_SUBMIT:
+                    return success(request, service.submitWish(
+                            actorUserId, actorRole, body(request, WishSubmitRequest.class)));
+                case LIBRARY_WISH_REVIEW: {
+                    BookDto reviewed = service.reviewWish(
+                            actorUserId, actorRole, body(request, WishReviewRequest.class));
+                    if (reviewed != null) {
+                        return success(request, reviewed);
+                    }
+                    return success(request, "OK");
+                }
+                case LIBRARY_RESERVE_QUERY:
+                    return success(request, service.queryReservations(actorUserId, actorRole));
+                case LIBRARY_RESERVE_APPLY:
+                    return success(request, service.applyReservation(
+                            actorUserId, actorRole, body(request, BorrowRequest.class)));
+                case LIBRARY_RESERVE_REVIEW:
+                    service.reviewReservation(actorUserId, actorRole,
+                            body(request, ReserveReviewRequest.class));
+                    return success(request, "OK");
+                case LIBRARY_RESERVE_PICKUP:
+                    return success(request, service.pickupReservation(
+                            actorUserId, actorRole, body(request, ReserveIdRequest.class)));
                 default:
                     return ResponseMessage.failure(request.getRequestId(),
                             ResponseCode.NOT_IMPLEMENTED, "不支持的图书馆操作");

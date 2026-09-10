@@ -79,7 +79,81 @@ public interface BookRepository {
 
     /**
      * Whether an approved reservation currently blocks renewal of this copy.
-     * Returns {@code false} until the reservation tables are connected.
      */
     boolean isRenewalBlockedByReservation(int copyId) throws SQLException;
+
+    /** Patrons see their own wishes; administrators should call {@link #findAllWishes()}. */
+    List<BookWish> findWishesByUser(String userId) throws SQLException;
+
+    /** Every recommendation, newest first. */
+    List<BookWish> findAllWishes() throws SQLException;
+
+    BookWish findWishById(int wishId) throws SQLException;
+
+    /** Whether the user already has a pending wish with the same title and author. */
+    boolean hasPendingWish(String userId, String title, String author) throws SQLException;
+
+    /**
+     * Inserts a pending wish and returns the stored row (including display name).
+     */
+    BookWish insertWish(String userId, String title, String author, Date submitTime)
+            throws SQLException;
+
+    /**
+     * Marks a pending wish approved. Returns {@code false} when the row is missing
+     * or no longer pending.
+     */
+    boolean markWishApproved(int wishId, String reviewerUserId, String isbn, Date reviewTime)
+            throws SQLException;
+
+    /**
+     * Marks a pending wish rejected. Returns {@code false} when the row is missing
+     * or no longer pending.
+     */
+    boolean markWishRejected(int wishId, String reviewerUserId, Date reviewTime)
+            throws SQLException;
+
+    /** Releases held copies whose 7-day window has passed and records defaults. */
+    int expireHeldReservations(Date now) throws SQLException;
+
+    List<BookReservation> findReservationsByUser(String userId) throws SQLException;
+
+    List<BookReservation> findAllReservations() throws SQLException;
+
+    BookReservation findReservationById(int reservationId) throws SQLException;
+
+    boolean hasActiveReservation(String userId, String isbn) throws SQLException;
+
+    BookReservation insertReservation(String userId, String isbn, Date applyTime)
+            throws SQLException;
+
+    /**
+     * Approves a pending reservation and assigns {@code copyId}. Returns
+     * {@code false} when the row is missing or no longer pending.
+     */
+    boolean markReservationApproved(int reservationId, String reviewerUserId, int copyId,
+                                    Date reviewTime) throws SQLException;
+
+    boolean markReservationRejected(int reservationId, String reviewerUserId, Date reviewTime)
+            throws SQLException;
+
+    /**
+     * Earliest-due borrowed copy of this ISBN that is not already targeted by an
+     * approved reservation. Returns {@code null} when none exist.
+     */
+    Integer findEarliestReservableCopy(String isbn) throws SQLException;
+
+    Date findPatronSuspendUntil(String userId) throws SQLException;
+
+    int findPatronDefaultCount(String userId) throws SQLException;
+
+    /** Clears an expired suspension and resets the default count. */
+    void clearExpiredSuspension(String userId, Date now) throws SQLException;
+
+    /**
+     * Borrows the held copy for the applicant and marks the reservation picked up.
+     * Returns {@code null} when the hold is missing or no longer held.
+     */
+    BorrowRecord pickupHeldReservation(int reservationId, String borrowerUserId,
+                                       Date borrowTime, Date dueTime) throws SQLException;
 }

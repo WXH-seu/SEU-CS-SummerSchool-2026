@@ -5,7 +5,13 @@ import edu.seu.vcampus.common.dto.BookQueryRequest;
 import edu.seu.vcampus.common.dto.BookSummary;
 import edu.seu.vcampus.common.dto.BorrowRecordDto;
 import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.ReserveDto;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
 import edu.seu.vcampus.common.dto.ReturnRequest;
+import edu.seu.vcampus.common.dto.WishDto;
+import edu.seu.vcampus.common.dto.WishReviewRequest;
+import edu.seu.vcampus.common.dto.WishSubmitRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystem;
 import edu.seu.vcampus.common.enums.SubSystemRole;
@@ -413,6 +419,243 @@ public class LibraryServiceIntegrationTest {
         }
     }
 
+    @Test
+    public void patronsSubmitWishesAndAdminReviewsThem() throws Exception {
+        List<WishDto> studentWishes = service.queryWishes("student", SubSystemRole.STUDENT);
+        assertEquals(1, studentWishes.size());
+        assertEquals("百年孤独", studentWishes.get(0).getTitle());
+        assertEquals("已拒绝", studentWishes.get(0).getStatusName());
+
+        List<WishDto> teacherWishes = service.queryWishes("teacher", SubSystemRole.TEACHER);
+        assertEquals(1, teacherWishes.size());
+        WishDto pending = teacherWishes.get(0);
+        assertEquals("三体", pending.getTitle());
+        assertTrue(pending.isPending());
+
+        List<WishDto> adminWishes = service.queryWishes(
+                adminAccount.getUserId(), SubSystemRole.ADMIN);
+        assertEquals(2, adminWishes.size());
+        assertEquals("三体", adminWishes.get(0).getTitle());
+        assertTrue(adminWishes.get(0).isPending());
+
+        try {
+            service.submitWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                    new WishSubmitRequest("新书", "作者"));
+            fail("Administrator should not submit a wish");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        WishDto submitted = service.submitWish("student", SubSystemRole.STUDENT,
+                new WishSubmitRequest("平凡的世界", "路遥"));
+        assertEquals("平凡的世界", submitted.getTitle());
+        assertTrue(submitted.isPending());
+        assertEquals(2, service.queryWishes("student", SubSystemRole.STUDENT).size());
+
+        try {
+            service.submitWish("student", SubSystemRole.STUDENT,
+                    new WishSubmitRequest("平凡的世界", "路遥"));
+            fail("Duplicate pending wish should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        try {
+            service.reviewWish("student", SubSystemRole.STUDENT,
+                    new WishReviewRequest(pending.getWishId(), false, null));
+            fail("Student should not review wishes");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        int catalogSize = service.queryBooks("student", SubSystemRole.STUDENT, null).size();
+        service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new WishReviewRequest(submitted.getWishId(), false, null));
+        assertEquals(catalogSize,
+                service.queryBooks("student", SubSystemRole.STUDENT, null).size());
+        WishDto rejected = findWishByTitle(
+                service.queryWishes("student", SubSystemRole.STUDENT), "平凡的世界");
+        assertEquals("已拒绝", rejected.getStatusName());
+
+        try {
+            service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                    new WishReviewRequest(pending.getWishId(), true,
+                            new BookDto("", "三体", "刘慈欣", "重庆出版社", "科幻", 2, true)));
+            fail("Invalid catalog row should keep the wish pending");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
+        assertTrue(findWishByTitle(service.queryWishes("teacher", SubSystemRole.TEACHER),
+                "三体").isPending());
+
+        BookDto imported = service.reviewWish(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new WishReviewRequest(pending.getWishId(), true,
+                        new BookDto("9787536692930", "三体", "刘慈欣",
+                                "重庆出版社", "科幻", 2, true)));
+        assertEquals("9787536692930", imported.getIsbn());
+        assertEquals(catalogSize + 1,
+                service.queryBooks("student", SubSystemRole.STUDENT, null).size());
+        WishDto approved = findWishByTitle(
+                service.queryWishes("teacher", SubSystemRole.TEACHER), "三体");
+        assertTrue(approved.isApproved());
+        assertEquals("9787536692930", approved.getIsbn());
+        assertEquals("三体", findByIsbn(
+                service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787536692930").getTitle());
+    }
+
+    @Test
+    public void patronsReserveHeldCopyAndPickup() throws Exception {
+        try {
+            service.applyReservation(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                    new BorrowRequest("9787020024759"));
+            fail("Administrator should not apply for a reservation");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        try {
+            service.applyReservation("student", SubSystemRole.STUDENT,
+                    new BorrowRequest("9787040202489"));
+            fail("Available copies should not be reserved");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        BorrowRecordDto loan = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
+        assertEquals(0, findByIsbn(service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787020024759").getAvailableCopies());
+
+        ReserveDto applied = service.applyReservation("student", SubSystemRole.STUDENT,
+                new BorrowRequest("9787020024759"));
+        assertTrue(applied.isPending());
+        assertEquals("围城", applied.getTitle());
+
+        try {
+            service.applyReservation("student", SubSystemRole.STUDENT,
+                    new BorrowRequest("9787020024759"));
+            fail("Duplicate in-progress reservation should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        try {
+            service.reviewReservation("student", SubSystemRole.STUDENT,
+                    new ReserveReviewRequest(applied.getReservationId(), true));
+            fail("Student should not review reservations");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
+
+        service.reviewReservation(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new ReserveReviewRequest(applied.getReservationId(), true));
+        ReserveDto approved = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        assertTrue(approved.isApproved());
+        assertTrue(approved.getCopyId() > 0);
+        assertTrue(books.isRenewalBlockedByReservation(approved.getCopyId()));
+
+        placeInRenewWindow(loan.getRecordId());
+        try {
+            service.renewBook("teacher", SubSystemRole.TEACHER,
+                    new ReturnRequest(loan.getRecordId()));
+            fail("Reserved copy should not be renewed");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("预约"));
+        }
+
+        service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(loan.getRecordId()));
+        ReserveDto held = findReservationByIsbn(
+                service.queryReservations(adminAccount.getUserId(), SubSystemRole.ADMIN),
+                "9787020024759");
+        assertTrue(held.isHeld());
+        assertEquals("待取书", held.getStatusName());
+        assertEquals(0, findByIsbn(service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787020024759").getAvailableCopies());
+
+        try {
+            service.pickupReservation("student", SubSystemRole.STUDENT,
+                    new ReserveIdRequest(held.getReservationId()));
+            fail("Overdue patron should not pick up a hold");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        returnStudentOverdueDemo();
+        BorrowRecordDto picked = service.pickupReservation(
+                adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new ReserveIdRequest(held.getReservationId()));
+        assertEquals("student", picked.getUserId());
+        assertEquals("9787020024759", picked.getIsbn());
+        assertFalse(picked.isReturned());
+        ReserveDto done = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        assertEquals("已取书", done.getStatusName());
+        assertEquals(0, findByIsbn(service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787020024759").getAvailableCopies());
+    }
+
+    @Test
+    public void expiredHoldRecordsDefaultAndSuspendsAfterThree() throws Exception {
+        BorrowRecordDto loan = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
+        ReserveDto applied = service.applyReservation("student", SubSystemRole.STUDENT,
+                new BorrowRequest("9787020024759"));
+        service.reviewReservation(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new ReserveReviewRequest(applied.getReservationId(), true));
+        service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(loan.getRecordId()));
+        ReserveDto held = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        assertTrue(held.isHeld());
+
+        Date yesterday = new Date(System.currentTimeMillis() - 24L * 60 * 60 * 1000);
+        assertTrue(books.forceHoldUntil(held.getReservationId(), yesterday));
+        ReserveDto expired = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        assertEquals("逾期未取", expired.getStatusName());
+        assertEquals(1, expired.getDefaultCount());
+        assertEquals(1, findByIsbn(service.queryBooks("student", SubSystemRole.STUDENT, null),
+                "9787020024759").getAvailableCopies());
+
+        BorrowRecordDto loan2 = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
+        ReserveDto applied2 = service.applyReservation("student", SubSystemRole.STUDENT,
+                new BorrowRequest("9787020024759"));
+        service.reviewReservation(adminAccount.getUserId(), SubSystemRole.ADMIN,
+                new ReserveReviewRequest(applied2.getReservationId(), true));
+        service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(loan2.getRecordId()));
+        ReserveDto held2 = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        books.forcePatronDefaults("student", 2, null);
+        assertTrue(books.forceHoldUntil(held2.getReservationId(), yesterday));
+        ReserveDto expired2 = findReservationByIsbn(
+                service.queryReservations("student", SubSystemRole.STUDENT), "9787020024759");
+        assertEquals("逾期未取", expired2.getStatusName());
+        assertEquals(3, expired2.getDefaultCount());
+        assertFalse(expired2.getSuspendUntilTime() == null
+                || expired2.getSuspendUntilTime().trim().isEmpty());
+
+        BorrowRecordDto loan3 = service.borrowBook(
+                "teacher", SubSystemRole.TEACHER, new BorrowRequest("9787020024759"));
+        try {
+            service.applyReservation("student", SubSystemRole.STUDENT,
+                    new BorrowRequest("9787020024759"));
+            fail("Suspended patron should not apply");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("停权"));
+        }
+
+        books.forcePatronDefaults("student", 3, yesterday);
+        ReserveDto recovered = service.applyReservation("student", SubSystemRole.STUDENT,
+                new BorrowRequest("9787020024759"));
+        assertTrue(recovered.isPending());
+        assertEquals(0, recovered.getDefaultCount());
+        service.returnBook("teacher", SubSystemRole.TEACHER, new ReturnRequest(loan3.getRecordId()));
+    }
+
     private void placeInRenewWindow(int recordId) throws Exception {
         Date due = new Date(System.currentTimeMillis() + 5L * 24 * 60 * 60 * 1000);
         assertTrue(books.forceDueTime(recordId, due));
@@ -444,6 +687,26 @@ public class LibraryServiceIntegrationTest {
             }
         }
         fail("Missing ISBN " + isbn);
+        return null;
+    }
+
+    private WishDto findWishByTitle(List<WishDto> wishes, String title) {
+        for (WishDto wish : wishes) {
+            if (title.equals(wish.getTitle())) {
+                return wish;
+            }
+        }
+        fail("Missing wish for title " + title);
+        return null;
+    }
+
+    private ReserveDto findReservationByIsbn(List<ReserveDto> rows, String isbn) {
+        for (ReserveDto row : rows) {
+            if (isbn.equals(row.getIsbn())) {
+                return row;
+            }
+        }
+        fail("Missing reservation for ISBN " + isbn);
         return null;
     }
 }

@@ -83,6 +83,22 @@ public class PermissionPolicyTest {
         assertTrue(policy.allows(Operation.LIBRARY_BORROW_QUERY, Role.STUDENT));
         assertTrue(policy.allows(Operation.LIBRARY_BORROW_QUERY, Role.TEACHER));
         assertTrue(policy.allows(Operation.LIBRARY_BORROW_QUERY, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_QUERY, Role.STUDENT));
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_SUBMIT, Role.STUDENT));
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_SUBMIT, Role.TEACHER));
+        assertFalse(policy.allows(Operation.LIBRARY_WISH_SUBMIT, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_REVIEW, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.LIBRARY_WISH_REVIEW, Role.STUDENT));
+        assertFalse(policy.allows(Operation.LIBRARY_WISH_REVIEW, Role.TEACHER));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_QUERY, Role.STUDENT));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_APPLY, Role.STUDENT));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_APPLY, Role.TEACHER));
+        assertFalse(policy.allows(Operation.LIBRARY_RESERVE_APPLY, Role.SUPER_ADMIN));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_REVIEW, Role.SUPER_ADMIN));
+        assertFalse(policy.allows(Operation.LIBRARY_RESERVE_REVIEW, Role.STUDENT));
+        assertFalse(policy.allows(Operation.LIBRARY_RESERVE_REVIEW, Role.TEACHER));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_PICKUP, Role.STUDENT));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_PICKUP, Role.SUPER_ADMIN));
 
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.STUDENT));
         assertTrue(policy.allows(Operation.STORE_PRODUCT_QUERY, Role.SUBSYSADMIN, scopes("store")));
@@ -111,6 +127,16 @@ public class PermissionPolicyTest {
         assertFalse(policy.allows(Operation.LIBRARY_RETURN, Role.SUBSYSADMIN, scopes("library")));
         assertFalse(policy.allows(Operation.LIBRARY_BORROW, Role.SUBSYSADMIN, scopes("library")));
         assertFalse(policy.allows(Operation.LIBRARY_RENEW, Role.SUBSYSADMIN, scopes("library")));
+
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_SUBMIT, Role.SUBSYSADMIN, scopes("student")));
+        assertFalse(policy.allows(Operation.LIBRARY_WISH_SUBMIT, Role.SUBSYSADMIN, scopes("library")));
+        assertTrue(policy.allows(Operation.LIBRARY_WISH_REVIEW, Role.SUBSYSADMIN, scopes("library")));
+        assertFalse(policy.allows(Operation.LIBRARY_WISH_REVIEW, Role.SUBSYSADMIN, scopes("student")));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_APPLY, Role.SUBSYSADMIN, scopes("student")));
+        assertFalse(policy.allows(Operation.LIBRARY_RESERVE_APPLY, Role.SUBSYSADMIN, scopes("library")));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_REVIEW, Role.SUBSYSADMIN, scopes("library")));
+        assertFalse(policy.allows(Operation.LIBRARY_RESERVE_REVIEW, Role.SUBSYSADMIN, scopes("student")));
+        assertTrue(policy.allows(Operation.LIBRARY_RESERVE_PICKUP, Role.SUBSYSADMIN, scopes("library")));
 
         // Outside a granted sub-system it keeps ordinary teacher usage rights...
         assertTrue(policy.allows(Operation.LIBRARY_BORROW, Role.SUBSYSADMIN, scopes("student")));
