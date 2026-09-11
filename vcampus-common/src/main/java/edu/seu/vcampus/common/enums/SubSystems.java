@@ -123,6 +123,7 @@ public final class SubSystems {
             case STORE_ORDER_CREATE:
             case STORE_ORDER_QUERY:
             case STORE_ORDER_STATUS:
+            case STORE_ORDER_CANCEL:
             case STORE_CATEGORY_QUERY:
             case STORE_BALANCE_QUERY:
             case STORE_BALANCE_RECHARGE:

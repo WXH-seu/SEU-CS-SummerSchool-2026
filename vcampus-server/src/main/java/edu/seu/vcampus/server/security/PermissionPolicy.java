@@ -204,6 +204,8 @@ public final class PermissionPolicy {
         requireSubSystem(Operation.STORE_PRODUCT_QUERY);
         requireSubSystem(Operation.STORE_ORDER_CREATE,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STORE_ORDER_CANCEL,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
         requireSubSystem(Operation.STORE_CATEGORY_QUERY);
         requireSubSystem(Operation.STORE_BALANCE_QUERY,
                 SubSystemRole.STUDENT, SubSystemRole.TEACHER);

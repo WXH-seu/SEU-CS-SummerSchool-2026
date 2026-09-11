@@ -3,6 +3,7 @@ package edu.seu.vcampus.server.dao;
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.OrderDto;
 import edu.seu.vcampus.common.dto.OrderItemDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.server.database.AccessDatabase;
@@ -35,6 +36,7 @@ public final class AccessStoreRepository implements StoreRepository {
         this.database = database;
         initializeSchema();
         seedDemoData();
+        ensureProductImageColumn();
         ensureBalanceColumn();
     }
 
@@ -108,11 +110,11 @@ public final class AccessStoreRepository implements StoreRepository {
     @Override
     public void saveProduct(ProductDto product) throws SQLException {
         String update = "UPDATE [tblProduct] SET [productName]=?, [category]=?, "
-                + "[description]=?, [price]=?, [stock]=?, [active]=? "
+                + "[description]=?, [imagePath]=?, [price]=?, [stock]=?, [active]=? "
                 + "WHERE [productId]=?";
         String insert = "INSERT INTO [tblProduct] ([productName], [category], "
-                + "[description], [price], [stock], [active], [productId]) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
+                + "[description], [imagePath], [price], [stock], [active], [productId]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = database.openConnection()) {
             if (executeProductSave(connection, update, product) == 0) {
                 executeProductSave(connection, insert, product);
@@ -243,14 +245,35 @@ public final class AccessStoreRepository implements StoreRepository {
     }
 
     @Override
-    public List<OrderDto> findOrders(String userId) throws SQLException {
-        String sql = "SELECT * FROM [tblOrder]"
-                + (userId == null ? "" : " WHERE [userId] = ?")
-                + " ORDER BY [orderTime] DESC";
+    public List<OrderDto> findOrders(String userId, OrderQueryRequest query) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT o.* FROM [tblOrder] o WHERE 1=1");
+        List<Object> parameters = new ArrayList<Object>();
+        if (userId != null) {
+            sql.append(" AND o.[userId] = ?");
+            parameters.add(userId);
+        }
+        if (query != null) {
+            if (!isBlank(query.getStatusName())) {
+                sql.append(" AND o.[statusName] = ?");
+                parameters.add(query.getStatusName().trim());
+            }
+            if (!isBlank(query.getCategory())) {
+                sql.append(" AND EXISTS (SELECT 1 FROM [tblOrderItem] i "
+                        + "INNER JOIN [tblProduct] p ON p.[productId] = i.[productId] "
+                        + "WHERE i.[orderId] = o.[orderId] AND p.[category] = ?)");
+                parameters.add(query.getCategory().trim());
+            }
+            String cutoff = timeCutoff(query.getTimeRange());
+            if (cutoff != null) {
+                sql.append(" AND o.[orderTime] >= ?");
+                parameters.add(cutoff);
+            }
+        }
+        sql.append(" ORDER BY o.[orderTime] DESC");
         try (Connection connection = database.openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            if (userId != null) {
-                statement.setString(1, userId);
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            for (int i = 0; i < parameters.size(); i++) {
+                statement.setString(i + 1, String.valueOf(parameters.get(i)));
             }
             try (ResultSet result = statement.executeQuery()) {
                 List<OrderDto> orders = new ArrayList<OrderDto>();
@@ -260,6 +283,25 @@ public final class AccessStoreRepository implements StoreRepository {
                 return orders;
             }
         }
+    }
+
+    /** 把时间范围筛选项换算成 orderTime 的下界（字符串格式便于按 TEXT 比较）。 */
+    private String timeCutoff(String timeRange) {
+        if (isBlank(timeRange) || "全部".equals(timeRange.trim())) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String range = timeRange.trim();
+        if ("今天".equals(range)) {
+            return now.toLocalDate().atStartOfDay().format(ORDER_TIME_FORMAT);
+        }
+        if ("近7天".equals(range)) {
+            return now.minusDays(7).format(ORDER_TIME_FORMAT);
+        }
+        if ("近30天".equals(range)) {
+            return now.minusDays(30).format(ORDER_TIME_FORMAT);
+        }
+        return null;
     }
 
     @Override
@@ -287,7 +329,8 @@ public final class AccessStoreRepository implements StoreRepository {
                 execute(connection, "CREATE TABLE [tblProduct] ("
                         + "[productId] TEXT(20) NOT NULL PRIMARY KEY, "
                         + "[productName] TEXT(64) NOT NULL, [category] TEXT(32), "
-                        + "[description] TEXT(255), [price] CURRENCY NOT NULL, "
+                        + "[description] TEXT(255), [imagePath] TEXT(255), "
+                        + "[price] CURRENCY NOT NULL, "
                         + "[stock] INTEGER NOT NULL, [active] YESNO NOT NULL, "
                         + "CONSTRAINT [uqProductName] UNIQUE ([productName]))");
             }
@@ -565,8 +608,9 @@ public final class AccessStoreRepository implements StoreRepository {
     private ProductDto readProduct(ResultSet result) throws SQLException {
         return new ProductDto(result.getString("productId"),
                 result.getString("productName"), result.getString("category"),
-                result.getString("description"), result.getBigDecimal("price"),
-                result.getInt("stock"), result.getBoolean("active"));
+                result.getString("description"), result.getString("imagePath"),
+                result.getBigDecimal("price"), result.getInt("stock"),
+                result.getBoolean("active"));
     }
 
     private int executeProductSave(Connection connection, String sql, ProductDto product)
@@ -575,11 +619,83 @@ public final class AccessStoreRepository implements StoreRepository {
             statement.setString(1, product.getProductName());
             setNullableString(statement, 2, product.getCategory());
             setNullableString(statement, 3, product.getDescription());
-            statement.setBigDecimal(4, money(product.getPrice()));
-            statement.setInt(5, product.getStock());
-            statement.setBoolean(6, product.isActive());
-            statement.setString(7, product.getProductId());
+            setNullableString(statement, 4, product.getImagePath());
+            statement.setBigDecimal(5, money(product.getPrice()));
+            statement.setInt(6, product.getStock());
+            statement.setBoolean(7, product.isActive());
+            statement.setString(8, product.getProductId());
             return statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void cancelOrder(String orderId, String userId) throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                String owner;
+                String status;
+                BigDecimal total;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT [userId], [statusName], [totalAmount] FROM [tblOrder] "
+                                + "WHERE [orderId] = ?")) {
+                    statement.setString(1, orderId);
+                    try (ResultSet result = statement.executeQuery()) {
+                        if (!result.next()) {
+                            throw new SQLException("订单不存在");
+                        }
+                        owner = result.getString("userId");
+                        status = result.getString("statusName");
+                        total = result.getBigDecimal("totalAmount");
+                    }
+                }
+                if (!userId.equals(owner)) {
+                    throw new SQLException("无权取消他人的订单");
+                }
+                if (!"已付款".equals(status)) {
+                    throw new SQLException("仅已付款订单可以取消，当前状态：" + status);
+                }
+                // 退回库存
+                List<OrderItemDto> items = findOrderItems(connection, orderId);
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE [tblProduct] SET [stock] = [stock] + ? WHERE [productId] = ?")) {
+                    for (OrderItemDto item : items) {
+                        statement.setInt(1, item.getQuantity());
+                        statement.setString(2, item.getProductId());
+                        statement.executeUpdate();
+                    }
+                }
+                // 退回余额
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE [tblUser] SET [balance] = COALESCE([balance], 0) + ? "
+                                + "WHERE [userId] = ?")) {
+                    statement.setBigDecimal(1, money(total));
+                    statement.setString(2, userId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE [tblOrder] SET [statusName] = '已取消' WHERE [orderId] = ?")) {
+                    statement.setString(1, orderId);
+                    statement.executeUpdate();
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                rollbackQuietly(connection);
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    /** 为旧库补充 imagePath 列（商品图片路径）。 */
+    private void ensureProductImageColumn() throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!columnExists(connection, "tblProduct", "imagePath")) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("ALTER TABLE [tblProduct] ADD COLUMN [imagePath] TEXT(255)");
+                }
+            }
         }
     }
 

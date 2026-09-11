@@ -4,9 +4,11 @@ import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
+import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.server.dao.AccessStoreRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.dao.UserAccount;
@@ -37,6 +39,7 @@ public class StoreServiceIntegrationTest {
 
     private StoreService service;
     private AccessDatabase database;
+    private AccessUserRepository users;
     private UserAccount admin;
     private UserAccount studentAccount;
 
@@ -44,11 +47,56 @@ public class StoreServiceIntegrationTest {
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         database = new AccessDatabase(file.getAbsolutePath());
-        AccessUserRepository users = new AccessUserRepository(database, new PasswordHasher());
+        users = new AccessUserRepository(database, new PasswordHasher());
         AccessStoreRepository store = new AccessStoreRepository(database);
         service = new StoreService(store);
         admin = users.findById("admin");
         studentAccount = users.findById("student");
+    }
+
+    @Test
+    public void userCancelsPaidOrderAndGetsStockAndBalanceBack() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 2));
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P001")));
+        assertEquals(98, findProduct("P001").getStock());
+        assertEquals(0, new BigDecimal("75.00").compareTo(
+                service.queryBalance(studentAccount)));
+
+        service.cancelOrder(studentAccount, order.getOrderId());
+
+        assertEquals(100, findProduct("P001").getStock());
+        assertEquals(0, new BigDecimal("100.00").compareTo(
+                service.queryBalance(studentAccount)));
+        assertEquals("已取消",
+                service.queryOrders(studentAccount, null).get(0).getStatusName());
+    }
+
+    @Test
+    public void cancelIsRejectedForShippedOrderOrOtherUsersOrder() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 1));
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P001")));
+
+        service.updateOrderStatus(admin, order.getOrderId(), "已发货");
+        try {
+            service.cancelOrder(studentAccount, order.getOrderId());
+            fail("Shipped order should not be cancellable by the user");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        PasswordHasher hasher = new PasswordHasher();
+        String salt = hasher.newSalt();
+        users.insert(new UserAccount("student2", hasher.hash("student123", salt), salt,
+                "演示学生二", Role.STUDENT, true));
+        UserAccount other = users.findById("student2");
+        try {
+            service.cancelOrder(other, order.getOrderId());
+            fail("Other users should not cancel someone else's order");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+        }
     }
 
     @Test
@@ -86,7 +134,7 @@ public class StoreServiceIntegrationTest {
         assertEquals(49, findProduct("P002").getStock());
         assertEquals(0, new BigDecimal("50.00").compareTo(
                 service.queryBalance(studentAccount)));
-        assertEquals(1, service.queryOrders(studentAccount).size());
+        assertEquals(1, service.queryOrders(studentAccount, null).size());
     }
 
     @Test
@@ -128,7 +176,35 @@ public class StoreServiceIntegrationTest {
         assertEquals(30, findProduct("P003").getStock());
         assertEquals(0, new BigDecimal("100.00").compareTo(
                 service.queryBalance(studentAccount)));
-        assertTrue(service.queryOrders(studentAccount).isEmpty());
+        assertTrue(service.queryOrders(studentAccount, null).isEmpty());
+    }
+
+    @Test
+    public void orderQueryFiltersByStatusCategoryAndTimeRange() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 1));
+        service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P001")));
+
+        assertEquals(1, service.queryOrders(studentAccount,
+                new OrderQueryRequest("已付款", null, "全部")).size());
+        assertEquals(0, service.queryOrders(studentAccount,
+                new OrderQueryRequest("已完成", null, "全部")).size());
+
+        assertEquals(1, service.queryOrders(studentAccount,
+                new OrderQueryRequest(null, "文具", "全部")).size());
+        assertEquals(0, service.queryOrders(studentAccount,
+                new OrderQueryRequest(null, "图书", "全部")).size());
+
+        assertEquals(1, service.queryOrders(studentAccount,
+                new OrderQueryRequest(null, null, "今天")).size());
+
+        try {
+            service.queryOrders(studentAccount,
+                    new OrderQueryRequest(null, null, "上月"));
+            fail("Invalid time range should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+        }
     }
 
     @Test
@@ -191,9 +267,10 @@ public class StoreServiceIntegrationTest {
         OrderDto order = service.createOrder(studentAccount,
                 new OrderCreateRequest(Collections.singletonList("P004")));
 
-        assertEquals(1, service.queryOrders(admin).size());
+        assertEquals(1, service.queryOrders(admin, null).size());
         service.updateOrderStatus(admin, order.getOrderId(), "已发货");
-        assertEquals("已发货", service.queryOrders(studentAccount).get(0).getStatusName());
+        assertEquals("已发货",
+                service.queryOrders(studentAccount, null).get(0).getStatusName());
         try {
             service.updateOrderStatus(studentAccount, order.getOrderId(), "已取消");
             fail("Only admin can change order status");

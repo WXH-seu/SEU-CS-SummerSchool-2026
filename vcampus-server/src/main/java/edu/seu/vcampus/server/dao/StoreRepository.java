@@ -2,6 +2,7 @@ package edu.seu.vcampus.server.dao;
 
 import edu.seu.vcampus.common.dto.CartItemDto;
 import edu.seu.vcampus.common.dto.OrderDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 
@@ -27,9 +28,11 @@ public interface StoreRepository {
 
     /** 对购物车中指定的商品结算；productIds 为空集合表示没有可结算项。 */
     OrderDto createOrder(String userId, Set<String> productIds) throws SQLException;
-    List<OrderDto> findOrders(String userId) throws SQLException;
+    List<OrderDto> findOrders(String userId, OrderQueryRequest query) throws SQLException;
     boolean orderExists(String orderId) throws SQLException;
     void updateOrderStatus(String orderId, String statusName) throws SQLException;
+    /** 用户取消本人已付款订单：回滚库存与余额并把状态改为已取消。 */
+    void cancelOrder(String orderId, String userId) throws SQLException;
 
     BigDecimal findBalance(String userId) throws SQLException;
     /** 充值成功后返回最新余额。 */
