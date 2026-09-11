@@ -13,11 +13,22 @@ public final class SectionRosterEntry implements Serializable {
     private final String fullName;
     private final String departmentName;
     private final String className;
+    private final String attemptType;
+    private final String phone;
+    private final String email;
     private final String enrollTime;
 
     public SectionRosterEntry(String sectionId, String courseId, String courseName,
                               String studentId, String fullName, String departmentName,
                               String className, String enrollTime) {
+        this(sectionId, courseId, courseName, studentId, fullName, departmentName,
+                className, null, null, null, enrollTime);
+    }
+
+    public SectionRosterEntry(String sectionId, String courseId, String courseName,
+                              String studentId, String fullName, String departmentName,
+                              String className, String attemptType, String phone,
+                              String email, String enrollTime) {
         this.sectionId = sectionId;
         this.courseId = courseId;
         this.courseName = courseName;
@@ -25,6 +36,9 @@ public final class SectionRosterEntry implements Serializable {
         this.fullName = fullName;
         this.departmentName = departmentName;
         this.className = className;
+        this.attemptType = attemptType;
+        this.phone = phone;
+        this.email = email;
         this.enrollTime = enrollTime;
     }
 
@@ -54,6 +68,18 @@ public final class SectionRosterEntry implements Serializable {
 
     public String getClassName() {
         return className;
+    }
+
+    public String getAttemptType() {
+        return attemptType;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public String getEnrollTime() {

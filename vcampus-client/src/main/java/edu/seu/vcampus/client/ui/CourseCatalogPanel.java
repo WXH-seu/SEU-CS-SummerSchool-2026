@@ -14,6 +14,7 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SectionAudienceDto;
 import edu.seu.vcampus.common.dto.SectionRosterEntry;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 
@@ -192,16 +193,32 @@ final class CourseCatalogPanel extends JPanel {
                 tableModel.addRow(new Object[]{
                         course.getCourseId(), course.getCourseName(),
                         course.getCourseNature(), course.getTeacherName(),
-                        course.getCredit(), capacity, course.getClassTime(),
+                        course.getCredit(), quotaOf(course), course.getClassTime(),
                         windowShort(course), stateNote(course)});
             } else {
                 tableModel.addRow(new Object[]{
                         course.getCourseId(), course.getCourseName(),
                         course.getCourseNature(), course.getTeacherName(),
                         course.getDepartmentName(), course.getCredit(), capacity,
-                        course.getSemesterName(), course.getClassTime(), stateNote(course)});
+                        poolSummary(course), course.getSemesterName(), course.getClassTime(),
+                        stateNote(course)});
             }
         }
+    }
+
+    private String quotaOf(CourseDto course) {
+        if (CourseDto.ATTEMPT_RETAKE.equals(course.getAttemptType())) {
+            return "重修 " + course.getRetakeEnrolled() + "/"
+                    + course.getRetakeCapacity();
+        }
+        return "首修 " + course.getFirstAttemptEnrolled() + "/"
+                + course.getFirstAttemptCapacity();
+    }
+
+    private String poolSummary(CourseDto course) {
+        return course.getFirstAttemptEnrolled() + "/"
+                + course.getFirstAttemptCapacity() + " · "
+                + course.getRetakeEnrolled() + "/" + course.getRetakeCapacity();
     }
 
     private String stateNote(CourseDto course) {
@@ -212,6 +229,30 @@ final class CourseCatalogPanel extends JPanel {
             return course.isSelected() ? "已选" : "可报名";
         }
         return course.isActive() ? "开放" : "停用";
+    }
+
+    private String attemptLabel(String attemptType) {
+        return CourseDto.ATTEMPT_RETAKE.equals(attemptType) ? "重修" : "首修";
+    }
+
+    private String scheduleText(SectionScheduleDto schedule) {
+        return schedule.getWeekStart() + "-" + schedule.getWeekEnd() + "周 "
+                + weekdayName(schedule.getWeekday()) + " "
+                + schedule.getPeriodStart() + "-" + schedule.getPeriodEnd()
+                + " 节 · " + blankTo(schedule.getLocation(), "未填地点");
+    }
+
+    private String weekdayName(int weekday) {
+        switch (weekday) {
+            case 1: return "周一";
+            case 2: return "周二";
+            case 3: return "周三";
+            case 4: return "周四";
+            case 5: return "周五";
+            case 6: return "周六";
+            case 7: return "周日";
+            default: return "周" + weekday;
+        }
     }
 
     private void selectSelected() {
@@ -251,24 +292,52 @@ final class CourseCatalogPanel extends JPanel {
             protected void done() {
                 try {
                     List<SectionRosterEntry> entries = get();
-                    DefaultTableModel rosterModel = SeuTables.readOnlyModel(new String[]{
-                            "学号", "姓名", "院系", "班级", "选课时间"});
+                    int firstCount = 0;
+                    int retakeCount = 0;
+                    boolean administrator = effectiveRole == SubSystemRole.ADMIN;
+                    String[] columns = administrator
+                            ? new String[]{"学号", "姓名", "院系", "班级", "修读类型",
+                                    "电话", "邮箱", "选课时间"}
+                            : new String[]{"学号", "姓名", "院系", "班级", "修读类型",
+                                    "电话", "邮箱"};
+                    DefaultTableModel rosterModel = SeuTables.readOnlyModel(columns);
                     for (SectionRosterEntry entry : entries) {
-                        rosterModel.addRow(new Object[]{entry.getStudentId(),
-                                entry.getFullName(), entry.getDepartmentName(),
-                                entry.getClassName(), entry.getEnrollTime()});
+                        if (CourseDto.ATTEMPT_RETAKE.equals(entry.getAttemptType())) {
+                            retakeCount++;
+                        } else {
+                            firstCount++;
+                        }
+                        Object[] row = administrator
+                                ? new Object[]{entry.getStudentId(), entry.getFullName(),
+                                        entry.getDepartmentName(), entry.getClassName(),
+                                        attemptLabel(entry.getAttemptType()),
+                                        blankTo(entry.getPhone(), "—"),
+                                        blankTo(entry.getEmail(), "—"),
+                                        entry.getEnrollTime()}
+                                : new Object[]{entry.getStudentId(), entry.getFullName(),
+                                        entry.getDepartmentName(), entry.getClassName(),
+                                        attemptLabel(entry.getAttemptType()),
+                                        blankTo(entry.getPhone(), "—"),
+                                        blankTo(entry.getEmail(), "—")};
+                        rosterModel.addRow(row);
                     }
                     JTable rosterTable = SeuTables.create(rosterModel);
                     rosterTable.getColumnModel().getColumn(0).setPreferredWidth(110);
                     rosterTable.getColumnModel().getColumn(1).setPreferredWidth(110);
                     rosterTable.getColumnModel().getColumn(2).setPreferredWidth(170);
                     rosterTable.getColumnModel().getColumn(3).setPreferredWidth(160);
-                    rosterTable.getColumnModel().getColumn(4).setPreferredWidth(180);
+                    rosterTable.getColumnModel().getColumn(4).setPreferredWidth(70);
+                    rosterTable.getColumnModel().getColumn(5).setPreferredWidth(120);
+                    rosterTable.getColumnModel().getColumn(6).setPreferredWidth(150);
+                    if (administrator) {
+                        rosterTable.getColumnModel().getColumn(7).setPreferredWidth(170);
+                    }
                     installTooltips(rosterTable);
                     JScrollPane scroll = SeuTables.scroll(rosterTable);
-                    scroll.setPreferredSize(new java.awt.Dimension(780, 320));
+                    scroll.setPreferredSize(new java.awt.Dimension(900, 320));
                     JOptionPane.showMessageDialog(CourseCatalogPanel.this, scroll,
-                            "选课名单 · " + course.getCourseName(),
+                            "选课名单 · " + course.getCourseName()
+                                    + "（首修 " + firstCount + " · 重修 " + retakeCount + "）",
                             JOptionPane.PLAIN_MESSAGE);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -295,16 +364,27 @@ final class CourseCatalogPanel extends JPanel {
         detailRow(html, "授课教师", course.getTeacherName());
         detailRow(html, "开课院系", course.getDepartmentName());
         detailRow(html, "学分", String.valueOf(course.getCredit()));
-        detailRow(html, "容量 / 已选",
+        detailRow(html, "最大容量 / 已选",
                 course.getCapacity() + " / " + course.getEnrolledCount());
+        detailRow(html, "首修名额（软池）",
+                course.getFirstAttemptEnrolled() + " / " + course.getFirstAttemptCapacity());
+        detailRow(html, "重修名额（软池）",
+                course.getRetakeEnrolled() + " / " + course.getRetakeCapacity());
         detailRow(html, "学期", course.getSemesterName());
-        detailRow(html, "上课时间", course.getClassTime());
-        detailRow(html, "上课地点", blankTo(course.getLocation(), "未填写"));
+        if (course.getSchedules() == null || course.getSchedules().isEmpty()) {
+            detailRow(html, "上课时间", course.getClassTime());
+            detailRow(html, "上课地点", blankTo(course.getLocation(), "未填写"));
+        } else {
+            for (SectionScheduleDto schedule : course.getSchedules()) {
+                detailRow(html, "上课时段", scheduleText(schedule));
+            }
+        }
         detailRow(html, "选课窗口", windowFull(course));
         detailRow(html, "课程简介", blankTo(course.getDescription(), "无"));
         detailRow(html, "选课受众", audienceText(course));
         detailRow(html, "状态", course.isActive() ? "开放" : "停用");
         if (student) {
+            detailRow(html, "修读类型", attemptLabel(course.getAttemptType()));
             detailRow(html, "当前状态", stateNote(course));
         }
         html.append("</table></html>");
@@ -439,7 +519,7 @@ final class CourseCatalogPanel extends JPanel {
 
     private String[] studentColumns() {
         return new String[]{"课程编号", "课程名称", "性质", "教师", "学分",
-                "容量/已选", "上课时间", "选课窗口", "状态"};
+                "我的名额", "上课时间", "选课窗口", "状态"};
     }
 
     private int[] studentWidths() {
@@ -448,11 +528,11 @@ final class CourseCatalogPanel extends JPanel {
 
     private String[] staffColumns() {
         return new String[]{"课程编号", "课程名称", "性质", "教师", "开课院系",
-                "学分", "容量/已选", "学期", "上课时间", "状态"};
+                "学分", "容量/已选", "首修/重修", "学期", "上课时间", "状态"};
     }
 
     private int[] staffWidths() {
-        return new int[]{90, 190, 60, 130, 130, 60, 80, 120, 150, 90};
+        return new int[]{90, 180, 60, 120, 120, 60, 70, 90, 110, 140, 80};
     }
 
     private String windowShort(CourseDto course) {

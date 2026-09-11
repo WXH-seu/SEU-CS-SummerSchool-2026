@@ -7,6 +7,7 @@ import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.CourseDto;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SectionAudienceDto;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.TeacherDto;
 
 import javax.swing.DefaultListModel;
@@ -42,6 +43,10 @@ final class CourseEditorDialog {
         JTextField credit = field(value == null ? "3.0" : String.valueOf(value.getCredit()), true);
         JTextField capacity = field(value == null ? "30" : String.valueOf(value.getCapacity()),
                 true);
+        JTextField firstCap = field(value == null
+                ? "30" : String.valueOf(value.getFirstAttemptCapacity()), true);
+        JTextField retakeCap = field(value == null
+                ? "30" : String.valueOf(value.getRetakeCapacity()), true);
         JTextField semester = field(value == null ? "2026-2027-1" : value.getSemesterName(),
                 true);
         JTextField classTime = field(value == null ? "" : value.getClassTime(), true);
@@ -101,6 +106,77 @@ final class CourseEditorDialog {
             }
         });
 
+        DefaultListModel<ScheduleItem> scheduleModel = new DefaultListModel<ScheduleItem>();
+        List<SectionScheduleDto> existingSchedules = value == null
+                ? new ArrayList<SectionScheduleDto>() : value.getSchedules();
+        for (SectionScheduleDto schedule : existingSchedules) {
+            scheduleModel.addElement(new ScheduleItem(schedule));
+        }
+        JList<ScheduleItem> scheduleList = new JList<ScheduleItem>(scheduleModel);
+        scheduleList.setFont(SeuTheme.bodyFont());
+        scheduleList.setFixedCellHeight(24);
+        JComboBox<String> weekday = SeuFields.combo(new String[]{
+                "周一", "周二", "周三", "周四", "周五", "周六", "周日"});
+        JTextField pStart = SeuFields.text(2);
+        pStart.setText("1");
+        JTextField pEnd = SeuFields.text(2);
+        pEnd.setText("2");
+        JTextField wStart = SeuFields.text(4);
+        wStart.setText("1");
+        JTextField wEnd = SeuFields.text(4);
+        wEnd.setText("16");
+        JTextField sLocation = SeuFields.text(12);
+        JButton addSchedule = SeuButtons.secondary("添加时段");
+        JButton removeSchedule = SeuButtons.danger("移除选中");
+        addSchedule.addActionListener(event -> {
+            try {
+                int weekdayValue = weekday.getSelectedIndex() + 1;
+                scheduleModel.addElement(new ScheduleItem(new SectionScheduleDto(
+                        weekdayValue, parseScheduleInt(pStart, "起始节次"),
+                        parseScheduleInt(pEnd, "结束节次"),
+                        parseScheduleInt(wStart, "起始周"),
+                        parseScheduleInt(wEnd, "结束周"),
+                        text(sLocation))));
+            } catch (IllegalArgumentException e) {
+                JOptionPane.showMessageDialog(parent, e.getMessage(), "时段有误",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        removeSchedule.addActionListener(event -> {
+            int index = scheduleList.getSelectedIndex();
+            if (index >= 0) {
+                scheduleModel.remove(index);
+            }
+        });
+        JPanel scheduleBar = new JPanel(new java.awt.FlowLayout(
+                java.awt.FlowLayout.LEFT, SeuTheme.SPACE_SM, 0));
+        scheduleBar.setOpaque(false);
+        scheduleBar.add(SeuLabels.field("星期"));
+        scheduleBar.add(weekday);
+        scheduleBar.add(SeuLabels.field("节次"));
+        scheduleBar.add(pStart);
+        scheduleBar.add(new javax.swing.JLabel("—"));
+        scheduleBar.add(pEnd);
+        scheduleBar.add(SeuLabels.field("周"));
+        scheduleBar.add(wStart);
+        scheduleBar.add(new javax.swing.JLabel("—"));
+        scheduleBar.add(wEnd);
+        scheduleBar.add(SeuLabels.field("地点"));
+        scheduleBar.add(sLocation);
+        scheduleBar.add(addSchedule);
+        scheduleBar.add(removeSchedule);
+        JScrollPane scheduleScroll = new JScrollPane(scheduleList);
+        scheduleScroll.setPreferredSize(new java.awt.Dimension(420, 80));
+        scheduleScroll.setBorder(javax.swing.BorderFactory.createLineBorder(
+                SeuTheme.BORDER, 1));
+        JPanel schedulePanel = new JPanel(new java.awt.BorderLayout(
+                0, SeuTheme.SPACE_SM));
+        schedulePanel.setOpaque(false);
+        schedulePanel.add(SeuLabels.field("上课时段（周范围 + 星期 + 节次 + 地点，可多条）"),
+                java.awt.BorderLayout.NORTH);
+        schedulePanel.add(scheduleBar, java.awt.BorderLayout.CENTER);
+        schedulePanel.add(scheduleScroll, java.awt.BorderLayout.SOUTH);
+
         JPanel audienceBar = new JPanel(new java.awt.FlowLayout(
                 java.awt.FlowLayout.LEFT, SeuTheme.SPACE_SM, 0));
         audienceBar.setOpaque(false);
@@ -126,10 +202,10 @@ final class CourseEditorDialog {
         addRow(form, "开课院系*", department);
         addRow(form, "学分*", credit);
         addRow(form, "课程性质*", nature);
-        addRow(form, "容量*", capacity);
+        addRow(form, "最大容量*", capacity);
+        addRow(form, "首修名额（软池）*", firstCap);
+        addRow(form, "重修名额（软池）*", retakeCap);
         addRow(form, "学期*", semester);
-        addRow(form, "上课时间*", classTime);
-        addRow(form, "上课地点", location);
         addRow(form, "选课开始(yyyy-MM-dd HH:mm)", start);
         addRow(form, "选课结束(yyyy-MM-dd HH:mm)", end);
         addRow(form, "状态", active);
@@ -148,6 +224,7 @@ final class CourseEditorDialog {
         audiencePanel.add(audienceBar, java.awt.BorderLayout.CENTER);
         audiencePanel.add(audienceScroll, java.awt.BorderLayout.SOUTH);
         body.add(audiencePanel, java.awt.BorderLayout.CENTER);
+        body.add(schedulePanel, java.awt.BorderLayout.SOUTH);
 
         if (JOptionPane.showConfirmDialog(parent, body,
                 value == null ? "新增教学班" : "编辑教学班",
@@ -159,13 +236,28 @@ final class CourseEditorDialog {
         for (int i = 0; i < audienceModel.size(); i++) {
             audiences.add(audienceModel.get(i).dto);
         }
+        List<SectionScheduleDto> schedules = new ArrayList<SectionScheduleDto>();
+        for (int i = 0; i < scheduleModel.size(); i++) {
+            schedules.add(scheduleModel.get(i).dto);
+        }
+        String classTimeValue = text(classTime);
+        String locationValue = text(location);
+        if (!schedules.isEmpty()) {
+            classTimeValue = scheduleSummary(schedules);
+            locationValue = locationSummary(schedules);
+        }
         return new CourseDto(value == null ? null : value.getSectionId(),
                 text(id), text(name), text(description),
                 selectedId(teacher), null, selectedId(department), null,
                 parseCredit(credit), String.valueOf(nature.getSelectedItem()),
-                parseCapacity(capacity), value == null ? 0 : value.getEnrolledCount(),
-                text(semester), text(classTime), text(location),
-                text(start), text(end), active.isSelected(), false, null, audiences);
+                parseCapacity(capacity), parsePool(firstCap), parsePool(retakeCap),
+                value == null ? 0 : value.getFirstAttemptEnrolled(),
+                value == null ? 0 : value.getRetakeEnrolled(),
+                value == null ? 0 : value.getEnrolledCount(),
+                value == null ? null : value.getAttemptType(),
+                text(semester), classTimeValue, locationValue,
+                text(start), text(end), active.isSelected(), false, null,
+                audiences, schedules);
     }
 
     private static void addRow(JPanel form, String label, Component component) {
@@ -317,6 +409,96 @@ final class CourseEditorDialog {
             return Integer.parseInt(text(field));
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("容量必须是整数");
+        }
+    }
+
+    private static int parsePool(JTextField field) {
+        try {
+            int value = Integer.parseInt(text(field));
+            if (value < 0) {
+                throw new IllegalArgumentException("名额不能为负数");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("名额必须是整数");
+        }
+    }
+
+    private static int parseScheduleInt(JTextField field, String label) {
+        try {
+            int value = Integer.parseInt(text(field));
+            if (value <= 0) {
+                throw new IllegalArgumentException(label + "必须大于 0");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(label + "必须是整数");
+        }
+    }
+
+    private static String scheduleSummary(List<SectionScheduleDto> schedules) {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < schedules.size(); i++) {
+            SectionScheduleDto schedule = schedules.get(i);
+            if (i > 0) {
+                text.append("；");
+            }
+            text.append(schedule.getWeekStart()).append('-')
+                    .append(schedule.getWeekEnd()).append("周 ")
+                    .append(weekdayName(schedule.getWeekday())).append(' ')
+                    .append(schedule.getPeriodStart()).append('-')
+                    .append(schedule.getPeriodEnd()).append(" 节");
+        }
+        return text.toString();
+    }
+
+    private static String locationSummary(List<SectionScheduleDto> schedules) {
+        java.util.LinkedHashSet<String> locations = new java.util.LinkedHashSet<String>();
+        for (SectionScheduleDto schedule : schedules) {
+            if (schedule.getLocation() != null
+                    && !schedule.getLocation().trim().isEmpty()) {
+                locations.add(schedule.getLocation().trim());
+            }
+        }
+        StringBuilder text = new StringBuilder();
+        int i = 0;
+        for (String location : locations) {
+            if (i++ > 0) {
+                text.append("；");
+            }
+            text.append(location);
+        }
+        return text.toString();
+    }
+
+    private static String weekdayName(int weekday) {
+        switch (weekday) {
+            case 1: return "周一";
+            case 2: return "周二";
+            case 3: return "周三";
+            case 4: return "周四";
+            case 5: return "周五";
+            case 6: return "周六";
+            case 7: return "周日";
+            default: return "周" + weekday;
+        }
+    }
+
+    /** 上课时段的显示包装。 */
+    private static final class ScheduleItem {
+        private final SectionScheduleDto dto;
+        private final String label;
+
+        ScheduleItem(SectionScheduleDto dto) {
+            this.dto = dto;
+            this.label = scheduleSummary(java.util.Collections.singletonList(dto))
+                    + " · " + (dto.getLocation() == null || dto.getLocation().isEmpty()
+                            ? "未填地点" : dto.getLocation());
+        }
+
+        @Override
+        public String toString() {
+            return label;
         }
     }
 

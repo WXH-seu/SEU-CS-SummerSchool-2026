@@ -6,7 +6,9 @@ import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.CourseSelectRequest;
 import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.SectionAudienceDto;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.StudentDto;
+import edu.seu.vcampus.common.dto.TeacherDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
@@ -122,6 +124,8 @@ public class CourseServiceIntegrationTest {
 
         academicService.saveDepartment(admin.getUserId(), effAcademic(admin),
                 new DepartmentDto("EE", "电子科学与工程学院", "测试院系", true));
+        academicService.saveTeacher(admin.getUserId(), effAcademic(admin),
+                new TeacherDto("T0002", null, "测试教师二", "CS", "讲师", "", "", true));
         CourseDto eeOnly = service.saveCourse(admin.getUserId(), eff(admin),
                 demoCourse("CS302", "仅电子学院", "2026-09-01 08:00", "2026-12-31 23:59",
                         "周六 1-2 节", 30,
@@ -268,12 +272,80 @@ public class CourseServiceIntegrationTest {
                 admin.getUserId(), eff(admin), null), "CS102");
         try {
             service.saveCourse(admin.getUserId(), eff(admin),
-                    withClassTime(cs102, "周一 3-4 节"));
+                    withSchedules(cs102, Collections.singletonList(slot(1, 3, 4, 1, 16))));
             fail("Teacher already teaches CS101 at the requested time");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
             assertTrue(expected.getMessage().contains("教师"));
         }
+    }
+
+    @Test
+    public void retakeUsesOwnPoolAndCanOverflowToMaxCapacity() throws Exception {
+        String stu2 = createStudent("stu2", "20260003");
+        String stu3 = createStudent("stu3", "20260004");
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCoursePools("CS601", "重修分流", "2026-09-01 08:00",
+                        "2026-12-31 23:59", "周日 5-6 节", 2, 1, 0,
+                        allAudience()));
+        courseRepository.addCourseRecord("20260001", "CS601", "2025-2026-1", "未通过");
+        String sectionId = section.getSectionId();
+
+        // 20260001 has a failed record for CS601 -> retake pool (capacity 0),
+        // but the total is below the maximum, so it may overflow.
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(sectionId));
+        service.selectCourse(stu2, SubSystemRole.STUDENT,
+                new CourseSelectRequest(sectionId));
+        assertEquals(2, courseRepository.countEnrolled(sectionId));
+        try {
+            service.selectCourse(stu3, SubSystemRole.STUDENT,
+                    new CourseSelectRequest(sectionId));
+            fail("A third first-attempt student should be rejected when total is full");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("名额已满"));
+        }
+
+        List<edu.seu.vcampus.common.dto.SectionRosterEntry> roster =
+                service.queryRoster(teacher.getUserId(), eff(teacher), sectionId);
+        assertEquals(2, roster.size());
+        long retakes = roster.stream()
+                .filter(row -> CourseDto.ATTEMPT_RETAKE.equals(row.getAttemptType()))
+                .count();
+        assertEquals(1, retakes);
+        assertTrue(roster.stream().anyMatch(row -> "13800000001".equals(row.getPhone())));
+    }
+
+    @Test
+    public void scheduleSlotsConflictOnWeekdayPeriodWeekOverlap() throws Exception {
+        academicService.saveTeacher(admin.getUserId(), effAcademic(admin),
+                new TeacherDto("T0002", null, "测试教师二", "CS", "讲师", "", "", true));
+        academicService.saveTeacher(admin.getUserId(), effAcademic(admin),
+                new TeacherDto("T0003", null, "测试教师三", "CS", "讲师", "", "", true));
+        CourseDto first = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS701", "早课", "T0002",
+                        slot(5, 7, 8, 1, 16)));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(first.getSectionId()));
+
+        CourseDto overlap = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS702", "撞时段", "T0003",
+                        slot(5, 7, 8, 8, 16)));
+        try {
+            service.selectCourse(student.getUserId(), eff(student),
+                    new CourseSelectRequest(overlap.getSectionId()));
+            fail("Overlapping weekday/period/week should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+
+        CourseDto differentWeek = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS703", "错周课", "T0003",
+                        slot(5, 7, 8, 17, 20)));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(differentWeek.getSectionId()));
+        assertEquals(3, service.querySchedule(student.getUserId(), eff(student)).size());
     }
 
     @Test
@@ -383,13 +455,31 @@ public class CourseServiceIntegrationTest {
                 source.getReason(), source.getAudiences());
     }
 
+    private CourseDto withSchedules(CourseDto source, List<SectionScheduleDto> schedules) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                source.getFirstAttemptCapacity(), source.getRetakeCapacity(),
+                source.getFirstAttemptEnrolled(), source.getRetakeEnrolled(),
+                source.getEnrolledCount(), source.getAttemptType(),
+                source.getSemesterName(), source.getClassTime(), source.getLocation(),
+                source.getSelectionStartTime(), source.getSelectionEndTime(),
+                source.isActive(), source.isSelected(), source.getReason(),
+                source.getAudiences(), schedules);
+    }
+
     private String createSecondStudent(String userId) throws Exception {
+        return createStudent(userId, "20260003");
+    }
+
+    private String createStudent(String userId, String studentId) throws Exception {
         PasswordHasher hasher = new PasswordHasher();
         String salt = hasher.newSalt();
         userRepository.insert(new UserAccount(userId, hasher.hash("secret123", salt),
                 salt, "第二名学生", Role.STUDENT, true));
         academicService.saveStudent(admin.getUserId(), effAcademic(admin),
-                new StudentDto("20260003", userId, "第二名学生", "女",
+                new StudentDto(studentId, userId, "第二名学生", "女",
                         "2008-03-04", "CS", "CS2026-01", 2026, "在读", "", ""));
         return userId;
     }
@@ -414,6 +504,40 @@ public class CourseServiceIntegrationTest {
                 "T0001", null, "CS", null, 3.0, nature, capacity, 0,
                 "2026-2027-1", classTime, "教1-201", start, end,
                 true, false, null, audiences);
+    }
+
+    private CourseDto demoCoursePools(String courseId, String courseName,
+                                      String start, String end, String classTime,
+                                      int capacity, int firstAttemptCapacity,
+                                      int retakeCapacity,
+                                      List<SectionAudienceDto> audiences) {
+        return new CourseDto(null, courseId, courseName, "测试课程",
+                "T0001", null, "CS", null, 3.0, "必修",
+                capacity, firstAttemptCapacity, retakeCapacity, 0, 0, 0, null,
+                "2026-2027-1", classTime, "教1-201", start, end,
+                true, false, null, audiences);
+    }
+
+    private SectionScheduleDto slot(int weekday, int periodStart, int periodEnd,
+                                    int weekStart, int weekEnd) {
+        return new SectionScheduleDto(weekday, periodStart, periodEnd,
+                weekStart, weekEnd, "教1-301");
+    }
+
+    private CourseDto demoScheduledCourse(String courseId, String courseName,
+                                          SectionScheduleDto schedule) {
+        return demoScheduledCourse(courseId, courseName, "T0001", schedule);
+    }
+
+    private CourseDto demoScheduledCourse(String courseId, String courseName,
+                                          String teacherId, SectionScheduleDto schedule) {
+        return new CourseDto(null, courseId, courseName, "测试课程",
+                teacherId, null, "CS", null, 3.0, "必修",
+                30, 30, 5, 0, 0, 0, null,
+                "2026-2027-1", "", "",
+                "2026-09-01 08:00", "2026-12-31 23:59",
+                true, false, null, allAudience(),
+                java.util.Collections.singletonList(schedule));
     }
 
 }

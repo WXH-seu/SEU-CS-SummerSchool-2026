@@ -4,6 +4,7 @@ import edu.seu.vcampus.common.dto.CourseDto;
 import edu.seu.vcampus.common.dto.CourseEnrollmentDto;
 import edu.seu.vcampus.common.dto.CourseQueryRequest;
 import edu.seu.vcampus.common.dto.SectionRosterEntry;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.dto.StudentDto;
 
 import java.sql.SQLException;
@@ -23,6 +24,23 @@ public interface CourseRepository {
     boolean sectionHasEnrollments(String sectionId) throws SQLException;
 
     List<SectionRosterEntry> findRoster(String sectionId) throws SQLException;
+
+    /** Schedules attached to one section (may be empty for legacy rows). */
+    List<SectionScheduleDto> findSchedules(String sectionId) throws SQLException;
+
+    /** Schedules of every section the student is currently enrolled in. */
+    List<SectionScheduleDto> findStudentEnrolledSchedules(String studentId) throws SQLException;
+
+    /**
+     * For students enrolled in {@code sectionId}, their schedules in other
+     * sections (excluding the section itself).
+     */
+    List<EnrolledStudentSchedule> findEnrolledStudentsOtherSchedules(
+            String sectionId) throws SQLException;
+
+    /** Schedules of all sections taught by the teacher, excluding one section. */
+    List<SectionScheduleDto> findTeacherSectionSchedules(
+            String teacherId, String excludeSectionId) throws SQLException;
 
     /** Class times of every section the student is enrolled in. */
     List<String> findStudentEnrolledClassTimes(String studentId) throws SQLException;
@@ -44,10 +62,17 @@ public interface CourseRepository {
 
     int countEnrolled(String sectionId) throws SQLException;
 
-    void insertEnrollment(String studentId, String sectionId,
+    AttemptCounts countAttempts(String sectionId) throws SQLException;
+
+    void insertEnrollment(String studentId, String sectionId, String attemptType,
                           String enrollmentId, String enrollTime) throws SQLException;
 
     boolean deleteEnrollment(String studentId, String enrollmentId) throws SQLException;
+
+    boolean hasCompletedCourse(String studentId, String courseId) throws SQLException;
+
+    void addCourseRecord(String studentId, String courseId,
+                         String semesterName, String gradeStatus) throws SQLException;
 
     List<CourseEnrollmentDto> findSchedule(String studentId) throws SQLException;
 
