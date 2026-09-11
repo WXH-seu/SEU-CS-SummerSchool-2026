@@ -2,6 +2,9 @@
 target/
 *.class
 *.log
+tmp/
+__pycache__/
+*.pyc
 
 # Eclipse local metadata
 .metadata/
@@ -26,3 +29,10 @@ Thumbs.db
 # Local-only configuration and secrets
 *.local.properties
 credentials.txt
+.tmp-compile/
+vcampus-common/bin/
+vcampus-server/vcampus-database/
+vcampus-server/mail.properties
+
+# 数据库文件不入库，由服务端启动时自动创建
+vcampus-database/vCampus.accdb

@@ -1,8 +1,8 @@
 package edu.seu.vcampus.client;
 
-import com.formdev.flatlaf.FlatLightLaf;
 import edu.seu.vcampus.client.config.ClientConfig;
 import edu.seu.vcampus.client.ui.LoginFrame;
+import edu.seu.vcampus.client.ui.components.SeuTheme;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -13,7 +13,7 @@ public final class ClientApplication {
     }
 
     public static void main(String[] args) {
-        FlatLightLaf.setup();
+        SeuTheme.install();
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {

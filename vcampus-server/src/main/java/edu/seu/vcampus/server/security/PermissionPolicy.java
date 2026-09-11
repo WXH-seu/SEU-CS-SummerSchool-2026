@@ -1,0 +1,213 @@
+package edu.seu.vcampus.server.security;
+
+import edu.seu.vcampus.common.enums.Operation;
+import edu.seu.vcampus.common.enums.Role;
+import edu.seu.vcampus.common.enums.SubSystem;
+import edu.seu.vcampus.common.enums.SubSystemRole;
+import edu.seu.vcampus.common.enums.SubSystems;
+
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+/**
+ * Central role-based permission matrix.
+ *
+ * <p>Every operation is either <em>public</em> (reachable without a session),
+ * restricted to global or effective sub-system roles, or open to any
+ * authenticated user.
+ * The dispatcher consults this policy before executing any request so that
+ * other modules (student, course, library, store) can rely on one consistent
+ * permission check instead of implementing their own.
+ *
+ * <p>User-module permissions use global {@link Role}s. Business-module
+ * permissions use only {@link SubSystemRole}s, after the current account has
+ * been normalised for the target sub-system. This keeps academic, course,
+ * library and store code independent from the global account hierarchy.
+ */
+public final class PermissionPolicy {
+    private final Set<Operation> publicOperations =
+            Collections.newSetFromMap(new ConcurrentHashMap<Operation, Boolean>());
+    private final ConcurrentMap<Operation, Set<Role>> requirements =
+            new ConcurrentHashMap<Operation, Set<Role>>();
+    private final ConcurrentMap<Operation, Set<SubSystemRole>> subSystemRequirements =
+            new ConcurrentHashMap<Operation, Set<SubSystemRole>>();
+
+    /** Creates the policy and installs the default matrix. */
+    public PermissionPolicy() {
+        installDefaults();
+    }
+
+    /**
+     * Marks the operation as public: it may be invoked without a session token.
+     * Login and health checks belong here.
+     */
+    public void markPublic(Operation operation) {
+        if (operation == null) {
+            throw new IllegalArgumentException("operation is required");
+        }
+        publicOperations.add(operation);
+        requirements.remove(operation);
+        subSystemRequirements.remove(operation);
+    }
+
+    /**
+     * Restricts the operation to the given roles. Passing no roles removes any
+     * role restriction so that every authenticated user may call it.
+     */
+    public void require(Operation operation, Role... roles) {
+        if (operation == null) {
+            throw new IllegalArgumentException("operation is required");
+        }
+        if (SubSystems.of(operation) != null) {
+            throw new IllegalArgumentException(
+                    "use requireSubSystem for business sub-system operations");
+        }
+        if (roles == null || roles.length == 0) {
+            requirements.remove(operation);
+        } else {
+            EnumSet<Role> allowed = EnumSet.noneOf(Role.class);
+            Collections.addAll(allowed, roles);
+            requirements.put(operation, Collections.unmodifiableSet(allowed));
+        }
+    }
+
+    /**
+     * Restricts a business operation to effective sub-system roles. Passing no
+     * roles makes the operation available to every authenticated sub-system
+     * role. Global roles must never be used to describe business permissions.
+     */
+    public void requireSubSystem(Operation operation, SubSystemRole... roles) {
+        if (operation == null || SubSystems.of(operation) == null) {
+            throw new IllegalArgumentException("business sub-system operation is required");
+        }
+        requirements.remove(operation);
+        if (roles == null || roles.length == 0) {
+            subSystemRequirements.remove(operation);
+        } else {
+            EnumSet<SubSystemRole> allowed = EnumSet.noneOf(SubSystemRole.class);
+            Collections.addAll(allowed, roles);
+            subSystemRequirements.put(operation, Collections.unmodifiableSet(allowed));
+        }
+    }
+
+    /** Returns {@code true} when the operation needs no session. */
+    public boolean isPublic(Operation operation) {
+        return publicOperations.contains(operation);
+    }
+
+    /**
+     * Checks whether a logged-in user with the given role and granted sub-system
+     * scopes may run the operation. For a sub-system administrator the
+     * <em>effective</em> role is used: granted sub-systems keep the
+     * {@link Role#SUBSYSADMIN} (manager) role, while sub-systems outside the
+     * scopes are treated as {@link Role#TEACHER} so the administrator still has
+     * ordinary usage rights but no management authority there. Operations
+     * without an explicit role restriction are allowed for every authenticated
+     * role; a {@code null} role never passes a protected operation.
+     */
+    public boolean allows(Operation operation, Role role, Set<String> adminScopes) {
+        if (operation == null) {
+            return false;
+        }
+        if (isPublic(operation)) {
+            return true;
+        }
+        if (role == null) {
+            return false;
+        }
+        SubSystem subSystem = SubSystems.of(operation);
+        if (subSystem != null) {
+            SubSystemRole effective = SubSystems.effectiveRole(role, adminScopes, subSystem);
+            Set<SubSystemRole> allowed = subSystemRequirements.get(operation);
+            return allowed == null || allowed.contains(effective);
+        }
+        Set<Role> allowed = requirements.get(operation);
+        return allowed == null || allowed.contains(role);
+    }
+
+    /** Convenience overload: checks access with no granted sub-system scopes. */
+    public boolean allows(Operation operation, Role role) {
+        return allows(operation, role, Collections.<String>emptySet());
+    }
+
+    /** Returns global roles allowed for a user operation, or {@code null}. */
+    public Set<Role> requiredRoles(Operation operation) {
+        return requirements.get(operation);
+    }
+
+    /** Returns effective roles allowed for a business operation, or {@code null}. */
+    public Set<SubSystemRole> requiredSubSystemRoles(Operation operation) {
+        return subSystemRequirements.get(operation);
+    }
+
+    private void installDefaults() {
+        markPublic(Operation.PING);
+        markPublic(Operation.USER_LOGIN);
+        markPublic(Operation.USER_FORGOT_PASSWORD);
+        markPublic(Operation.USER_RESET_PASSWORD);
+
+        // Account management is super-admin only. The sub-system admin (SUBSYSADMIN)
+        // only operates business sub-systems and cannot register users or
+        // change account status.
+        require(Operation.USER_REGISTER, Role.SUPER_ADMIN);
+        require(Operation.USER_IMPORT_CSV, Role.SUPER_ADMIN);
+        require(Operation.USER_LIST_QUERY, Role.SUPER_ADMIN);
+        require(Operation.USER_STATUS_UPDATE, Role.SUPER_ADMIN);
+        require(Operation.USER_AUDIT_QUERY, Role.SUPER_ADMIN);
+
+        // Any authenticated user may manage his or her own account.
+        require(Operation.USER_LOGOUT);
+        require(Operation.USER_ACCOUNT_QUERY);
+        require(Operation.USER_PROFILE_UPDATE);
+        require(Operation.USER_PASSWORD_CHANGE);
+        require(Operation.USER_DELETE);
+
+        // Default matrix for business modules. Entries use SubSystemRole because
+        // RequestDispatcher normalises the global account into STUDENT / TEACHER /
+        // ADMIN before the handler runs. Empty role lists mean every authenticated
+        // effective role may call the operation. Management operations stay
+        // ADMIN-only; a SUBSYSADMIN outside its granted scopes is normalised to
+        // TEACHER and therefore cannot manage that sub-system.
+        requireSubSystem(Operation.STUDENT_QUERY);
+        requireSubSystem(Operation.STUDENT_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STUDENT_IMPORT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STUDENT_PROFILE_UPDATE, SubSystemRole.STUDENT);
+        requireSubSystem(Operation.CATALOG_MAJOR_QUERY);
+        requireSubSystem(Operation.CATALOG_COURSE_QUERY);
+        requireSubSystem(Operation.COURSE_QUERY);
+        requireSubSystem(Operation.COURSE_SELECT, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.COURSE_DROP, SubSystemRole.STUDENT, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.COURSE_ROSTER, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BOOK_QUERY);
+        requireSubSystem(Operation.LIBRARY_BOOK_SAVE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BOOK_DELETE, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_BORROW,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RETURN,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RENEW,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        // Patrons see their own records; administrators see every unreturned copy.
+        requireSubSystem(Operation.LIBRARY_BORROW_QUERY);
+        requireSubSystem(Operation.LIBRARY_WISH_QUERY);
+        requireSubSystem(Operation.LIBRARY_WISH_SUBMIT,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_WISH_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_QUERY);
+        requireSubSystem(Operation.LIBRARY_RESERVE_APPLY,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.LIBRARY_RESERVE_REVIEW, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.LIBRARY_RESERVE_PICKUP);
+        requireSubSystem(Operation.STORE_PRODUCT_QUERY);
+        requireSubSystem(Operation.STORE_ORDER_CREATE,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER, SubSystemRole.ADMIN);
+        requireSubSystem(Operation.STORE_CATEGORY_QUERY);
+        requireSubSystem(Operation.STORE_BALANCE_QUERY,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+        requireSubSystem(Operation.STORE_BALANCE_RECHARGE,
+                SubSystemRole.STUDENT, SubSystemRole.TEACHER);
+    }
+}

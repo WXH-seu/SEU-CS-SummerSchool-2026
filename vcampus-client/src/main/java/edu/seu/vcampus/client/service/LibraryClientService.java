@@ -1,0 +1,158 @@
+package edu.seu.vcampus.client.service;
+
+import edu.seu.vcampus.client.network.ClientConnection;
+import edu.seu.vcampus.common.dto.BookDto;
+import edu.seu.vcampus.common.dto.BookQueryRequest;
+import edu.seu.vcampus.common.dto.BookSummary;
+import edu.seu.vcampus.common.dto.BorrowRecordDto;
+import edu.seu.vcampus.common.dto.BorrowRequest;
+import edu.seu.vcampus.common.dto.EntityIdRequest;
+import edu.seu.vcampus.common.dto.ReserveDto;
+import edu.seu.vcampus.common.dto.ReserveIdRequest;
+import edu.seu.vcampus.common.dto.ReserveReviewRequest;
+import edu.seu.vcampus.common.dto.ReturnRequest;
+import edu.seu.vcampus.common.dto.WishDto;
+import edu.seu.vcampus.common.dto.WishReviewRequest;
+import edu.seu.vcampus.common.dto.WishSubmitRequest;
+import edu.seu.vcampus.common.enums.Operation;
+import edu.seu.vcampus.common.message.RequestMessage;
+import edu.seu.vcampus.common.message.ResponseMessage;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Converts library UI actions into object-stream requests. */
+public final class LibraryClientService {
+    private final ClientConnection connection;
+    private final String sessionToken;
+
+    public LibraryClientService(ClientConnection connection, String sessionToken) {
+        this.connection = connection;
+        this.sessionToken = sessionToken;
+    }
+
+    public List<BookSummary> queryBooks(String keyword) throws IOException {
+        return queryBooks(keyword, false);
+    }
+
+    public List<BookSummary> queryBooks(String keyword, boolean includeInactive)
+            throws IOException {
+        return listRequest(Operation.LIBRARY_BOOK_QUERY,
+                new BookQueryRequest(keyword, includeInactive), BookSummary.class);
+    }
+
+    public void saveBook(BookDto book) throws IOException {
+        request(Operation.LIBRARY_BOOK_SAVE, book);
+    }
+
+    public void deleteBook(String isbn) throws IOException {
+        request(Operation.LIBRARY_BOOK_DELETE, new EntityIdRequest(isbn));
+    }
+
+    public List<BorrowRecordDto> queryBorrows() throws IOException {
+        return listRequest(Operation.LIBRARY_BORROW_QUERY, null, BorrowRecordDto.class);
+    }
+
+    public BorrowRecordDto borrowBook(String isbn) throws IOException {
+        Object body = request(Operation.LIBRARY_BORROW, new BorrowRequest(isbn)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
+    }
+
+    public void returnBook(int recordId) throws IOException {
+        request(Operation.LIBRARY_RETURN, new ReturnRequest(recordId));
+    }
+
+    public BorrowRecordDto renewBook(int recordId) throws IOException {
+        Object body = request(Operation.LIBRARY_RENEW, new ReturnRequest(recordId)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
+    }
+
+    public List<WishDto> queryWishes() throws IOException {
+        return listRequest(Operation.LIBRARY_WISH_QUERY, null, WishDto.class);
+    }
+
+    public WishDto submitWish(String title, String author) throws IOException {
+        Object body = request(Operation.LIBRARY_WISH_SUBMIT,
+                new WishSubmitRequest(title, author)).getBody();
+        if (!(body instanceof WishDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (WishDto) body;
+    }
+
+    /**
+     * Approves or rejects a wish. Returns the saved catalog row when approved,
+     * or {@code null} when rejected.
+     */
+    public BookDto reviewWish(int wishId, boolean approved, BookDto book) throws IOException {
+        Object body = request(Operation.LIBRARY_WISH_REVIEW,
+                new WishReviewRequest(wishId, approved, book)).getBody();
+        if (!approved) {
+            return null;
+        }
+        if (!(body instanceof BookDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BookDto) body;
+    }
+
+    public List<ReserveDto> queryReservations() throws IOException {
+        return listRequest(Operation.LIBRARY_RESERVE_QUERY, null, ReserveDto.class);
+    }
+
+    public ReserveDto applyReservation(String isbn) throws IOException {
+        Object body = request(Operation.LIBRARY_RESERVE_APPLY, new BorrowRequest(isbn)).getBody();
+        if (!(body instanceof ReserveDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (ReserveDto) body;
+    }
+
+    public void reviewReservation(int reservationId, boolean approved) throws IOException {
+        request(Operation.LIBRARY_RESERVE_REVIEW,
+                new ReserveReviewRequest(reservationId, approved));
+    }
+
+    public BorrowRecordDto pickupReservation(int reservationId) throws IOException {
+        Object body = request(Operation.LIBRARY_RESERVE_PICKUP,
+                new ReserveIdRequest(reservationId)).getBody();
+        if (!(body instanceof BorrowRecordDto)) {
+            throw new IOException("服务器返回的数据类型不正确");
+        }
+        return (BorrowRecordDto) body;
+    }
+
+    private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)
+            throws IOException {
+        Object responseBody = request(operation, body).getBody();
+        if (!(responseBody instanceof List)) {
+            throw new IOException("服务器返回的数据格式不正确");
+        }
+        List<?> raw = (List<?>) responseBody;
+        List<T> result = new ArrayList<T>();
+        for (Object item : raw) {
+            if (!type.isInstance(item)) {
+                throw new IOException("服务器返回的数据类型不正确");
+            }
+            result.add(type.cast(item));
+        }
+        return result;
+    }
+
+    private ResponseMessage<?> request(Operation operation, Serializable body) throws IOException {
+        ResponseMessage<?> response = connection.request(
+                new RequestMessage<Serializable>(operation, sessionToken, body));
+        if (!response.isSuccess()) {
+            throw new IOException(response.getMessage());
+        }
+        return response;
+    }
+}

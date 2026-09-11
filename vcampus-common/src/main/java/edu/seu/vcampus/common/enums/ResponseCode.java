@@ -9,6 +9,7 @@ public enum ResponseCode implements Serializable {
     UNAUTHORIZED,
     FORBIDDEN,
     NOT_FOUND,
+    CONFLICT,
     NOT_IMPLEMENTED,
     SERVER_ERROR
 }

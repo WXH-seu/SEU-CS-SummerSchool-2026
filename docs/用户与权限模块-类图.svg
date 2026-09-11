@@ -1,0 +1,331 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1180" viewBox="0 0 1500 1180" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <defs>
+    <marker id="dep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 9 0 L 0 5 L 9 10 L 6 5 Z" fill="#495867"/>
+    </marker>
+    <marker id="impl" viewBox="0 0 16 10" refX="15" refY="5" markerWidth="12" markerHeight="8" orient="auto">
+      <path d="M 15 0 L 15 10 L 0 5 Z" fill="none" stroke="#333" stroke-width="1.2"/>
+    </marker>
+    <style>
+      .pkg { fill:#f4f7fb; stroke:#8aa0b8; stroke-width:1.4; }
+      .pkgTitle { font-size:15px; font-weight:bold; fill:#2c3e50; }
+      .clsBg { fill:#ffffff; stroke:#455a75; stroke-width:1.3; }
+      .clsName { fill:#e8eef7; stroke:#455a75; stroke-width:1.3; }
+      .clsLabel { font-size:14px; font-weight:bold; fill:#1d2b3a; }
+      .stereo { font-size:11.5px; fill:#7a8ba0; }
+      .member { font-size:12.5px; fill:#2c3e50; }
+      .memberStatic { font-size:12.5px; fill:#2c3e50; text-decoration:underline; }
+      .edgeLine { stroke:#5b7292; stroke-width:1.3; fill:none; }
+      .edgeLabel { font-size:10.5px; fill:#495867; }
+      .legendTitle { font-size:14px; font-weight:bold; fill:#2c3e50; }
+      .legendText { font-size:12.5px; fill:#455a75; }
+      .note { font-size:11.5px; fill:#7a8ba0; }
+    </style>
+  </defs>
+
+  <!-- ======= 泳道 1: vcampus-common ======= -->
+  <rect class="pkg" x="20" y="20" width="1460" height="240"/>
+  <text class="pkgTitle" x="36" y="45">«module» vcampus-common · 协议契约（网络两端、服务器与客户端共同使用）</text>
+
+  <!-- Operation -->
+  <g>
+    <rect class="clsBg" x="40" y="90" width="200" height="80"/>
+    <rect class="clsName" x="40" y="90" width="200" height="48"/>
+    <text class="stereo" x="140" y="108" text-anchor="middle">«enumeration»</text>
+    <text class="clsLabel" x="140" y="128" text-anchor="middle">Operation</text>
+    <text class="member" x="50" y="154">USER_LOGIN</text>
+    <text class="member" x="50" y="168">USER_REGISTER</text>
+    <text class="member" x="150" y="168">USER_DELETE</text>
+  </g>
+
+  <!-- ResponseCode -->
+  <g>
+    <rect class="clsBg" x="270" y="90" width="200" height="80"/>
+    <rect class="clsName" x="270" y="90" width="200" height="48"/>
+    <text class="stereo" x="370" y="108" text-anchor="middle">«enumeration»</text>
+    <text class="clsLabel" x="370" y="128" text-anchor="middle">ResponseCode</text>
+    <text class="member" x="280" y="154">SUCCESS</text>
+    <text class="member" x="280" y="168">UNAUTHORIZED</text>
+    <text class="member" x="380" y="168">FORBIDDEN</text>
+  </g>
+
+  <!-- Role -->
+  <g>
+    <rect class="clsBg" x="500" y="90" width="200" height="80"/>
+    <rect class="clsName" x="500" y="90" width="200" height="48"/>
+    <text class="stereo" x="600" y="108" text-anchor="middle">«enumeration»</text>
+    <text class="clsLabel" x="600" y="128" text-anchor="middle">Role</text>
+    <text class="member" x="510" y="154">STUDENT</text>
+    <text class="member" x="510" y="168">TEACHER</text>
+    <text class="member" x="610" y="168">ADMIN</text>
+  </g>
+
+  <!-- RequestMessage<T> -->
+  <g>
+    <rect class="clsBg" x="730" y="90" width="200" height="150"/>
+    <rect class="clsName" x="730" y="90" width="200" height="48"/>
+    <text class="clsLabel" x="830" y="120" text-anchor="middle">RequestMessage&lt;T&gt;</text>
+    <path d="M730 138 L930 138" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="156">- requestId : String</text>
+    <text class="member" x="740" y="172">- operation : Operation</text>
+    <text class="member" x="740" y="188">- sessionToken : String</text>
+    <path d="M730 198 L930 198" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="214">+ getRequestId() : String</text>
+    <text class="member" x="740" y="230">+ getBody() : T</text>
+  </g>
+
+  <!-- ResponseMessage<T> -->
+  <g>
+    <rect class="clsBg" x="960" y="90" width="200" height="150"/>
+    <rect class="clsName" x="960" y="90" width="200" height="48"/>
+    <text class="clsLabel" x="1060" y="120" text-anchor="middle">ResponseMessage&lt;T&gt;</text>
+    <path d="M960 138 L1160 138" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="156">- code : ResponseCode</text>
+    <text class="member" x="970" y="172">- message : String</text>
+    <text class="member" x="970" y="188">- body : T</text>
+    <path d="M960 198 L1160 198" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="214">+ success(...) : ResponseMessage</text>
+    <text class="member" x="970" y="230">+ isSuccess() : boolean</text>
+  </g>
+
+  <!-- LoginResponse -->
+  <g>
+    <rect class="clsBg" x="1190" y="90" width="200" height="150"/>
+    <rect class="clsName" x="1190" y="90" width="200" height="48"/>
+    <text class="clsLabel" x="1290" y="120" text-anchor="middle">LoginResponse</text>
+    <path d="M1190 138 L1390 138" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="1200" y="156">- sessionToken : String</text>
+    <text class="member" x="1200" y="172">- displayName : String</text>
+    <text class="member" x="1200" y="188">- role : Role</text>
+    <path d="M1190 198 L1390 198" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="1200" y="214">+ getRole() : Role</text>
+  </g>
+
+  <text class="note" x="40" y="244">注：DTO（LoginResponse / RegisterRequest / AccountInfo 等）全部实现 Serializable，仅携带非敏感字段，不含密码哈希。</text>
+
+  <!-- ======= 泳道 2: vcampus-server ======= -->
+  <rect class="pkg" x="20" y="285" width="1460" height="480"/>
+  <text class="pkgTitle" x="36" y="310">«module» vcampus-server · 认证 + 授权 + 持久化</text>
+
+  <!-- RequestDispatcher -->
+  <g>
+    <rect class="clsBg" x="40" y="335" width="200" height="150"/>
+    <rect class="clsName" x="40" y="335" width="200" height="48"/>
+    <text class="clsLabel" x="140" y="366" text-anchor="middle">RequestDispatcher</text>
+    <path d="M40 383 L240 383" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="401">- authService : AuthService</text>
+    <text class="member" x="50" y="417">- sessionRegistry : SessionRegistry</text>
+    <text class="member" x="50" y="433">- permissionPolicy : PermissionPolicy</text>
+    <path d="M40 443 L240 443" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="459">+ dispatch(req) : ResponseMessage</text>
+    <text class="member" x="50" y="475">+ 校验: 公开→会话→角色→业务</text>
+  </g>
+
+  <!-- AuthService -->
+  <g>
+    <rect class="clsBg" x="270" y="335" width="200" height="150"/>
+    <rect class="clsName" x="270" y="335" width="200" height="48"/>
+    <text class="clsLabel" x="370" y="366" text-anchor="middle">AuthService</text>
+    <path d="M270 383 L470 383" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="401">- userRepository : UserRepository</text>
+    <text class="member" x="280" y="417">- passwordHasher : PasswordHasher</text>
+    <text class="member" x="280" y="433">- sessionRegistry : SessionRegistry</text>
+    <path d="M270 443 L470 443" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="459">+ login(req) : LoginResponse</text>
+    <text class="member" x="280" y="475">+ register(req) : LoginResponse</text>
+  </g>
+
+  <!-- PermissionPolicy -->
+  <g>
+    <rect class="clsBg" x="500" y="335" width="200" height="150"/>
+    <rect class="clsName" x="500" y="335" width="200" height="48"/>
+    <text class="clsLabel" x="600" y="366" text-anchor="middle">PermissionPolicy</text>
+    <path d="M500 383 L700 383" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="401">- publicOperations : Set</text>
+    <text class="member" x="510" y="417">- requirements : Map</text>
+    <path d="M500 443 L700 443" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="459">+ isPublic(op) : boolean</text>
+    <text class="member" x="510" y="475">+ allows(op, role) : boolean</text>
+  </g>
+
+  <!-- PasswordHasher -->
+  <g>
+    <rect class="clsBg" x="730" y="335" width="200" height="120"/>
+    <rect class="clsName" x="730" y="335" width="200" height="48"/>
+    <text class="clsLabel" x="830" y="366" text-anchor="middle">PasswordHasher</text>
+    <path d="M730 383 L930 383" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="401">- secureRandom : SecureRandom</text>
+    <path d="M730 417 L930 417" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="433">+ newSalt() : String</text>
+    <text class="member" x="740" y="449">+ matches(pwd,salt,hash) : boolean</text>
+  </g>
+
+  <!-- SessionRegistry -->
+  <g>
+    <rect class="clsBg" x="960" y="335" width="200" height="120"/>
+    <rect class="clsName" x="960" y="335" width="200" height="48"/>
+    <text class="clsLabel" x="1060" y="366" text-anchor="middle">SessionRegistry</text>
+    <path d="M960 383 L1160 383" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="401">- sessions : Map&lt;String,UserAccount&gt;</text>
+    <path d="M960 417 L1160 417" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="433">+ create(acc) : String</text>
+    <text class="member" x="970" y="449">+ removeAllForUser(userId)</text>
+  </g>
+
+  <!-- UserRepository (interface) -->
+  <g>
+    <rect class="clsBg" x="40" y="545" width="200" height="150"/>
+    <rect class="clsName" x="40" y="545" width="200" height="48"/>
+    <text class="stereo" x="140" y="566" text-anchor="middle">«interface»</text>
+    <text class="clsLabel" x="140" y="586" text-anchor="middle">UserRepository</text>
+    <path d="M40 593 L240 593" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="611">+ findById(id) : UserAccount</text>
+    <text class="member" x="50" y="627">+ findAll() : List</text>
+    <text class="member" x="50" y="643">+ insert(acc) : void</text>
+    <path d="M40 653 L240 653" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="669">+ delete(id) : void</text>
+    <text class="member" x="50" y="685">+ updatePassword(...)</text>
+  </g>
+
+  <!-- AccessUserRepository -->
+  <g>
+    <rect class="clsBg" x="270" y="545" width="200" height="150"/>
+    <rect class="clsName" x="270" y="545" width="200" height="48"/>
+    <text class="clsLabel" x="370" y="576" text-anchor="middle">AccessUserRepository</text>
+    <path d="M270 593 L470 593" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="611">- databaseFile : File</text>
+    <text class="member" x="280" y="627">- passwordHasher : PasswordHasher</text>
+    <path d="M270 653 L470 653" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="669">+ openConnection() : Connection</text>
+    <text class="member" x="280" y="685">+ insertDemoUsers() : void</text>
+  </g>
+
+  <!-- UserAccount -->
+  <g>
+    <rect class="clsBg" x="500" y="545" width="200" height="130"/>
+    <rect class="clsName" x="500" y="545" width="200" height="48"/>
+    <text class="clsLabel" x="600" y="576" text-anchor="middle">UserAccount</text>
+    <path d="M500 593 L700 593" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="611">- userId : String</text>
+    <text class="member" x="510" y="627">- passwordSalt : String</text>
+    <text class="member" x="510" y="643">- displayName : String</text>
+    <path d="M500 653 L700 653" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="669">+ getRole() : Role</text>
+  </g>
+
+  <!-- AuthException -->
+  <g>
+    <rect class="clsBg" x="730" y="545" width="200" height="90"/>
+    <rect class="clsName" x="730" y="545" width="200" height="48"/>
+    <text class="stereo" x="830" y="566" text-anchor="middle">«exception»</text>
+    <text class="clsLabel" x="830" y="586" text-anchor="middle">AuthException</text>
+    <path d="M730 593 L930 593" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="611">- code : ResponseCode</text>
+    <text class="member" x="740" y="627">+ getCode() : ResponseCode</text>
+  </g>
+
+  <!-- server edges -->
+  <path class="edgeLine" d="M240 366 L258 366" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="243" y="356" text-anchor="middle">use</text>
+  <path class="edgeLine" d="M470 366 L492 366" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="484" y="356" text-anchor="middle">use</text>
+
+  <path class="edgeLine" d="M370 485 L370 508 L818 508 L818 459" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="560" y="503" text-anchor="middle">uses passwordHasher</text>
+
+  <path class="edgeLine" d="M386 485 L386 522 L1048 522 L1048 459" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="700" y="517" text-anchor="middle">creates session</text>
+
+  <path class="edgeLine" d="M354 485 L354 510 L140 510 L140 538" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="200" y="505" text-anchor="middle">persists via</text>
+
+  <!-- implements: AccessUserRepository -> UserRepository -->
+  <path class="edgeLine" d="M270 606 L248 606" marker-end="url(#impl)"/>
+
+  <!-- ======= 泳道 3: vcampus-client ======= -->
+  <rect class="pkg" x="20" y="785" width="1460" height="250"/>
+  <text class="pkgTitle" x="36" y="810">«module» vcampus-client · 界面 + 服务封装（网络操作全部在 SwingWorker 中执行）</text>
+
+  <!-- ClientConnection -->
+  <g>
+    <rect class="clsBg" x="40" y="835" width="200" height="150"/>
+    <rect class="clsName" x="40" y="835" width="200" height="48"/>
+    <text class="clsLabel" x="140" y="866" text-anchor="middle">ClientConnection</text>
+    <path d="M40 883 L240 883" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="901">- socket : Socket</text>
+    <path d="M40 917 L240 917" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="50" y="933">+ connect(host,port) : ClientConnection</text>
+    <text class="member" x="50" y="949">+ request(req) : ResponseMessage</text>
+    <text class="member" x="50" y="965">+ close() : void</text>
+  </g>
+
+  <!-- UserClientService -->
+  <g>
+    <rect class="clsBg" x="270" y="835" width="200" height="150"/>
+    <rect class="clsName" x="270" y="835" width="200" height="48"/>
+    <text class="clsLabel" x="370" y="866" text-anchor="middle">UserClientService</text>
+    <path d="M270 883 L470 883" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="901">- connection : ClientConnection</text>
+    <path d="M270 917 L470 917" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="280" y="933">+ login(id,pwd) : LoginResponse</text>
+    <text class="member" x="280" y="949">+ register(req) : LoginResponse</text>
+    <text class="member" x="280" y="965">+ listUsers(token) : List</text>
+  </g>
+
+  <!-- LoginFrame -->
+  <g>
+    <rect class="clsBg" x="500" y="835" width="200" height="150"/>
+    <rect class="clsName" x="500" y="835" width="200" height="48"/>
+    <text class="clsLabel" x="600" y="866" text-anchor="middle">LoginFrame</text>
+    <path d="M500 883 L700 883" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="901">- config : ClientConfig</text>
+    <path d="M500 917 L700 917" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="510" y="933">+ login() : void</text>
+  </g>
+
+  <!-- MainFrame -->
+  <g>
+    <rect class="clsBg" x="730" y="835" width="200" height="150"/>
+    <rect class="clsName" x="730" y="835" width="200" height="48"/>
+    <text class="clsLabel" x="830" y="866" text-anchor="middle">MainFrame</text>
+    <path d="M730 883 L930 883" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="901">- connection : ClientConnection</text>
+    <text class="member" x="740" y="917">- session : LoginResponse</text>
+    <path d="M730 927 L930 927" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="740" y="943">+ updateDisplayName(name)</text>
+    <text class="member" x="740" y="959">+ logout() : void</text>
+  </g>
+
+  <!-- AccountFrame -->
+  <g>
+    <rect class="clsBg" x="960" y="835" width="200" height="150"/>
+    <rect class="clsName" x="960" y="835" width="200" height="48"/>
+    <text class="clsLabel" x="1060" y="866" text-anchor="middle">AccountFrame</text>
+    <path d="M960 883 L1160 883" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="901">- service : UserClientService</text>
+    <text class="member" x="970" y="917">- session : LoginResponse</text>
+    <path d="M960 927 L1160 927" stroke="#455a75" stroke-width="1.2"/>
+    <text class="member" x="970" y="943">+ refreshAccount() : void</text>
+    <text class="member" x="970" y="959">+ changePassword() : void</text>
+  </g>
+
+  <!-- client edges -->
+  <path class="edgeLine" d="M240 861 L262 861" marker-end="url(#dep)"/>
+  <path class="edgeLine" d="M470 861 L492 861" marker-end="url(#dep)"/>
+  <path class="edgeLine" d="M500 861 L478 861" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="365" y="851" text-anchor="middle">UI 通过 UserClientService 与服务器交互</text>
+  <path class="edgeLine" d="M930 861 L952 861" marker-end="url(#dep)"/>
+  <text class="edgeLabel" x="942" y="851" text-anchor="middle">打开</text>
+
+  <!-- ======= 图例 ======= -->
+  <g>
+    <text class="legendTitle" x="40" y="1075">图例</text>
+    <path class="edgeLine" d="M40 1088 L90 1088" marker-end="url(#dep)"/>
+    <text class="legendText" x="98" y="1092">依赖（调用 / 使用）</text>
+    <path class="edgeLine" d="M260 1088 L300 1088" marker-end="url(#impl)"/>
+    <text class="legendText" x="308" y="1092">实现（implements）</text>
+    <text class="legendText" x="40" y="1120">校验顺序（RequestDispatcher）：</text>
+    <text class="legendText" x="40" y="1140">公开操作（PING/登录/注册）→ 直接处理；否则 会话校验(→UNAUTHORIZED) → 角色校验(→FORBIDDEN) → 业务分发 → 统一异常收口。</text>
+    <text class="note" x="40" y="1165">安全约束：密码不落盘明文、不上日志；AccountInfo 不含密码哈希；客户端密码用 char[] 并在用后清零。</text>
+  </g>
+</svg>
