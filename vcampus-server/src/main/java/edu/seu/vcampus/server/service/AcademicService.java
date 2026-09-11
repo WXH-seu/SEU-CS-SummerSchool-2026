@@ -196,7 +196,7 @@ public final class AcademicService {
         requireId(studentId);
         if (repository.studentIsReferenced(studentId)) {
             throw new BusinessException(ResponseCode.CONFLICT,
-                    "学生仍有选课、借阅、预约或推荐记录，请先处理关联数据");
+                    "学生仍有选课、借阅、预约、推荐、购物车或订单记录，请先处理关联数据");
         }
         if (!repository.deleteStudent(studentId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "学生记录不存在");
@@ -209,7 +209,7 @@ public final class AcademicService {
         requireId(teacherId);
         if (repository.teacherIsReferenced(teacherId)) {
             throw new BusinessException(ResponseCode.CONFLICT,
-                    "教师仍有授课、借阅、预约或推荐记录，请先处理关联数据");
+                    "教师仍有授课、借阅、预约、推荐、购物车或订单记录，请先处理关联数据");
         }
         if (!repository.deleteTeacher(teacherId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "教师记录不存在");

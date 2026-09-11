@@ -843,8 +843,12 @@ public final class AccessCourseRepository implements CourseRepository {
                     || !tableExists(connection, "tblCourseSection")) {
                 dropIfExists(connection, "tblCourseEnrollment");
                 dropIfExists(connection, "tblSectionAudience");
-                dropIfExists(connection, "tblCourseSection");
+                // Both tables reference sections. They must be removed first or
+                // Jackcess can leave a dangling relationship while upgrading an
+                // older/partially upgraded Access file.
+                dropIfExists(connection, "tblSectionSchedule");
                 dropIfExists(connection, "tblCourseRecord");
+                dropIfExists(connection, "tblCourseSection");
                 dropIfExists(connection, "tblCourse");
                 createCourseTables(connection);
             } else if (!tableExists(connection, "tblCourseRecord")) {
