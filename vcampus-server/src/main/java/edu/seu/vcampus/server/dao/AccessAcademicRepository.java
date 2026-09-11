@@ -274,7 +274,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
     @Override
     public boolean studentIsReferenced(String studentId) throws SQLException {
         return countReferencesIfTableExists("tblCourseEnrollment", "studentId", studentId) > 0
-                || linkedUserHasLibraryRecords("tblStudent", "studentId", studentId);
+                || linkedUserHasBusinessRecords("tblStudent", "studentId", studentId);
     }
 
     @Override
@@ -282,7 +282,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
         return countReferencesIfTableExists("tblCourse", "teacherId", teacherId) > 0
                 || countReferencesIfTableExists(
                         "tblCourseSection", "teacherId", teacherId) > 0
-                || linkedUserHasLibraryRecords("tblTeacher", "teacherId", teacherId);
+                || linkedUserHasBusinessRecords("tblTeacher", "teacherId", teacherId);
     }
 
     @Override
@@ -458,7 +458,7 @@ public final class AccessAcademicRepository implements AcademicRepository {
         }
     }
 
-    private boolean linkedUserHasLibraryRecords(String table, String idColumn, String id)
+    private boolean linkedUserHasBusinessRecords(String table, String idColumn, String id)
             throws SQLException {
         String userId = findLinkedUserId(table, idColumn, id);
         if (isBlank(userId)) {
@@ -467,7 +467,9 @@ public final class AccessAcademicRepository implements AcademicRepository {
         return countReferencesIfTableExists("tblBorrowRecord", "userId", userId) > 0
                 || countReferencesIfTableExists("tblBookWish", "userId", userId) > 0
                 || countReferencesIfTableExists("tblReservation", "userId", userId) > 0
-                || countReferencesIfTableExists("tblReservationPatron", "userId", userId) > 0;
+                || countReferencesIfTableExists("tblReservationPatron", "userId", userId) > 0
+                || countReferencesIfTableExists("tblCartItem", "userId", userId) > 0
+                || countReferencesIfTableExists("tblOrder", "userId", userId) > 0;
     }
 
     private String findLinkedUserId(String table, String idColumn, String id)

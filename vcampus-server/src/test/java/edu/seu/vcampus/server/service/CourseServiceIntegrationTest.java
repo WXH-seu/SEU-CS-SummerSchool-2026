@@ -26,7 +26,9 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -98,6 +100,35 @@ public class CourseServiceIntegrationTest {
         assertTrue(service.queryCourses(teacher.getUserId(), eff(teacher), null).stream()
                 .allMatch(course -> "T0001".equals(course.getTeacherId())));
         assertEquals(2, service.queryCourses(admin.getUserId(), eff(admin), null).size());
+    }
+
+    @Test
+    public void upgradesPartiallyMigratedSchemaWithScheduleForeignKey() throws Exception {
+        File legacyFile = new File(temporaryFolder.getRoot(), "partial-v2.accdb");
+        AccessDatabase legacyDatabase = new AccessDatabase(legacyFile.getAbsolutePath());
+        new AccessUserRepository(legacyDatabase, new PasswordHasher());
+        new AccessAcademicRepository(legacyDatabase);
+        try (Connection connection = legacyDatabase.openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE [tblCourse] ("
+                    + "[courseId] TEXT(20) NOT NULL PRIMARY KEY, "
+                    + "[courseName] TEXT(64) NOT NULL, [credit] DOUBLE NOT NULL, "
+                    + "[description] TEXT(255), [active] YESNO NOT NULL)");
+            statement.execute("CREATE TABLE [tblCourseSection] ("
+                    + "[sectionId] TEXT(24) NOT NULL PRIMARY KEY, "
+                    + "[courseId] TEXT(20) NOT NULL, [teacherId] TEXT(20) NOT NULL, "
+                    + "[departmentId] TEXT(16) NOT NULL, [capacity] INTEGER NOT NULL, "
+                    + "CONSTRAINT [fkLegacySectionCourse] FOREIGN KEY ([courseId]) "
+                    + "REFERENCES [tblCourse] ([courseId]))");
+            statement.execute("CREATE TABLE [tblSectionSchedule] ("
+                    + "[scheduleId] TEXT(32) NOT NULL PRIMARY KEY, "
+                    + "[sectionId] TEXT(24) NOT NULL, "
+                    + "CONSTRAINT [fkLegacyScheduleSection] FOREIGN KEY ([sectionId]) "
+                    + "REFERENCES [tblCourseSection] ([sectionId]))");
+        }
+
+        AccessCourseRepository upgraded = new AccessCourseRepository(legacyDatabase);
+        assertFalse(upgraded.findSections(null).isEmpty());
     }
 
     @Test

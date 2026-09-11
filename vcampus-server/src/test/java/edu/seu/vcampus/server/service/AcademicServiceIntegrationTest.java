@@ -11,6 +11,7 @@ import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
 import edu.seu.vcampus.server.dao.AccessBookRepository;
+import edu.seu.vcampus.server.dao.AccessStoreRepository;
 import edu.seu.vcampus.server.dao.AccessUserRepository;
 import edu.seu.vcampus.server.database.AccessDatabase;
 import edu.seu.vcampus.server.security.PasswordHasher;
@@ -21,6 +22,7 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -159,6 +161,30 @@ public class AcademicServiceIntegrationTest {
         service.deleteStudent("admin", SubSystemRole.ADMIN, "20260099");
         assertTrue(service.queryStudents("admin", SubSystemRole.ADMIN,
                 new AcademicQueryRequest("20260099", null, null, false)).isEmpty());
+    }
+
+    @Test
+    public void cannotDeleteStudentOrTeacherWithStoreRecords() throws Exception {
+        AccessStoreRepository store = new AccessStoreRepository(
+                new AccessDatabase(databaseFile.getAbsolutePath()));
+        store.upsertCartItem("student", "P001", 1);
+        store.upsertCartItem("teacher", "P002", 1);
+        store.createOrder("teacher", Collections.singleton("P002"));
+
+        try {
+            service.deleteStudent("admin", SubSystemRole.ADMIN, "20260001");
+            fail("Student with cart records should not be deleted");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("购物车"));
+        }
+        try {
+            service.deleteTeacher("admin", SubSystemRole.ADMIN, "T0001");
+            fail("Teacher with order records should not be deleted");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("订单"));
+        }
     }
 
     private StudentDto student(String studentId, String name) {
