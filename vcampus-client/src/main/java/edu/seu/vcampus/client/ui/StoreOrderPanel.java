@@ -102,11 +102,13 @@ public final class StoreOrderPanel extends JPanel {
         add(north, BorderLayout.NORTH);
 
         JPanel orderCard = SeuPanels.card();
-        orderCard.setMinimumSize(new Dimension(120, 200));
+        // 最小高度取小一些：学生/教师界面顶部还有「校园钱包」条，订单页可用高度更小，
+        // 若最小高度之和超过可用高度，分隔条会被夹死，表现为“拖不动”。
+        orderCard.setMinimumSize(new Dimension(120, 120));
         orderCard.add(SeuTables.scroll(orderTable), BorderLayout.CENTER);
 
         JPanel detailCard = SeuPanels.card();
-        detailCard.setMinimumSize(new Dimension(120, 140));
+        detailCard.setMinimumSize(new Dimension(120, 90));
         detailCard.add(SeuLabels.subtitle("订单明细"), BorderLayout.NORTH);
         detailCard.add(SeuTables.scroll(itemTable), BorderLayout.CENTER);
 
@@ -114,6 +116,8 @@ public final class StoreOrderPanel extends JPanel {
         final JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, orderCard, detailCard);
         split.setResizeWeight(0.65);
         split.setDividerSize(8);
+        split.setContinuousLayout(true);
+        split.setOneTouchExpandable(true);
         split.setBorder(null);
         split.setOpaque(false);
         split.addComponentListener(new ComponentAdapter() {
@@ -121,7 +125,7 @@ public final class StoreOrderPanel extends JPanel {
 
             @Override
             public void componentResized(ComponentEvent event) {
-                if (!initialized && split.getHeight() > 0) {
+                if (!initialized && split.getHeight() > 240) {
                     split.setDividerLocation(0.65);
                     initialized = true;
                 }

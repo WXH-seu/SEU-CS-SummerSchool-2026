@@ -35,9 +35,11 @@ public final class AccessStoreRepository implements StoreRepository {
     public AccessStoreRepository(AccessDatabase database) throws SQLException {
         this.database = database;
         initializeSchema();
-        seedDemoData();
+        // 先补齐旧库缺失的列（imagePath / balance），再写入演示数据，
+        // 否则旧库上的 INSERT/UPDATE 会因为列不存在而失败。
         ensureProductImageColumn();
         ensureBalanceColumn();
+        seedDemoData();
     }
 
     @Override
