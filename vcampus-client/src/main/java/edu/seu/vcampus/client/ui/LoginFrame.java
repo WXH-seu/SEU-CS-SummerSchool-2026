@@ -16,6 +16,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -36,6 +37,21 @@ import java.util.concurrent.ExecutionException;
  */
 public final class LoginFrame extends JFrame {
     private final ClientConfig config;
+    private final JComboBox<DemoAccountOption> demoAccountBox = SeuFields.combo(
+            new DemoAccountOption[]{
+                    new DemoAccountOption("选择演示账号（可选）", null, null),
+                    new DemoAccountOption("子系统管理员", "admin", "admin123"),
+                    new DemoAccountOption("超级管理员", "superadmin", "super123"),
+                    new DemoAccountOption("学生01 · 计算机学院", "student", "student123"),
+                    new DemoAccountOption("学生02 · 计算机学院", "student02", "student123"),
+                    new DemoAccountOption("学生03 · 软件学院", "student03", "student123"),
+                    new DemoAccountOption("学生04 · 人工智能学院", "student04", "student123"),
+                    new DemoAccountOption("学生05 · 网络空间安全学院", "student05", "student123"),
+                    new DemoAccountOption("学生06 · 信息科学与工程学院", "student06", "student123"),
+                    new DemoAccountOption("教师01 · 计算机学院", "teacher", "teacher123"),
+                    new DemoAccountOption("教师02 · 软件学院", "teacher02", "teacher123"),
+                    new DemoAccountOption("教师03 · 人工智能学院", "teacher03", "teacher123")
+            });
     private final JTextField userIdField = SeuFields.pillText(22);
     private final JPasswordField passwordField = new JPasswordField(22);
     private final JPanel passwordRow = SeuFields.pillPasswordWithToggle(passwordField);
@@ -79,11 +95,15 @@ public final class LoginFrame extends JFrame {
         userIdField.setText("admin");
         passwordField.setText("admin123");
 
+        demoAccountBox.setMaximumSize(new Dimension(320, SeuTheme.scaled(36)));
+        demoAccountBox.setAlignmentX(Component.CENTER_ALIGNMENT);
         userIdField.setAlignmentX(Component.CENTER_ALIGNMENT);
         passwordRow.setAlignmentX(Component.CENTER_ALIGNMENT);
         loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        center.add(demoAccountBox);
+        center.add(Box.createVerticalStrut(12));
         center.add(userIdField);
         center.add(Box.createVerticalStrut(16));
         center.add(passwordRow);
@@ -111,7 +131,7 @@ public final class LoginFrame extends JFrame {
 
         JLabel hint = SeuLabels.muted(
                 "<html><div style='text-align:center;width:340px'>"
-                        + "演示账号：admin / admin123，student / student123，teacher / teacher123。"
+                        + "可从上方选择管理员、6 个学生或 3 个教师演示账号。"
                         + "<br>账号由管理员统一创建，如需新账号请联系管理员。"
                         + "</div></html>");
         hint.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -125,6 +145,7 @@ public final class LoginFrame extends JFrame {
         setContentPane(root);
 
         getRootPane().setDefaultButton(loginButton);
+        demoAccountBox.addActionListener(event -> selectDemoAccount());
         loginButton.addActionListener(event -> login());
         changePasswordLink.addActionListener(event ->
                 new ForgotPasswordFrame(config).setVisible(true));
@@ -134,6 +155,14 @@ public final class LoginFrame extends JFrame {
                 rememberPassword.setSelected(false);
             }
         });
+    }
+
+    private void selectDemoAccount() {
+        DemoAccountOption account = (DemoAccountOption) demoAccountBox.getSelectedItem();
+        if (account != null && account.userId != null) {
+            userIdField.setText(account.userId);
+            passwordField.setText(account.password);
+        }
     }
 
     private void login() {
@@ -188,6 +217,7 @@ public final class LoginFrame extends JFrame {
 
     private void setLoginEnabled(boolean enabled, String status) {
         loginButton.setEnabled(enabled);
+        demoAccountBox.setEnabled(enabled);
         userIdField.setEnabled(enabled);
         passwordField.setEnabled(enabled);
         rememberPassword.setEnabled(enabled);
@@ -207,6 +237,23 @@ public final class LoginFrame extends JFrame {
         private LoginResult(ClientConnection connection, LoginResponse session) {
             this.connection = connection;
             this.session = session;
+        }
+    }
+
+    private static final class DemoAccountOption {
+        private final String label;
+        private final String userId;
+        private final String password;
+
+        private DemoAccountOption(String label, String userId, String password) {
+            this.label = label;
+            this.userId = userId;
+            this.password = password;
+        }
+
+        @Override
+        public String toString() {
+            return label;
         }
     }
 }

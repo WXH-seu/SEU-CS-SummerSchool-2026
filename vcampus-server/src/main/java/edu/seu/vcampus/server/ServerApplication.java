@@ -50,7 +50,9 @@ public final class ServerApplication {
         AccessAcademicRepository academicRepository = new AccessAcademicRepository(database);
         AccessCurriculumCatalogRepository catalogRepository =
                 new AccessCurriculumCatalogRepository(database);
+        academicRepository.seedExpandedDemoData();
         AccessCourseRepository courseRepository = new AccessCourseRepository(database);
+        courseRepository.seedExpandedDemoData();
         AccessBookRepository bookRepository = new AccessBookRepository(database);
         AccessStoreRepository storeRepository = new AccessStoreRepository(database);
         // 数据库初始化会触发 UCanAccess/HSQLDB 把控制台处理器级别改成 WARNING，

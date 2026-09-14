@@ -25,7 +25,7 @@ public class AccessAuthenticationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
-    public void createsDatabaseAndAuthenticatesSeededStudent() throws Exception {
+    public void createsDatabaseAndAuthenticatesAllSeededPeople() throws Exception {
         File database = new File(temporaryFolder.getRoot(), "vCampus.accdb");
         PasswordHasher passwordHasher = new PasswordHasher();
         AccessUserRepository repository =
@@ -35,13 +35,15 @@ public class AccessAuthenticationTest {
         AuthService authService =
                 new AuthService(repository, passwordHasher, new SessionRegistry(), auditService);
 
-        LoginResponse response = authService.login(
-                new LoginRequest("student", "student123"));
-
         assertTrue(database.isFile());
-        assertNotNull(response);
-        assertEquals("student", response.getUserId());
-        assertEquals(Role.STUDENT, response.getRole());
+        assertEquals(11, repository.findAll().size());
+        assertDemoLogin(authService, "student", "student123", Role.STUDENT);
+        for (int i = 2; i <= 6; i++) {
+            assertDemoLogin(authService, "student0" + i, "student123", Role.STUDENT);
+        }
+        assertDemoLogin(authService, "teacher", "teacher123", Role.TEACHER);
+        assertDemoLogin(authService, "teacher02", "teacher123", Role.TEACHER);
+        assertDemoLogin(authService, "teacher03", "teacher123", Role.TEACHER);
 
         try {
             authService.login(new LoginRequest("student", "wrong-password"));
@@ -49,5 +51,13 @@ public class AccessAuthenticationTest {
         } catch (AuthException e) {
             assertEquals(ResponseCode.UNAUTHORIZED, e.getCode());
         }
+    }
+
+    private void assertDemoLogin(AuthService authService, String userId, String password,
+                                 Role role) throws Exception {
+        LoginResponse response = authService.login(new LoginRequest(userId, password));
+        assertNotNull(response);
+        assertEquals(userId, response.getUserId());
+        assertEquals(role, response.getRole());
     }
 }
