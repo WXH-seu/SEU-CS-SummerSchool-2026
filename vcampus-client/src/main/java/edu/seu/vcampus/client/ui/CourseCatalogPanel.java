@@ -188,7 +188,7 @@ final class CourseCatalogPanel extends JPanel {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
         for (CourseDto course : rows) {
-            String capacity = course.getCapacity() + "/" + course.getEnrolledCount();
+            String capacity = course.getEnrolledCount() + "/" + course.getCapacity();
             if (student) {
                 tableModel.addRow(new Object[]{
                         course.getCourseId(), course.getCourseName(),
@@ -364,11 +364,11 @@ final class CourseCatalogPanel extends JPanel {
         detailRow(html, "授课教师", course.getTeacherName());
         detailRow(html, "开课院系", course.getDepartmentName());
         detailRow(html, "学分", String.valueOf(course.getCredit()));
-        detailRow(html, "最大容量 / 已选",
-                course.getCapacity() + " / " + course.getEnrolledCount());
-        detailRow(html, "首修名额（软池）",
+        detailRow(html, "最大容量（已选/上限）",
+                course.getEnrolledCount() + " / " + course.getCapacity());
+        detailRow(html, "首修名额（已选/上限）",
                 course.getFirstAttemptEnrolled() + " / " + course.getFirstAttemptCapacity());
-        detailRow(html, "重修名额（软池）",
+        detailRow(html, "重修名额（已选/上限）",
                 course.getRetakeEnrolled() + " / " + course.getRetakeCapacity());
         detailRow(html, "学期", course.getSemesterName());
         if (course.getSchedules() == null || course.getSchedules().isEmpty()) {
@@ -519,7 +519,7 @@ final class CourseCatalogPanel extends JPanel {
 
     private String[] studentColumns() {
         return new String[]{"课程编号", "课程名称", "性质", "教师", "学分",
-                "我的名额", "上课时间", "选课窗口", "状态"};
+                "我的名额（已选/上限）", "上课时间", "选课窗口", "状态"};
     }
 
     private int[] studentWidths() {
@@ -528,7 +528,7 @@ final class CourseCatalogPanel extends JPanel {
 
     private String[] staffColumns() {
         return new String[]{"课程编号", "课程名称", "性质", "教师", "开课院系",
-                "学分", "容量/已选", "首修/重修", "学期", "上课时间", "状态"};
+                "学分", "已选/上限", "首修/重修 已选/上限", "学期", "上课时间", "状态"};
     }
 
     private int[] staffWidths() {

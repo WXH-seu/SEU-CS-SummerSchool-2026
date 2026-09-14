@@ -1,6 +1,8 @@
 package edu.seu.vcampus.server.database;
 
 import edu.seu.vcampus.common.dto.CourseDto;
+import edu.seu.vcampus.common.dto.SectionAudienceDto;
+import edu.seu.vcampus.common.dto.SectionScheduleDto;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.AccessAcademicRepository;
 import edu.seu.vcampus.server.dao.AccessBookRepository;
@@ -19,9 +21,11 @@ import java.io.File;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /** Boots every module against one temporary Access file and checks core relations. */
@@ -68,6 +72,30 @@ public class FullDatabaseBootstrapTest {
     }
 
     @Test
+    public void legacyDemoSectionIsMergedIntoStandardLargeClass() throws Exception {
+        File file = new File(temporaryFolder.getRoot(), "legacy-vcampus.accdb");
+        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        new AccessUserRepository(database, new PasswordHasher());
+        AccessAcademicRepository academics = new AccessAcademicRepository(database);
+        new AccessCurriculumCatalogRepository(database);
+        academics.seedExpandedDemoData();
+        AccessCourseRepository courses = new AccessCourseRepository(database);
+        courses.saveSection(new CourseDto("DEMO-SEC-002", "B09N0014", "计算机网络",
+                "旧版小班数据", "T0004", null, "CS", null, 3.0, "必修",
+                7, 1, 5, 0, 0, 0, null, "2026-2027-1", "", "教1-102",
+                "2020-01-01 08:00", "2099-12-31 23:59", true, false, null,
+                Collections.<SectionAudienceDto>emptyList(),
+                Collections.<SectionScheduleDto>emptyList()));
+
+        courses.seedExpandedDemoData();
+
+        CourseDto merged = findSection(courses.findSections(null), "DEMO-SEC-002");
+        assertEquals(40, merged.getCapacity());
+        assertEquals(32, merged.getFirstAttemptCapacity());
+        assertEquals(8, merged.getRetakeCapacity());
+    }
+
+    @Test
     public void expandedPeopleHaveLinkedAccountsAndUsefulCourseChoices() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "expanded-vcampus.accdb");
         AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
@@ -93,8 +121,11 @@ public class FullDatabaseBootstrapTest {
                 "student", SubSystemRole.STUDENT, null);
         assertEquals("与已选课程时间冲突",
                 findSection(studentCourses, "DEMO-SEC-001").getReason());
-        assertEquals("首修名额已满",
-                findSection(studentCourses, "DEMO-SEC-002").getReason());
+        CourseDto mergedSection = findSection(studentCourses, "DEMO-SEC-002");
+        assertNull(mergedSection.getReason());
+        assertEquals(40, mergedSection.getCapacity());
+        assertEquals(32, mergedSection.getFirstAttemptCapacity());
+        assertEquals(8, mergedSection.getRetakeCapacity());
         assertEquals("尚未开始选课",
                 findSection(studentCourses, "DEMO-SEC-017").getReason());
         assertEquals(CourseDto.ATTEMPT_RETAKE,

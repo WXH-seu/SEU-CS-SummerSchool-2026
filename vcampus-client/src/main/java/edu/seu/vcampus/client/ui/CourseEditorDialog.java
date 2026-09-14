@@ -43,10 +43,12 @@ final class CourseEditorDialog {
         JTextField credit = field(value == null ? "3.0" : String.valueOf(value.getCredit()), true);
         JTextField capacity = field(value == null ? "30" : String.valueOf(value.getCapacity()),
                 true);
+        // 新建教学班默认按 22 / 8 预分配名额：与演示数据 32 / 8 的口径一致，
+        // 保证重修学生也有名额可选；三者之和仍满足“首修 + 重修 ≤ 最大容量”。
         JTextField firstCap = field(value == null
-                ? "30" : String.valueOf(value.getFirstAttemptCapacity()), true);
+                ? "22" : String.valueOf(value.getFirstAttemptCapacity()), true);
         JTextField retakeCap = field(value == null
-                ? "30" : String.valueOf(value.getRetakeCapacity()), true);
+                ? "8" : String.valueOf(value.getRetakeCapacity()), true);
         JTextField semester = field(value == null ? "2026-2027-1" : value.getSemesterName(),
                 true);
         JTextField classTime = field(value == null ? "" : value.getClassTime(), true);
@@ -203,8 +205,8 @@ final class CourseEditorDialog {
         addRow(form, "学分*", credit);
         addRow(form, "课程性质*", nature);
         addRow(form, "最大容量*", capacity);
-        addRow(form, "首修名额（软池）*", firstCap);
-        addRow(form, "重修名额（软池）*", retakeCap);
+        addRow(form, "首修名额（严格上限）*", firstCap);
+        addRow(form, "重修名额（严格上限）*", retakeCap);
         addRow(form, "学期*", semester);
         addRow(form, "选课开始(yyyy-MM-dd HH:mm)", start);
         addRow(form, "选课结束(yyyy-MM-dd HH:mm)", end);
@@ -226,38 +228,67 @@ final class CourseEditorDialog {
         body.add(audiencePanel, java.awt.BorderLayout.CENTER);
         body.add(schedulePanel, java.awt.BorderLayout.SOUTH);
 
-        if (JOptionPane.showConfirmDialog(parent, body,
-                value == null ? "新增教学班" : "编辑教学班",
-                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
-                != JOptionPane.OK_OPTION) {
-            return null;
+        boolean hadSchedules = value != null && !value.getSchedules().isEmpty();
+        while (true) {
+            if (JOptionPane.showConfirmDialog(parent, body,
+                    value == null ? "新增教学班" : "编辑教学班",
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+                    != JOptionPane.OK_OPTION) {
+                return null;
+            }
+            try {
+                List<SectionAudienceDto> audiences = new ArrayList<SectionAudienceDto>();
+                for (int i = 0; i < audienceModel.size(); i++) {
+                    audiences.add(audienceModel.get(i).dto);
+                }
+                List<SectionScheduleDto> schedules = new ArrayList<SectionScheduleDto>();
+                for (int i = 0; i < scheduleModel.size(); i++) {
+                    schedules.add(scheduleModel.get(i).dto);
+                }
+                String classTimeValue = text(classTime);
+                String locationValue = text(location);
+                if (!schedules.isEmpty()) {
+                    classTimeValue = SectionScheduleDto.summary(schedules);
+                    locationValue = SectionScheduleDto.locationSummary(schedules);
+                } else if (hadSchedules) {
+                    // 管理员清空了全部时段：摘要同步清空，由服务端提示
+                    // “至少需要填写一个上课时段”，不再静默沿用旧时间。
+                    classTimeValue = "";
+                    locationValue = "";
+                }
+                int maxCapacity = parseCapacity(capacity);
+                int firstAttemptCapacity = parsePool(firstCap);
+                int retakeCapacity = parsePool(retakeCap);
+                if (firstAttemptCapacity + retakeCapacity > maxCapacity) {
+                    throw new IllegalArgumentException("首修名额与重修名额之和不能超过最大容量");
+                }
+                if (value != null
+                        && firstAttemptCapacity < value.getFirstAttemptEnrolled()) {
+                    throw new IllegalArgumentException("首修名额不能低于已选人数（当前 "
+                            + value.getFirstAttemptEnrolled() + " 人）");
+                }
+                if (value != null && retakeCapacity < value.getRetakeEnrolled()) {
+                    throw new IllegalArgumentException("重修名额不能低于已选人数（当前 "
+                            + value.getRetakeEnrolled() + " 人）");
+                }
+                return new CourseDto(value == null ? null : value.getSectionId(),
+                        text(id), text(name), text(description),
+                        selectedId(teacher), null, selectedId(department), null,
+                        parseCredit(credit), String.valueOf(nature.getSelectedItem()),
+                        maxCapacity, firstAttemptCapacity, retakeCapacity,
+                        value == null ? 0 : value.getFirstAttemptEnrolled(),
+                        value == null ? 0 : value.getRetakeEnrolled(),
+                        value == null ? 0 : value.getEnrolledCount(),
+                        value == null ? null : value.getAttemptType(),
+                        text(semester), classTimeValue, locationValue,
+                        text(start), text(end), active.isSelected(), false, null,
+                        audiences, schedules);
+            } catch (IllegalArgumentException e) {
+                // 校验失败时保留窗口，避免用户已填写的内容全部丢失。
+                JOptionPane.showMessageDialog(parent, e.getMessage(), "输入有误",
+                        JOptionPane.ERROR_MESSAGE);
+            }
         }
-        List<SectionAudienceDto> audiences = new ArrayList<SectionAudienceDto>();
-        for (int i = 0; i < audienceModel.size(); i++) {
-            audiences.add(audienceModel.get(i).dto);
-        }
-        List<SectionScheduleDto> schedules = new ArrayList<SectionScheduleDto>();
-        for (int i = 0; i < scheduleModel.size(); i++) {
-            schedules.add(scheduleModel.get(i).dto);
-        }
-        String classTimeValue = text(classTime);
-        String locationValue = text(location);
-        if (!schedules.isEmpty()) {
-            classTimeValue = scheduleSummary(schedules);
-            locationValue = locationSummary(schedules);
-        }
-        return new CourseDto(value == null ? null : value.getSectionId(),
-                text(id), text(name), text(description),
-                selectedId(teacher), null, selectedId(department), null,
-                parseCredit(credit), String.valueOf(nature.getSelectedItem()),
-                parseCapacity(capacity), parsePool(firstCap), parsePool(retakeCap),
-                value == null ? 0 : value.getFirstAttemptEnrolled(),
-                value == null ? 0 : value.getRetakeEnrolled(),
-                value == null ? 0 : value.getEnrolledCount(),
-                value == null ? null : value.getAttemptType(),
-                text(semester), classTimeValue, locationValue,
-                text(start), text(end), active.isSelected(), false, null,
-                audiences, schedules);
     }
 
     private static void addRow(JPanel form, String label, Component component) {
@@ -436,54 +467,6 @@ final class CourseEditorDialog {
         }
     }
 
-    private static String scheduleSummary(List<SectionScheduleDto> schedules) {
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < schedules.size(); i++) {
-            SectionScheduleDto schedule = schedules.get(i);
-            if (i > 0) {
-                text.append("；");
-            }
-            text.append(schedule.getWeekStart()).append('-')
-                    .append(schedule.getWeekEnd()).append("周 ")
-                    .append(weekdayName(schedule.getWeekday())).append(' ')
-                    .append(schedule.getPeriodStart()).append('-')
-                    .append(schedule.getPeriodEnd()).append(" 节");
-        }
-        return text.toString();
-    }
-
-    private static String locationSummary(List<SectionScheduleDto> schedules) {
-        java.util.LinkedHashSet<String> locations = new java.util.LinkedHashSet<String>();
-        for (SectionScheduleDto schedule : schedules) {
-            if (schedule.getLocation() != null
-                    && !schedule.getLocation().trim().isEmpty()) {
-                locations.add(schedule.getLocation().trim());
-            }
-        }
-        StringBuilder text = new StringBuilder();
-        int i = 0;
-        for (String location : locations) {
-            if (i++ > 0) {
-                text.append("；");
-            }
-            text.append(location);
-        }
-        return text.toString();
-    }
-
-    private static String weekdayName(int weekday) {
-        switch (weekday) {
-            case 1: return "周一";
-            case 2: return "周二";
-            case 3: return "周三";
-            case 4: return "周四";
-            case 5: return "周五";
-            case 6: return "周六";
-            case 7: return "周日";
-            default: return "周" + weekday;
-        }
-    }
-
     /** 上课时段的显示包装。 */
     private static final class ScheduleItem {
         private final SectionScheduleDto dto;
@@ -491,7 +474,7 @@ final class CourseEditorDialog {
 
         ScheduleItem(SectionScheduleDto dto) {
             this.dto = dto;
-            this.label = scheduleSummary(java.util.Collections.singletonList(dto))
+            this.label = SectionScheduleDto.summary(java.util.Collections.singletonList(dto))
                     + " · " + (dto.getLocation() == null || dto.getLocation().isEmpty()
                             ? "未填地点" : dto.getLocation());
         }
