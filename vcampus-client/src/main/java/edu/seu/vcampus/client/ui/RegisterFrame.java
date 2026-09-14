@@ -1,10 +1,12 @@
 package edu.seu.vcampus.client.ui;
 
 import edu.seu.vcampus.client.network.ClientConnection;
+import edu.seu.vcampus.client.service.AcademicClientService;
 import edu.seu.vcampus.client.service.ClientServiceException;
 import edu.seu.vcampus.client.service.UserClientService;
 import edu.seu.vcampus.client.ui.components.SeuTheme;
 import edu.seu.vcampus.common.dto.AccountInfo;
+import edu.seu.vcampus.common.dto.DepartmentDto;
 import edu.seu.vcampus.common.dto.RegisterRequest;
 import edu.seu.vcampus.common.enums.Role;
 import edu.seu.vcampus.common.enums.SubSystem;
@@ -37,6 +39,9 @@ import java.util.concurrent.ExecutionException;
  * Administrator-only user registration screen. It creates a single account of
  * any role (student, teacher or admin) on behalf of the logged-in
  * administrator; the new user never receives a session here.
+ *
+ * <p>因为学籍模块的“自动分班”以学生学院为依据，服务端对学生账号强制要求学院，
+ * 所以本界面在角色为“学生”时必须选择学院（与 CSV 批量导入的第 5 列一致）。
  */
 public final class RegisterFrame extends JFrame {
     private static final int MIN_PASSWORD_LENGTH = 6;
@@ -49,6 +54,8 @@ public final class RegisterFrame extends JFrame {
     private final JPasswordField passwordField = new JPasswordField(16);
     private final JComboBox<String> roleBox = new JComboBox<String>(
             new String[]{"学生", "教师", "子系统管理员", "超级管理员"});
+    private final JLabel departmentLabel = new JLabel("学院");
+    private final JComboBox<DepartmentItem> departmentBox = new JComboBox<DepartmentItem>();
     private final JPanel scopePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
     private final List<JCheckBox> scopeChecks = new ArrayList<JCheckBox>();
     private final JButton registerButton = new JButton("创建账号");
@@ -62,6 +69,8 @@ public final class RegisterFrame extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setResizable(false);
         buildUi();
+        loadDepartments();
+        applyRoleDependentState();
         pack();
         setLocationRelativeTo(parent);
     }
@@ -78,47 +87,23 @@ public final class RegisterFrame extends JFrame {
         GridBagConstraints constraints = new GridBagConstraints();
         constraints.insets = new Insets(6, 6, 6, 6);
         constraints.fill = GridBagConstraints.HORIZONTAL;
-        constraints.gridx = 0;
-        constraints.gridy = 0;
-        form.add(new JLabel("账号"), constraints);
-        constraints.gridx = 1;
-        constraints.weightx = 1;
-        form.add(userIdField, constraints);
-        constraints.gridx = 0;
-        constraints.gridy = 1;
-        constraints.weightx = 0;
-        form.add(new JLabel("显示名"), constraints);
-        constraints.gridx = 1;
-        constraints.weightx = 1;
-        form.add(displayNameField, constraints);
-        constraints.gridx = 0;
-        constraints.gridy = 2;
-        constraints.weightx = 0;
-        form.add(new JLabel("初始密码"), constraints);
-        constraints.gridx = 1;
-        constraints.weightx = 1;
-        form.add(passwordField, constraints);
-        constraints.gridx = 0;
-        constraints.gridy = 3;
-        constraints.weightx = 0;
-        form.add(new JLabel("角色"), constraints);
-        constraints.gridx = 1;
-        constraints.weightx = 1;
-        form.add(roleBox, constraints);
 
-        constraints.gridx = 0;
-        constraints.gridy = 4;
-        constraints.weightx = 0;
-        form.add(new JLabel("可管理子系统"), constraints);
+        addRow(form, constraints, 0, new JLabel("账号"), userIdField);
+        addRow(form, constraints, 1, new JLabel("显示名"), displayNameField);
+        addRow(form, constraints, 2, new JLabel("初始密码"), passwordField);
+        addRow(form, constraints, 3, new JLabel("角色"), roleBox);
+        addRow(form, constraints, 4, departmentLabel, departmentBox);
+        addRow(form, constraints, 5, new JLabel("可管理子系统"), scopePanel);
+
         constraints.gridx = 1;
-        constraints.weightx = 1;
-        form.add(scopePanel, constraints);
-        constraints.gridy = 5;
-        JLabel scopeHint = new JLabel("仅子系统管理员需要勾选，可多选");
-        scopeHint.setFont(SeuTheme.font(Font.PLAIN, 11f));
-        constraints.gridx = 1;
+        constraints.gridy = 6;
         constraints.gridwidth = 2;
+        constraints.weightx = 1;
+        JLabel scopeHint = new JLabel("学院仅学生必填（用于学籍自动分班）；可管理子系统仅子系统管理员需要勾选，可多选");
+        scopeHint.setFont(SeuTheme.font(Font.PLAIN, 11f));
         form.add(scopeHint, constraints);
+        constraints.gridwidth = 1;
+        constraints.weightx = 0;
 
         for (SubSystem subSystem : SubSystem.values()) {
             JCheckBox checkBox = new JCheckBox(subSystem.getDisplayName());
@@ -126,8 +111,7 @@ public final class RegisterFrame extends JFrame {
             scopeChecks.add(checkBox);
             scopePanel.add(checkBox);
         }
-        roleBox.addActionListener(event -> setScopeEnabled(selectedRole() == Role.SUBSYSADMIN));
-        setScopeEnabled(false);
+        roleBox.addActionListener(event -> applyRoleDependentState());
 
         JPanel buttons = new JPanel(new GridBagLayout());
         GridBagConstraints buttonConstraints = new GridBagConstraints();
@@ -143,15 +127,76 @@ public final class RegisterFrame extends JFrame {
         buttonConstraints.gridwidth = 2;
         buttons.add(statusLabel, buttonConstraints);
 
-        form.add(buttons, constraints);
-        constraints.gridy = 6;
+        constraints.gridx = 0;
+        constraints.gridy = 7;
         constraints.gridwidth = 2;
-        root.add(form, BorderLayout.CENTER);
+        form.add(buttons, constraints);
 
         setContentPane(root);
         getRootPane().setDefaultButton(registerButton);
         registerButton.addActionListener(event -> register());
         cancelButton.addActionListener(event -> dispose());
+
+        root.add(form, BorderLayout.CENTER);
+    }
+
+    /** 统一的“标签 + 控件”两列行，避免手工维护 gridy 造成的行重叠。 */
+    private void addRow(JPanel form, GridBagConstraints constraints, int row,
+                        java.awt.Component label, java.awt.Component field) {
+        constraints.gridx = 0;
+        constraints.gridy = row;
+        constraints.gridwidth = 1;
+        constraints.weightx = 0;
+        form.add(label, constraints);
+        constraints.gridx = 1;
+        constraints.weightx = 1;
+        form.add(field, constraints);
+    }
+
+    /** 异步加载可选学院（仅启用的院系），供学生注册时选择。 */
+    private void loadDepartments() {
+        departmentBox.setEnabled(false);
+        new SwingWorker<List<DepartmentDto>, Void>() {
+            @Override
+            protected List<DepartmentDto> doInBackground() throws Exception {
+                return new AcademicClientService(connection, sessionToken).queryDepartments(true);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<DepartmentDto> departments = get();
+                    departmentBox.removeAllItems();
+                    for (DepartmentDto department : departments) {
+                        departmentBox.addItem(new DepartmentItem(
+                                department.getDepartmentId(), department.getDepartmentName()));
+                    }
+                    if (departmentBox.getItemCount() == 0) {
+                        statusLabel.setText("暂无可用学院，请先在学籍管理中维护院系");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    statusLabel.setText("学院列表加载被中断");
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    statusLabel.setText("学院列表加载失败："
+                            + (cause == null ? "未知错误" : cause.getMessage()));
+                } finally {
+                    applyRoleDependentState();
+                }
+            }
+        }.execute();
+    }
+
+    /** 学院仅对“学生”必填；子系统勾选仅对“子系统管理员”可用。 */
+    private void applyRoleDependentState() {
+        boolean student = selectedRole() == Role.STUDENT;
+        departmentLabel.setEnabled(student);
+        departmentBox.setEnabled(student);
+        if (!student) {
+            departmentBox.setSelectedIndex(departmentBox.getItemCount() > 0 ? 0 : -1);
+        }
+        setScopeEnabled(selectedRole() == Role.SUBSYSADMIN);
     }
 
     private void register() {
@@ -177,6 +222,15 @@ public final class RegisterFrame extends JFrame {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
+        final String department = selectedDepartmentId();
+        if (role == Role.STUDENT && department == null) {
+            JOptionPane.showMessageDialog(this,
+                    departmentBox.getItemCount() == 0
+                            ? "还没有可用的学院，请先在「学籍管理」中维护院系后再注册学生"
+                            : "学生必须填写学院（院系），用于学籍自动分班", "提示",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         setFormEnabled(false, "正在创建...");
         new SwingWorker<AccountInfo, Void>() {
             @Override
@@ -184,8 +238,9 @@ public final class RegisterFrame extends JFrame {
                 String password = new String(passwordChars);
                 Arrays.fill(passwordChars, '\0');
                 UserClientService service = new UserClientService(connection);
-                return service.register(
-                        new RegisterRequest(userId, password, displayName, role, scopes), sessionToken);
+                String departmentToSend = role == Role.STUDENT ? department : "";
+                return service.register(new RegisterRequest(
+                        userId, password, displayName, role, scopes, departmentToSend), sessionToken);
             }
 
             @Override
@@ -229,6 +284,12 @@ public final class RegisterFrame extends JFrame {
         return Role.STUDENT;
     }
 
+    /** 返回所选院系编号；未选择或列表为空时返回 {@code null}。 */
+    private String selectedDepartmentId() {
+        DepartmentItem item = (DepartmentItem) departmentBox.getSelectedItem();
+        return item == null || item.id.isEmpty() ? null : item.id;
+    }
+
     private Set<String> selectedScopes() {
         Set<String> scopes = new LinkedHashSet<String>();
         for (JCheckBox checkBox : scopeChecks) {
@@ -254,11 +315,34 @@ public final class RegisterFrame extends JFrame {
         displayNameField.setEnabled(enabled);
         passwordField.setEnabled(enabled);
         roleBox.setEnabled(enabled);
+        if (enabled) {
+            applyRoleDependentState();
+        } else {
+            departmentBox.setEnabled(false);
+            departmentLabel.setEnabled(false);
+            setScopeEnabled(false);
+        }
         statusLabel.setText(status);
     }
 
     private void showFailure(String message) {
         setFormEnabled(true, " ");
         JOptionPane.showMessageDialog(this, message, "创建失败", JOptionPane.ERROR_MESSAGE);
+    }
+
+    /** 学院下拉项：显示“编号 - 名称”，提交时使用编号。 */
+    private static final class DepartmentItem {
+        private final String id;
+        private final String name;
+
+        private DepartmentItem(String id, String name) {
+            this.id = id == null ? "" : id;
+            this.name = name == null ? "" : name;
+        }
+
+        @Override
+        public String toString() {
+            return name.isEmpty() ? id : id + " - " + name;
+        }
     }
 }
