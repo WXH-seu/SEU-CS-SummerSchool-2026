@@ -30,7 +30,8 @@ public interface StoreRepository {
     OrderDto createOrder(String userId, Set<String> productIds) throws SQLException;
     List<OrderDto> findOrders(String userId, OrderQueryRequest query) throws SQLException;
     boolean orderExists(String orderId) throws SQLException;
-    void updateOrderStatus(String orderId, String statusName) throws SQLException;
+    /** 更新订单状态；订单已被取消时不做任何修改并返回 false。 */
+    boolean updateOrderStatus(String orderId, String statusName) throws SQLException;
     /** 用户取消本人已付款订单：回滚库存与余额并把状态改为已取消。 */
     void cancelOrder(String orderId, String userId) throws SQLException;
 

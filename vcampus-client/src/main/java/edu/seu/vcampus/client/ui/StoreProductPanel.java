@@ -228,23 +228,36 @@ public final class StoreProductPanel extends JPanel {
      * 例如 {@code vcampus-client/images/P001.png}；未设置或文件缺失时给出提示。
      */
     private void showProductImage(ProductDto product) {
+        boolean administrator = effectiveRole == SubSystemRole.ADMIN;
         if (!hasImage(product)) {
-            SeuMessages.info(this, "该商品暂未设置图片",
-                    "商品「" + product.getProductName() + "」还没有图片。\n"
-                            + "管理员可在「编辑商品」的“图片路径”里填写，例如：\n"
-                            + "vcampus-client/images/P001.png（相对仓库根目录）\n"
-                            + "或 C:\\图片\\P001.png（绝对路径）。");
+            if (administrator) {
+                SeuMessages.info(this, "该商品暂未设置图片",
+                        "商品「" + product.getProductName() + "」还没有图片。\n"
+                                + "可在「编辑商品」的“图片路径”里填写，例如：\n"
+                                + "vcampus-client/images/P001.png（相对仓库根目录）\n"
+                                + "或 C:\\图片\\P001.png（绝对路径）。");
+            } else {
+                SeuMessages.info(this, "商品「" + product.getProductName() + "」暂无图片");
+            }
             return;
         }
         File file = new File(product.getImagePath().trim());
         if (!file.isFile()) {
-            SeuMessages.error(this, "图片文件不存在：" + file.getAbsolutePath()
-                    + "\n请确认路径是否正确（可在「编辑商品」中修改）。");
+            if (administrator) {
+                SeuMessages.error(this, "图片文件不存在：" + file.getAbsolutePath()
+                        + "\n请确认路径是否正确（可在「编辑商品」中修改）。");
+            } else {
+                SeuMessages.error(this, "该商品图片暂时无法显示，请稍后再试。");
+            }
             return;
         }
         ImageIcon icon = new ImageIcon(file.getAbsolutePath());
         if (icon.getIconWidth() <= 0) {
-            SeuMessages.error(this, "无法读取图片文件：" + file.getAbsolutePath());
+            if (administrator) {
+                SeuMessages.error(this, "无法读取图片文件：" + file.getAbsolutePath());
+            } else {
+                SeuMessages.error(this, "该商品图片暂时无法显示，请稍后再试。");
+            }
             return;
         }
         int maxWidth = 420;
@@ -261,7 +274,10 @@ public final class StoreProductPanel extends JPanel {
         JPanel content = new JPanel(new BorderLayout(0, SeuTheme.SPACE_SM));
         content.add(caption, BorderLayout.NORTH);
         content.add(new JLabel(new ImageIcon(scaled)), BorderLayout.CENTER);
-        content.add(SeuLabels.muted(file.getAbsolutePath()), BorderLayout.SOUTH);
+        if (administrator) {
+            // 图片路径属于运维信息，仅管理员可见，学生/教师端不展示。
+            content.add(SeuLabels.muted(file.getAbsolutePath()), BorderLayout.SOUTH);
+        }
         JOptionPane.showMessageDialog(this, content, "商品图片",
                 JOptionPane.INFORMATION_MESSAGE);
     }

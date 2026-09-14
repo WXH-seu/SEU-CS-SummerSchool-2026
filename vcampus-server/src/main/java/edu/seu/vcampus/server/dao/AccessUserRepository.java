@@ -211,9 +211,7 @@ public final class AccessUserRepository implements UserRepository {
                 ensureDepartmentColumn(connection);
                 ensureEmailColumn(connection);
             }
-            if (countUsers(connection) == 0) {
-                insertDemoUsers(connection);
-            }
+            ensureDemoUsers(connection);
         }
     }
 
@@ -302,22 +300,49 @@ public final class AccessUserRepository implements UserRepository {
         }
     }
 
-    private int countUsers(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement();
-             ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM [tblUser]")) {
-            return result.next() ? result.getInt(1) : 0;
+    private void ensureDemoUsers(Connection connection) throws SQLException {
+        ensureDemoUser(connection, "superadmin", "super123", "超级管理员",
+                Role.SUPER_ADMIN, null, "", "superadmin@vcampus.local");
+        ensureDemoUser(connection, "admin", "admin123", "子系统管理员",
+                Role.SUBSYSADMIN, "student,course,library,store", "",
+                "admin@vcampus.local");
+        ensureDemoUser(connection, "student", "student123", "演示学生",
+                Role.STUDENT, null, "计算机科学与工程学院", "student@vcampus.local");
+        ensureDemoUser(connection, "student02", "student123", "演示学生02",
+                Role.STUDENT, null, "计算机科学与工程学院", "student02@vcampus.local");
+        ensureDemoUser(connection, "student03", "student123", "演示学生03",
+                Role.STUDENT, null, "软件学院", "student03@vcampus.local");
+        ensureDemoUser(connection, "student04", "student123", "演示学生04",
+                Role.STUDENT, null, "人工智能学院", "student04@vcampus.local");
+        ensureDemoUser(connection, "student05", "student123", "演示学生05",
+                Role.STUDENT, null, "网络空间安全学院", "student05@vcampus.local");
+        ensureDemoUser(connection, "student06", "student123", "演示学生06",
+                Role.STUDENT, null, "信息科学与工程学院", "student06@vcampus.local");
+        ensureDemoUser(connection, "teacher", "teacher123", "演示教师",
+                Role.TEACHER, null, "计算机科学与工程学院", "teacher@vcampus.local");
+        ensureDemoUser(connection, "teacher02", "teacher123", "演示教师02",
+                Role.TEACHER, null, "软件学院", "teacher02@vcampus.local");
+        ensureDemoUser(connection, "teacher03", "teacher123", "演示教师03",
+                Role.TEACHER, null, "人工智能学院", "teacher03@vcampus.local");
+    }
+
+    private void ensureDemoUser(Connection connection, String userId, String password,
+                                String displayName, Role role, String adminScopes,
+                                String department, String email) throws SQLException {
+        if (!userExists(connection, userId)) {
+            insertUser(connection, userId, password, displayName, role, adminScopes,
+                    department, email);
         }
     }
 
-    private void insertDemoUsers(Connection connection) throws SQLException {
-        insertUser(connection, "superadmin", "super123", "超级管理员", Role.SUPER_ADMIN, null, "",
-                "superadmin@vcampus.local");
-        insertUser(connection, "admin", "admin123", "子系统管理员", Role.SUBSYSADMIN,
-                "student,course,library,store", "", "admin@vcampus.local");
-        insertUser(connection, "student", "student123", "演示学生", Role.STUDENT, null,
-                "计算机科学与工程学院", "student@vcampus.local");
-        insertUser(connection, "teacher", "teacher123", "演示教师", Role.TEACHER, null, "",
-                "teacher@vcampus.local");
+    private boolean userExists(Connection connection, String userId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [tblUser] WHERE [userId]=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
+        }
     }
 
     private void insertUser(Connection connection, String userId, String password,
