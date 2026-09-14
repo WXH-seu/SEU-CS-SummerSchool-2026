@@ -38,6 +38,8 @@ public final class ServerApplication {
     }
 
     public static void main(String[] args) throws Exception {
+        // 先固定日志级别，保证早期启动日志可见。
+        ServerLogging.configure();
         ServerConfig config = ServerConfig.load();
         PasswordHasher passwordHasher = new PasswordHasher();
         AccessDatabase database = new AccessDatabase(config.getDatabasePath());
@@ -51,6 +53,9 @@ public final class ServerApplication {
         AccessCourseRepository courseRepository = new AccessCourseRepository(database);
         AccessBookRepository bookRepository = new AccessBookRepository(database);
         AccessStoreRepository storeRepository = new AccessStoreRepository(database);
+        // 数据库初始化会触发 UCanAccess/HSQLDB 把控制台处理器级别改成 WARNING，
+        // 这里恢复为 INFO，否则后续连接/断开日志会被静默丢弃。
+        ServerLogging.configure();
         SessionRegistry sessions = new SessionRegistry();
         MailService mailService = MailService.tryLoadDefault();
         PasswordResetService passwordResetService = new PasswordResetService(5 * 60 * 1000L);
@@ -95,6 +100,8 @@ public final class ServerApplication {
                 + catalogRepository.getImportSummary().getDepartmentCount() + " departments, "
                 + catalogRepository.getImportSummary().getMajorCount() + " majors, "
                 + catalogRepository.getImportSummary().getCourseCount() + " courses");
+        // 再确认一次日志级别，随后开始接受连接，连接/断开日志即可见。
+        ServerLogging.configure();
         server.start();
     }
 }
