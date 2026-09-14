@@ -203,7 +203,10 @@ public final class StoreService {
         if (!repository.orderExists(orderId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "订单不存在");
         }
-        repository.updateOrderStatus(orderId, statusName.trim());
+        if (!repository.updateOrderStatus(orderId, statusName.trim())) {
+            throw new BusinessException(ResponseCode.CONFLICT,
+                    "订单已被用户取消，不能再修改状态");
+        }
     }
 
     /**

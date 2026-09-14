@@ -100,6 +100,24 @@ public class StoreServiceIntegrationTest {
     }
 
     @Test
+    public void cancelledOrderCannotBeChangedByAdmin() throws Exception {
+        service.updateCart(studentAccount, new CartUpdateRequest("P002", 1));
+        OrderDto order = service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P002")));
+        service.cancelOrder(studentAccount, order.getOrderId());
+
+        try {
+            service.updateOrderStatus(admin, order.getOrderId(), "已发货");
+            fail("Cancelled order should not be updated, even by an admin");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("取消"));
+        }
+        assertEquals("已取消",
+                service.queryOrders(studentAccount, null).get(0).getStatusName());
+    }
+
+    @Test
     public void cartAndOrderReferenceExistingUsers() throws Exception {
         assertTrue(hasUserForeignKey("tblCartItem"));
         assertTrue(hasUserForeignKey("tblOrder"));

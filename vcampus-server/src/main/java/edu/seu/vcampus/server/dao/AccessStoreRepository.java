@@ -312,13 +312,15 @@ public final class AccessStoreRepository implements StoreRepository {
     }
 
     @Override
-    public void updateOrderStatus(String orderId, String statusName) throws SQLException {
-        String sql = "UPDATE [tblOrder] SET [statusName]=? WHERE [orderId]=?";
+    public boolean updateOrderStatus(String orderId, String statusName) throws SQLException {
+        // 已取消的订单是终态，管理员也不能再改：用条件更新保证并发下也不会被改回。
+        String sql = "UPDATE [tblOrder] SET [statusName]=? "
+                + "WHERE [orderId]=? AND [statusName] <> '已取消'";
         try (Connection connection = database.openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, statusName);
             statement.setString(2, orderId);
-            statement.executeUpdate();
+            return statement.executeUpdate() > 0;
         }
     }
 

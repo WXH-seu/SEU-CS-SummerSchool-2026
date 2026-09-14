@@ -62,6 +62,7 @@ public final class StoreOrderPanel extends JPanel {
     private List<OrderDto> orders = new ArrayList<OrderDto>();
     private List<String> categories = new ArrayList<String>();
     private boolean updatingFilters;
+    private boolean busy;
 
     public StoreOrderPanel(StoreClientService service, SubSystemRole effectiveRole) {
         super(new BorderLayout(0, SeuTheme.SPACE_MD));
@@ -157,6 +158,7 @@ public final class StoreOrderPanel extends JPanel {
         orderTable.getSelectionModel().addListSelectionListener(event -> {
             if (!event.getValueIsAdjusting()) {
                 renderItems();
+                updateStatusButtonState();
             }
         });
     }
@@ -268,6 +270,10 @@ public final class StoreOrderPanel extends JPanel {
             SeuMessages.info(this, "请先选择一笔订单");
             return;
         }
+        if (isCancelled(order)) {
+            SeuMessages.info(this, "该订单已取消，不能再修改状态");
+            return;
+        }
         List<String> options = new ArrayList<String>(Arrays.asList(STATUSES));
         String current = order.getStatusName();
         if (current != null && !options.contains(current)) {
@@ -299,10 +305,28 @@ public final class StoreOrderPanel extends JPanel {
                     setBusy(false, "操作失败");
                 } catch (ExecutionException e) {
                     showError(messageOf(e));
-                    setBusy(false, "操作失败");
+                    refresh();
                 }
             }
         }.execute();
+    }
+
+    /** 已取消的订单是终态，管理员也不能再改状态。 */
+    private boolean isCancelled(OrderDto order) {
+        return order != null && "已取消".equals(order.getStatusName());
+    }
+
+    private void updateStatusButtonState() {
+        OrderDto order = selectedOrder();
+        boolean cancellable = order != null && "已付款".equals(order.getStatusName());
+        cancelButton.setEnabled(!busy && cancellable);
+        cancelButton.setToolTipText(order != null && !cancellable
+                ? "仅「已付款」订单可以取消" : null);
+        if (effectiveRole == SubSystemRole.ADMIN) {
+            statusButton.setEnabled(!busy && order != null && !isCancelled(order));
+            statusButton.setToolTipText(isCancelled(order)
+                    ? "该订单已取消，不能再修改状态" : null);
+        }
     }
 
     private OrderDto selectedOrder() {
@@ -366,11 +390,11 @@ public final class StoreOrderPanel extends JPanel {
     }
 
     private void setBusy(boolean busy, String status) {
+        this.busy = busy;
         statusLabel.setText(status);
         queryButton.setEnabled(!busy);
         refreshButton.setEnabled(!busy);
-        statusButton.setEnabled(!busy);
-        cancelButton.setEnabled(!busy);
+        updateStatusButtonState();
         statusBox.setEnabled(!busy);
         categoryBox.setEnabled(!busy);
         timeBox.setEnabled(!busy);
