@@ -63,6 +63,7 @@ final class CourseSchedulePanel extends JPanel {
     }
 
     void refresh() {
+        setBusy(true);
         statusLabel.setText("正在加载……");
         new SwingWorker<List<CourseEnrollmentDto>, Void>() {
             @Override
@@ -82,6 +83,8 @@ final class CourseSchedulePanel extends JPanel {
                 } catch (ExecutionException e) {
                     showError(messageOf(e));
                     statusLabel.setText("课表加载失败");
+                } finally {
+                    setBusy(false);
                 }
             }
         }.execute();

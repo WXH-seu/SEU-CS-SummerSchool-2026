@@ -10,10 +10,11 @@ import java.util.List;
  * offering (teacher / capacity / audience) to a catalog course, so the row
  * carries both catalog fields (name, credit) and offering fields.
  *
- * <p>Capacity is split into a hard maximum ({@code capacity}) plus soft
- * priority quotas for first attempts ({@code firstAttemptCapacity}) and
- * retakes ({@code retakeCapacity}). A student whose own pool is full may still
- * select while the total count is below the maximum.
+ * <p>Capacity is split into a hard maximum ({@code capacity}) plus strict
+ * pools for first attempts ({@code firstAttemptCapacity}) and retakes
+ * ({@code retakeCapacity}). A student may select only while their own pool has
+ * room; seats not assigned to either pool are reserved for administrative
+ * adjustment and are not open to student self-service.
  *
  * <p>{@code attemptType}, {@code firstAttemptEnrolled} and
  * {@code retakeEnrolled} let the client render the quota that applies to the
@@ -63,7 +64,7 @@ public final class CourseDto implements Serializable {
                      List<SectionAudienceDto> audiences) {
         this(sectionId, courseId, courseName, description,
                 teacherId, teacherName, departmentId, departmentName, credit, courseNature,
-                capacity, capacity, capacity, 0, 0, enrolledCount, null,
+                capacity, capacity, 0, 0, 0, enrolledCount, null,
                 semesterName, classTime, location, selectionStartTime, selectionEndTime,
                 active, selected, reason, audiences,
                 new ArrayList<SectionScheduleDto>());
@@ -79,7 +80,7 @@ public final class CourseDto implements Serializable {
                      List<SectionScheduleDto> schedules) {
         this(sectionId, courseId, courseName, description,
                 teacherId, teacherName, departmentId, departmentName, credit, courseNature,
-                capacity, capacity, capacity, 0, 0, enrolledCount, null,
+                capacity, capacity, 0, 0, 0, enrolledCount, null,
                 semesterName, classTime, location, selectionStartTime, selectionEndTime,
                 active, selected, reason, audiences, schedules);
     }
@@ -208,12 +209,12 @@ public final class CourseDto implements Serializable {
         return capacity;
     }
 
-    /** 首修优先名额（软池）。 */
+    /** 首修严格名额上限。 */
     public int getFirstAttemptCapacity() {
         return firstAttemptCapacity;
     }
 
-    /** 重修优先名额（软池）。 */
+    /** 重修严格名额上限。 */
     public int getRetakeCapacity() {
         return retakeCapacity;
     }

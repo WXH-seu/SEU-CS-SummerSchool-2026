@@ -37,6 +37,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -54,6 +58,7 @@ public class CourseServiceIntegrationTest {
     public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     private CourseService service;
+    private AccessDatabase database;
     private AccessCourseRepository courseRepository;
     private AccessUserRepository userRepository;
     private AcademicService academicService;
@@ -73,7 +78,7 @@ public class CourseServiceIntegrationTest {
     @Before
     public void setUp() throws Exception {
         File file = new File(temporaryFolder.getRoot(), "vCampus.accdb");
-        AccessDatabase database = new AccessDatabase(file.getAbsolutePath());
+        database = new AccessDatabase(file.getAbsolutePath());
         userRepository = new AccessUserRepository(database, new PasswordHasher());
         AccessAcademicRepository academics = new AccessAcademicRepository(database);
         courseRepository = new AccessCourseRepository(database);
@@ -312,27 +317,29 @@ public class CourseServiceIntegrationTest {
     }
 
     @Test
-    public void retakeUsesOwnPoolAndCanOverflowToMaxCapacity() throws Exception {
+    public void strictPoolsRejectWhenOwnPoolIsFullEvenWithBufferLeft() throws Exception {
         String stu2 = createStudent("stu2", "20260003");
         String stu3 = createStudent("stu3", "20260004");
         CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
                 demoCoursePools("CS601", "重修分流", "2026-09-01 08:00",
-                        "2026-12-31 23:59", "周日 5-6 节", 2, 1, 0,
+                        "2026-12-31 23:59", "周日 5-6 节", 10, 1, 1,
                         allAudience()));
         courseRepository.addCourseRecord("20260001", "CS601", "2025-2026-1", "未通过");
         String sectionId = section.getSectionId();
 
-        // 20260001 has a failed record for CS601 -> retake pool (capacity 0),
-        // but the total is below the maximum, so it may overflow.
+        // 20260001 has a failed record -> retake pool (capacity 1).
         service.selectCourse(student.getUserId(), eff(student),
                 new CourseSelectRequest(sectionId));
+        // stu2 is a first-attempt student -> first-attempt pool (capacity 1).
         service.selectCourse(stu2, SubSystemRole.STUDENT,
                 new CourseSelectRequest(sectionId));
         assertEquals(2, courseRepository.countEnrolled(sectionId));
         try {
+            // The first-attempt pool is full; the unused buffer must not be
+            // available for self-service selection.
             service.selectCourse(stu3, SubSystemRole.STUDENT,
                     new CourseSelectRequest(sectionId));
-            fail("A third first-attempt student should be rejected when total is full");
+            fail("A third first-attempt student should be rejected by the pool cap");
         } catch (BusinessException expected) {
             assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
             assertTrue(expected.getMessage().contains("名额已满"));
@@ -346,6 +353,71 @@ public class CourseServiceIntegrationTest {
                 .count();
         assertEquals(1, retakes);
         assertTrue(roster.stream().anyMatch(row -> "13800000001".equals(row.getPhone())));
+    }
+
+    @Test
+    public void poolCapacityCannotDropBelowEnrolledCount() throws Exception {
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoCoursePools("CS602", "名额回退", "2026-09-01 08:00",
+                        "2026-12-31 23:59", "周日 7-8 节", 10, 5, 5,
+                        allAudience()));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(section.getSectionId()));
+
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    withPools(section, 0, 10));
+            fail("Pool capacity must not drop below the enrolled count");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("不能低于已选人数"));
+        }
+    }
+
+    @Test
+    public void startupOnlyWarnsAboutInconsistentPoolData() throws Exception {
+        String stu2 = createStudent("stu2", "20260003");
+        CourseDto section = courseRepository.saveSection(
+                demoCoursePools("CS603", "越界数据", "2026-09-01 08:00",
+                        "2026-12-31 23:59", "周日 9-10 节", 10, 1, 0,
+                        allAudience()));
+        String sectionId = section.getSectionId();
+        courseRepository.insertEnrollment("20260001", sectionId, "FIRST",
+                "OVER-1", "2026-09-01 10:00:00");
+        courseRepository.insertEnrollment("20260003", sectionId, "FIRST",
+                "OVER-2", "2026-09-01 10:01:00");
+
+        // Re-opening the repository runs the startup self-check; it must only
+        // log a warning and keep serving data.
+        final StringBuilder warning = new StringBuilder();
+        Logger logger = Logger.getLogger(AccessCourseRepository.class.getName());
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel().intValue() >= Level.WARNING.intValue()) {
+                    warning.append(record.getMessage());
+                }
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        logger.addHandler(handler);
+        AccessCourseRepository reloaded;
+        try {
+            reloaded = new AccessCourseRepository(database);
+            reloaded.warnAboutPoolInconsistency();
+        } finally {
+            logger.removeHandler(handler);
+        }
+        assertFalse(reloaded.findSections(null).isEmpty());
+        assertEquals(2, reloaded.countAttempts(sectionId).getFirstAttemptCount());
+        assertTrue(warning.toString().contains("选课名额不一致"));
     }
 
     @Test
@@ -377,6 +449,48 @@ public class CourseServiceIntegrationTest {
         service.selectCourse(student.getUserId(), eff(student),
                 new CourseSelectRequest(differentWeek.getSectionId()));
         assertEquals(3, service.querySchedule(student.getUserId(), eff(student)).size());
+    }
+
+    @Test
+    public void poolSumBeyondMaximumCapacityIsRejected() throws Exception {
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    demoCoursePools("CS801", "名额超限", "2026-09-01 08:00",
+                            "2026-12-31 23:59", "周六 11-12 节", 10, 8, 5,
+                            allAudience()));
+            fail("First-attempt plus retake capacity must not exceed the maximum");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("之和"));
+        }
+    }
+
+    @Test
+    public void otherSectionOfSameCourseIsMarkedAndRejected() throws Exception {
+        CourseDto first = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS901", "同一课程A班", slot(4, 9, 10, 1, 16)));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(first.getSectionId()));
+        CourseDto second = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS901", "同一课程B班", slot(6, 9, 10, 1, 16)));
+
+        CourseDto other = null;
+        for (CourseDto row : service.queryCourses(student.getUserId(), eff(student), null)) {
+            if ("CS901".equals(row.getCourseId())
+                    && second.getSectionId().equals(row.getSectionId())) {
+                other = row;
+            }
+        }
+        assertNotNull(other);
+        assertEquals("已选择同一门课程的其它教学班", other.getReason());
+
+        try {
+            service.selectCourse(student.getUserId(), eff(student),
+                    new CourseSelectRequest(second.getSectionId()));
+            fail("Selecting another section of the same course should be rejected");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
     }
 
     @Test
@@ -500,6 +614,21 @@ public class CourseServiceIntegrationTest {
                 source.getAudiences(), schedules);
     }
 
+    private CourseDto withPools(CourseDto source, int firstAttemptCapacity,
+                                int retakeCapacity) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                firstAttemptCapacity, retakeCapacity,
+                source.getFirstAttemptEnrolled(), source.getRetakeEnrolled(),
+                source.getEnrolledCount(), source.getAttemptType(),
+                source.getSemesterName(), source.getClassTime(), source.getLocation(),
+                source.getSelectionStartTime(), source.getSelectionEndTime(),
+                source.isActive(), source.isSelected(), source.getReason(),
+                source.getAudiences(), source.getSchedules());
+    }
+
     private String createSecondStudent(String userId) throws Exception {
         return createStudent(userId, "20260003");
     }
@@ -564,7 +693,7 @@ public class CourseServiceIntegrationTest {
                                           String teacherId, SectionScheduleDto schedule) {
         return new CourseDto(null, courseId, courseName, "测试课程",
                 teacherId, null, "CS", null, 3.0, "必修",
-                30, 30, 5, 0, 0, 0, null,
+                30, 30, 0, 0, 0, 0, null,
                 "2026-2027-1", "", "",
                 "2026-09-01 08:00", "2026-12-31 23:59",
                 true, false, null, allAudience(),

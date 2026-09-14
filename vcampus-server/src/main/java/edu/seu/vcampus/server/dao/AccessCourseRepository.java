@@ -20,6 +20,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Access-backed implementation of the course repository. Schema v2 keeps the
@@ -30,6 +32,8 @@ import java.util.UUID;
  */
 public final class AccessCourseRepository implements CourseRepository {
     private static final int SECTION_ID_LENGTH = 24;
+    private static final Logger LOGGER =
+            Logger.getLogger(AccessCourseRepository.class.getName());
     private static final String[][] EXPANDED_COURSES = {
             {"B71S0032", "编译原理", "4.0", "CS", "必修", "编译原理与编译器构造"},
             {"B09N0014", "计算机网络", "3.0", "CS", "必修", "网络体系结构与协议"},
@@ -61,6 +65,33 @@ public final class AccessCourseRepository implements CourseRepository {
         this.database = database;
         initializeSchema();
         seedDemoData();
+    }
+
+    /**
+     * 启动自检（应在演示数据补齐后调用）：名额池上限低于已选人数
+     * （或总人数超过最大容量）时只记录告警，
+     * 由管理员在界面上调整名额分配，不自动修改数据。
+     */
+    public void warnAboutPoolInconsistency() {
+        try {
+            for (CourseDto section : findSections(null)) {
+                AttemptCounts counts = countAttempts(section.getSectionId());
+                if (counts.getFirstAttemptCount() > section.getFirstAttemptCapacity()
+                        || counts.getRetakeCount() > section.getRetakeCapacity()
+                        || counts.getTotal() > section.getCapacity()) {
+                    LOGGER.warning("选课名额不一致（仅告警）：教学班 "
+                            + section.getSectionId() + "（课程 " + section.getCourseId()
+                            + "）首修 " + counts.getFirstAttemptCount() + "/"
+                            + section.getFirstAttemptCapacity() + "，重修 "
+                            + counts.getRetakeCount() + "/"
+                            + section.getRetakeCapacity() + "，合计 "
+                            + counts.getTotal() + "/" + section.getCapacity()
+                            + "。请管理员调整名额分配。");
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.WARNING, "选课名额自检失败（忽略）", e);
+        }
     }
 
     @Override
@@ -151,9 +182,10 @@ public final class AccessCourseRepository implements CourseRepository {
         saveCatalog(section);
         saveSectionRow(section, sectionId);
         replaceAudiences(sectionId, section.getAudiences());
-        if (section.getSchedules() != null && !section.getSchedules().isEmpty()) {
-            replaceSchedules(sectionId, section.getSchedules());
-        }
+        // 必须无条件替换：管理员清空全部时段时也要把旧行删掉，否则残留的
+        // tblSectionSchedule 会被 findSectionById 重新附着回来，界面与冲突
+        // 校验继续使用已经删除的时段。
+        replaceSchedules(sectionId, section.getSchedules());
         return findSectionById(sectionId);
     }
 
@@ -625,8 +657,8 @@ public final class AccessCourseRepository implements CourseRepository {
         String location = section.getLocation();
         List<SectionScheduleDto> slots = section.getSchedules();
         if (slots != null && !slots.isEmpty()) {
-            classTime = scheduleSummary(slots);
-            location = locationSummary(slots);
+            classTime = SectionScheduleDto.summary(slots);
+            location = SectionScheduleDto.locationSummary(slots);
         }
         if (insert) {
             statement.setString(1, sectionId);
@@ -776,6 +808,9 @@ public final class AccessCourseRepository implements CourseRepository {
             throws SQLException {
         try (Connection connection = database.openConnection()) {
             deleteBy(connection, "tblSectionSchedule", "sectionId", sectionId);
+            if (schedules == null || schedules.isEmpty()) {
+                return;
+            }
             String sql = "INSERT INTO [tblSectionSchedule] "
                     + "([scheduleId], [sectionId], [weekday], [periodStart], "
                     + "[periodEnd], [weekStart], [weekEnd], [location]) "
@@ -793,53 +828,6 @@ public final class AccessCourseRepository implements CourseRepository {
                     statement.executeUpdate();
                 }
             }
-        }
-    }
-
-    private String scheduleSummary(List<SectionScheduleDto> slots) {
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < slots.size(); i++) {
-            SectionScheduleDto slot = slots.get(i);
-            if (i > 0) {
-                text.append("；");
-            }
-            text.append(weekdayName(slot.getWeekday())).append(' ')
-                    .append(slot.getPeriodStart()).append('-')
-                    .append(slot.getPeriodEnd()).append(" 节（")
-                    .append(slot.getWeekStart()).append('-')
-                    .append(slot.getWeekEnd()).append("周）");
-        }
-        return text.toString();
-    }
-
-    private String locationSummary(List<SectionScheduleDto> slots) {
-        StringBuilder text = new StringBuilder();
-        java.util.Set<String> seen = new java.util.LinkedHashSet<String>();
-        for (SectionScheduleDto slot : slots) {
-            if (!isBlank(slot.getLocation())) {
-                seen.add(slot.getLocation().trim());
-            }
-        }
-        int i = 0;
-        for (String location : seen) {
-            if (i++ > 0) {
-                text.append("；");
-            }
-            text.append(location);
-        }
-        return text.toString();
-    }
-
-    private String weekdayName(int weekday) {
-        switch (weekday) {
-            case 1: return "周一";
-            case 2: return "周二";
-            case 3: return "周三";
-            case 4: return "周四";
-            case 5: return "周五";
-            case 6: return "周六";
-            case 7: return "周日";
-            default: return "周" + weekday;
         }
     }
 
@@ -989,9 +977,11 @@ public final class AccessCourseRepository implements CourseRepository {
 
     /**
      * Adds a deterministic teaching-data set after expanded academic records
-     * are available. Existing sections and enrollments are never overwritten.
+     * are available. Existing sections and enrollments are preserved except
+     * for the known legacy {@code DEMO-SEC-002} quota migration.
      */
     public void seedExpandedDemoData() throws SQLException {
+        mergeLegacyDemoSectionPools();
         List<DemoSectionSeed> sections = new ArrayList<DemoSectionSeed>();
         int sectionNumber = 1;
         for (int i = 0; i < EXPANDED_COURSES.length; i++) {
@@ -1009,6 +999,28 @@ public final class AccessCourseRepository implements CourseRepository {
             sections.add(seed);
         }
         seedExpandedEnrollmentsAndRecords(sections);
+    }
+
+    /**
+     * 旧版演示数据里 DEMO-SEC-002 是小班（7 / 1 / 5），与当前“40 / 32 / 8”
+     * 标准大班口径不一致。这里只迁移这一条已知旧数据；其它不一致仍由启动自检告警。
+     */
+    private void mergeLegacyDemoSectionPools() throws SQLException {
+        String sql = "UPDATE [tblCourseSection] SET [capacity]=?, "
+                + "[firstAttemptCapacity]=?, [retakeCapacity]=? "
+                + "WHERE [sectionId]=? AND [capacity]=? AND [firstAttemptCapacity]=? "
+                + "AND [retakeCapacity]=?";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, 40);
+            statement.setInt(2, 32);
+            statement.setInt(3, 8);
+            statement.setString(4, "DEMO-SEC-002");
+            statement.setInt(5, 7);
+            statement.setInt(6, 1);
+            statement.setInt(7, 5);
+            statement.executeUpdate();
+        }
     }
 
     private DemoSectionSeed createDemoSection(int sectionNumber, String[] course,
@@ -1032,7 +1044,7 @@ public final class AccessCourseRepository implements CourseRepository {
         String location = "教" + (courseIndex % 4 + 1) + "-"
                 + String.format("%03d", Integer.valueOf(101 + sectionNumber));
         int enrollmentTarget = sectionNumber <= 9 ? 6 : 5;
-        int capacity = sectionNumber == 2 ? enrollmentTarget : 40;
+        int capacity = 40;
         String selectionStart = sectionNumber == 17
                 ? "2099-12-01 08:00" : "2020-01-01 08:00";
         boolean active = sectionNumber != 22;
@@ -1047,7 +1059,7 @@ public final class AccessCourseRepository implements CourseRepository {
                         1, 16, location));
         CourseDto dto = new CourseDto(sectionId, course[0], course[1], course[5],
                 teacherId, null, departmentId, null, Double.parseDouble(course[2]),
-                course[4], capacity, Math.max(1, capacity - 8), Math.min(8, capacity),
+                course[4], capacity, 32, 8,
                 0, 0, 0, null, "2026-2027-1",
                 "", location, selectionStart, "2099-12-31 23:59",
                 active, false, null, audiences, schedules);
