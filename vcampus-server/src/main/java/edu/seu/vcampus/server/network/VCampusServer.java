@@ -8,6 +8,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
 /** Multi-client TCP server backed by a bounded worker pool. */
@@ -17,6 +18,10 @@ public final class VCampusServer implements Closeable {
     private final int port;
     private final RequestDispatcher dispatcher;
     private final ExecutorService workers;
+
+    /** 当前在线连接数，供连接/断开日志与运维观测使用。 */
+    private final AtomicInteger activeConnections = new AtomicInteger();
+
     private volatile boolean running;
     private ServerSocket serverSocket;
 
@@ -34,7 +39,7 @@ public final class VCampusServer implements Closeable {
             try {
                 Socket socket = serverSocket.accept();
                 socket.setTcpNoDelay(true);
-                workers.submit(new ClientHandler(socket, dispatcher));
+                workers.submit(new ClientHandler(socket, dispatcher, activeConnections));
             } catch (IOException e) {
                 if (running) {
                     throw e;
@@ -48,12 +53,18 @@ public final class VCampusServer implements Closeable {
         return serverSocket == null ? port : serverSocket.getLocalPort();
     }
 
+    /** Returns how many client connections are currently held open. */
+    public int getActiveConnections() {
+        return activeConnections.get();
+    }
+
     @Override
     public void close() throws IOException {
         running = false;
         if (serverSocket != null && !serverSocket.isClosed()) {
             serverSocket.close();
         }
+        LOGGER.info("vCampus server stopping, active connections: " + getActiveConnections());
         workers.shutdownNow();
     }
 }
