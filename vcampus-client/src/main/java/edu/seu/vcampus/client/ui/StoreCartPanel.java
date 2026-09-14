@@ -15,10 +15,14 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.GridLayout;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -259,21 +263,95 @@ public final class StoreCartPanel extends JPanel {
             return;
         }
         final List<String> selectedProductIds = new ArrayList<String>();
+        final List<String> selectedLines = new ArrayList<String>();
         BigDecimal amount = BigDecimal.ZERO;
         for (int i = 0; i < rows.size(); i++) {
             if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
-                selectedProductIds.add(rows.get(i).getProductId());
-                amount = amount.add(rows.get(i).getSubtotal());
+                CartItemDto item = rows.get(i);
+                selectedProductIds.add(item.getProductId());
+                selectedLines.add(item.getProductName() + "  ×" + item.getQuantity()
+                        + "    ¥" + StoreFormat.money(item.getSubtotal()));
+                amount = amount.add(item.getSubtotal());
             }
         }
         if (selectedProductIds.isEmpty()) {
             SeuMessages.info(this, "请先勾选要结算的商品");
             return;
         }
-        // 收银台确认：取消 / 关闭则不发请求，购物车不变，不生成订单、不扣库存。
-        if (!confirmPayment(amount)) {
+        final BigDecimal total = amount;
+        // 先取最新余额，再弹结算预览：余额不足当场拦截，不发下单请求。
+        setBusy(true, "正在获取账户余额……");
+        new SwingWorker<BigDecimal, Void>() {
+            @Override
+            protected BigDecimal doInBackground() throws Exception {
+                return service.queryBalance();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    BigDecimal balance = get();
+                    setBusy(false, statusLabel.getText());
+                    showCheckoutPreview(selectedProductIds, selectedLines, total, balance);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    showError("获取余额被中断");
+                    setBusy(false, "结算失败");
+                } catch (ExecutionException e) {
+                    showError(messageOf(e));
+                    setBusy(false, "结算失败");
+                }
+            }
+        }.execute();
+    }
+
+    /** 结算预览：所选商品、合计、当前余额与支付后余额；余额不足直接提示并留在购物车。 */
+    private void showCheckoutPreview(List<String> selectedProductIds,
+                                     List<String> selectedLines,
+                                     BigDecimal total, BigDecimal balance) {
+        if (balance.compareTo(total) < 0) {
+            SeuMessages.error(this, "余额不足，结算失败\n"
+                    + "应付金额：¥" + StoreFormat.money(total) + "\n"
+                    + "当前余额：¥" + StoreFormat.money(balance) + "\n"
+                    + "还差：¥" + StoreFormat.money(total.subtract(balance)) + "\n\n"
+                    + "请先点击右上角「充值」完成充值；购物车商品与库存保持不变。");
             return;
         }
+        JTextArea itemArea = new JTextArea(String.join("\n", selectedLines));
+        itemArea.setEditable(false);
+        itemArea.setFont(SeuTheme.bodyFont());
+        itemArea.setBackground(SeuTheme.SURFACE);
+        itemArea.setForeground(SeuTheme.TEXT);
+        itemArea.setBorder(SeuTheme.empty(SeuTheme.SPACE_SM, SeuTheme.SPACE_SM,
+                SeuTheme.SPACE_SM, SeuTheme.SPACE_SM));
+        JScrollPane itemScroll = new JScrollPane(itemArea);
+        itemScroll.setPreferredSize(new Dimension(400,
+                Math.min(180, 26 * selectedLines.size() + 24)));
+
+        JPanel summary = new JPanel(new GridLayout(3, 2, 8, 4));
+        summary.setOpaque(false);
+        summary.add(SeuLabels.field("合计金额"));
+        summary.add(SeuLabels.field("¥" + StoreFormat.money(total)));
+        summary.add(SeuLabels.field("当前余额"));
+        summary.add(SeuLabels.field("¥" + StoreFormat.money(balance)));
+        summary.add(SeuLabels.field("支付后余额"));
+        summary.add(SeuLabels.field("¥" + StoreFormat.money(balance.subtract(total))));
+
+        JPanel content = new JPanel(new BorderLayout(0, SeuTheme.SPACE_SM));
+        content.add(SeuLabels.subtitle("所选商品（" + selectedLines.size() + " 种）"),
+                BorderLayout.NORTH);
+        content.add(itemScroll, BorderLayout.CENTER);
+        content.add(summary, BorderLayout.SOUTH);
+
+        if (JOptionPane.showConfirmDialog(this, content, "收银台 - 确认支付",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+                != JOptionPane.OK_OPTION) {
+            return;
+        }
+        pay(selectedProductIds);
+    }
+
+    private void pay(final List<String> selectedProductIds) {
         setBusy(true, "正在支付并创建订单……");
         new SwingWorker<OrderDto, Void>() {
             @Override
@@ -295,22 +373,13 @@ public final class StoreCartPanel extends JPanel {
                     showError("支付被中断");
                     setBusy(false, "支付失败");
                 } catch (ExecutionException e) {
-                    showError(messageOf(e));
-                    setBusy(false, "支付失败");
+                    // 明确告知失败原因（商品被抢购 / 余额不足等），并刷新购物车重新同步库存与余额。
+                    SeuMessages.error(StoreCartPanel.this, "结算失败：" + messageOf(e)
+                            + "\n\n已为你刷新购物车，请确认库存与余额后重试。");
+                    refresh();
                 }
             }
         }.execute();
-    }
-
-    private boolean confirmPayment(BigDecimal amount) {
-        Object[] message = {
-                "应付金额：¥" + StoreFormat.money(amount),
-                "支付方式：校园卡余额（演示）",
-                "点击「确定」完成支付并生成订单；取消将返回购物车，不生成订单、不扣减库存。"
-        };
-        return JOptionPane.showConfirmDialog(this, message,
-                "收银台 - 确认支付", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.INFORMATION_MESSAGE) == JOptionPane.OK_OPTION;
     }
 
     private CartItemDto selectedItem() {

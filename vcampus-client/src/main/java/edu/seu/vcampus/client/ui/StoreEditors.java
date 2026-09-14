@@ -23,6 +23,7 @@ final class StoreEditors {
         JTextField name = field(value == null ? "" : value.getProductName(), true);
         JTextField category = field(value == null ? "" : value.getCategory(), true);
         JTextField description = field(value == null ? "" : value.getDescription(), true);
+        JTextField imagePath = field(value == null ? "" : value.getImagePath(), true);
         JTextField price = field(value == null ? "" : String.valueOf(value.getPrice()), true);
         JTextField stock = field(value == null ? "" : String.valueOf(value.getStock()), true);
         JCheckBox active = new JCheckBox("上架", value == null || value.isActive());
@@ -30,13 +31,14 @@ final class StoreEditors {
         active.setForeground(SeuTheme.TEXT);
 
         JPanel form = form(new String[]{"商品编号*", "商品名称*", "分类", "描述",
-                        "单价*", "库存*", "状态"},
-                new Component[]{id, name, category, description, price, stock, active});
+                        "图片路径", "单价*", "库存*", "状态"},
+                new Component[]{id, name, category, description, imagePath,
+                        price, stock, active});
         if (!confirm(parent, form, value == null ? "新增商品" : "编辑商品")) {
             return null;
         }
         return new ProductDto(text(id), text(name), text(category), text(description),
-                parsePrice(price), parseStock(stock), active.isSelected());
+                text(imagePath), parsePrice(price), parseStock(stock), active.isSelected());
     }
 
     private static JPanel form(String[] labels, Component[] components) {

@@ -5,6 +5,7 @@ import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.OrderStatusRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
@@ -27,6 +28,7 @@ public final class StoreRequestHandler {
             Operation.STORE_PRODUCT_DELETE, Operation.STORE_CART_QUERY,
             Operation.STORE_CART_UPDATE, Operation.STORE_ORDER_CREATE,
             Operation.STORE_ORDER_QUERY, Operation.STORE_ORDER_STATUS,
+            Operation.STORE_ORDER_CANCEL,
             Operation.STORE_CATEGORY_QUERY, Operation.STORE_BALANCE_QUERY,
             Operation.STORE_BALANCE_RECHARGE);
 
@@ -70,11 +72,15 @@ public final class StoreRequestHandler {
                             body(request, OrderCreateRequest.class));
                     return success(request, order);
                 case STORE_ORDER_QUERY:
-                    return success(request, service.queryOrders(actor));
+                    return success(request, service.queryOrders(actor,
+                            bodyOrNull(request, OrderQueryRequest.class)));
                 case STORE_ORDER_STATUS:
                     OrderStatusRequest status = body(request, OrderStatusRequest.class);
                     service.updateOrderStatus(actor, status.getOrderId(),
                             status.getStatusName());
+                    return success(request, "OK");
+                case STORE_ORDER_CANCEL:
+                    service.cancelOrder(actor, idBody(request));
                     return success(request, "OK");
                 default:
                     return ResponseMessage.failure(request.getRequestId(),

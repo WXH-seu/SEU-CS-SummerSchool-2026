@@ -5,6 +5,7 @@ import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.BalanceRechargeRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
 import edu.seu.vcampus.common.enums.ResponseCode;
@@ -31,7 +32,10 @@ public final class StoreService {
             "一卡通充值", "微信", "银行卡"));
 
     private static final Set<String> ORDER_STATUSES = new HashSet<String>(Arrays.asList(
-            "待付款", "已付款", "已发货", "已完成", "已取消"));
+            "已付款", "已发货", "已完成", "已取消"));
+
+    private static final Set<String> TIME_RANGES = new HashSet<String>(Arrays.asList(
+            "全部", "今天", "近7天", "近30天"));
 
     private final StoreRepository repository;
 
@@ -62,6 +66,9 @@ public final class StoreService {
         }
         if (product.getStock() < 0) {
             throw invalid("商品库存不能为负数");
+        }
+        if (product.getImagePath() != null && product.getImagePath().length() > 255) {
+            throw invalid("图片路径过长（最多 255 个字符）");
         }
         repository.saveProduct(product);
     }
@@ -174,12 +181,16 @@ public final class StoreService {
         }
     }
 
-    public ArrayList<OrderDto> queryOrders(UserAccount actor)
+    public ArrayList<OrderDto> queryOrders(UserAccount actor, OrderQueryRequest request)
             throws BusinessException, SQLException {
         requireActor(actor);
+        if (request != null && !isBlank(request.getTimeRange())
+                && !TIME_RANGES.contains(request.getTimeRange().trim())) {
+            throw invalid("时间范围必须为：全部、今天、近7天或近30天");
+        }
         String userId = effectiveRole(actor) == SubSystemRole.ADMIN
                 ? null : actor.getUserId();
-        return new ArrayList<OrderDto>(repository.findOrders(userId));
+        return new ArrayList<OrderDto>(repository.findOrders(userId, request));
     }
 
     public void updateOrderStatus(UserAccount actor, String orderId, String statusName)
@@ -187,12 +198,39 @@ public final class StoreService {
         requireAdmin(actor);
         requireId(orderId);
         if (isBlank(statusName) || !ORDER_STATUSES.contains(statusName.trim())) {
-            throw invalid("订单状态必须为待付款、已付款、已发货、已完成或已取消");
+            throw invalid("订单状态必须为已付款、已发货、已完成或已取消");
         }
         if (!repository.orderExists(orderId)) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "订单不存在");
         }
         repository.updateOrderStatus(orderId, statusName.trim());
+    }
+
+    /**
+     * 用户取消订单。状态流转约定：
+     * 已付款 → 已发货 → 已完成（正常流程）；未发货前用户可取消为「已取消」；
+     * 管理员可自行调整状态，但用户只能在「已付款」状态取消本人订单。
+     * 取消时在同一事务里退回库存与余额。
+     */
+    public void cancelOrder(UserAccount actor, String orderId)
+            throws BusinessException, SQLException {
+        requireShopper(actor);
+        requireId(orderId);
+        try {
+            repository.cancelOrder(orderId.trim(), actor.getUserId());
+        } catch (SQLException e) {
+            String message = e.getMessage();
+            if (message != null && message.contains("订单不存在")) {
+                throw new BusinessException(ResponseCode.NOT_FOUND, message);
+            }
+            if (message != null && message.contains("无权取消")) {
+                throw new BusinessException(ResponseCode.FORBIDDEN, message);
+            }
+            if (message != null && message.contains("仅已付款订单")) {
+                throw new BusinessException(ResponseCode.CONFLICT, message);
+            }
+            throw e;
+        }
     }
 
     private void requireActor(UserAccount actor) throws BusinessException {

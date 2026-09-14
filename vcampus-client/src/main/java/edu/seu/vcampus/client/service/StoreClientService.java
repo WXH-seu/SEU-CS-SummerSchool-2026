@@ -7,6 +7,7 @@ import edu.seu.vcampus.common.dto.CartUpdateRequest;
 import edu.seu.vcampus.common.dto.EntityIdRequest;
 import edu.seu.vcampus.common.dto.OrderCreateRequest;
 import edu.seu.vcampus.common.dto.OrderDto;
+import edu.seu.vcampus.common.dto.OrderQueryRequest;
 import edu.seu.vcampus.common.dto.OrderStatusRequest;
 import edu.seu.vcampus.common.dto.ProductDto;
 import edu.seu.vcampus.common.dto.StoreQueryRequest;
@@ -79,12 +80,16 @@ public final class StoreClientService {
         return (OrderDto) body;
     }
 
-    public List<OrderDto> queryOrders() throws IOException {
-        return listRequest(Operation.STORE_ORDER_QUERY, null, OrderDto.class);
+    public List<OrderDto> queryOrders(OrderQueryRequest query) throws IOException {
+        return listRequest(Operation.STORE_ORDER_QUERY, query, OrderDto.class);
     }
 
     public void updateOrderStatus(String orderId, String statusName) throws IOException {
         request(Operation.STORE_ORDER_STATUS, new OrderStatusRequest(orderId, statusName));
+    }
+
+    public void cancelOrder(String orderId) throws IOException {
+        request(Operation.STORE_ORDER_CANCEL, new EntityIdRequest(orderId));
     }
 
     private <T> List<T> listRequest(Operation operation, Serializable body, Class<T> type)

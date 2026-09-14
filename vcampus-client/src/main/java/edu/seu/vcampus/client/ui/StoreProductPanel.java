@@ -15,6 +15,7 @@ import edu.seu.vcampus.common.enums.SubSystemRole;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -23,6 +24,8 @@ import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
+import java.awt.Image;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,12 +46,13 @@ public final class StoreProductPanel extends JPanel {
     private final JCheckBox includeInactive = new JCheckBox("含已下架");
     private final JButton searchButton = SeuButtons.primary("查询");
     private final JButton addToCartButton = SeuButtons.secondary("加入购物车");
+    private final JButton imageButton = SeuButtons.secondary("查看图片");
     private final JButton addButton = SeuButtons.secondary("新增");
     private final JButton editButton = SeuButtons.secondary("编辑");
     private final JButton deleteButton = SeuButtons.danger("删除");
     private final JLabel statusLabel = SeuLabels.status("准备就绪");
     private final DefaultTableModel tableModel = SeuTables.readOnlyModel(new String[]{
-            "商品编号", "名称", "分类", "描述", "单价", "库存", "上架"});
+            "商品编号", "名称", "分类", "描述", "单价", "库存", "上架", "图片"});
     private final JTable table = SeuTables.create(tableModel);
     private List<ProductDto> rows = new ArrayList<ProductDto>();
     private List<String> categories = new ArrayList<String>();
@@ -81,6 +85,7 @@ public final class StoreProductPanel extends JPanel {
         filters.add(includeInactive);
         filters.add(searchButton);
         filters.add(addToCartButton);
+        filters.add(imageButton);
         filters.add(addButton);
         filters.add(editButton);
         filters.add(deleteButton);
@@ -113,6 +118,7 @@ public final class StoreProductPanel extends JPanel {
         });
         includeInactive.addActionListener(event -> refresh());
         addToCartButton.addActionListener(event -> addSelectedToCart());
+        imageButton.addActionListener(event -> showSelectedImage());
         addButton.addActionListener(event -> editProduct(null));
         editButton.addActionListener(event -> editSelected());
         deleteButton.addActionListener(event -> deleteSelected());
@@ -122,6 +128,8 @@ public final class StoreProductPanel extends JPanel {
                 if (event.getClickCount() == 2
                         && effectiveRole == SubSystemRole.ADMIN) {
                     editSelected();
+                } else if (event.getClickCount() == 2) {
+                    showSelectedImage();
                 }
             }
         });
@@ -198,9 +206,64 @@ public final class StoreProductPanel extends JPanel {
                     product.getDescription(),
                     StoreFormat.money(product.getPrice()),
                     Integer.valueOf(product.getStock()),
-                    product.isActive() ? "在架" : "已下架"
+                    product.isActive() ? "在架" : "已下架",
+                    hasImage(product) ? "有图" : "无图"
             });
         }
+    }
+
+    private boolean hasImage(ProductDto product) {
+        return product.getImagePath() != null && !product.getImagePath().trim().isEmpty();
+    }
+
+    private void showSelectedImage() {
+        ProductDto product = selectedProduct();
+        if (product != null) {
+            showProductImage(product);
+        }
+    }
+
+    /**
+     * 显示商品图片。图片路径可以是绝对路径，也可以是相对客户端运行目录的路径，
+     * 例如 {@code vcampus-client/images/P001.png}；未设置或文件缺失时给出提示。
+     */
+    private void showProductImage(ProductDto product) {
+        if (!hasImage(product)) {
+            SeuMessages.info(this, "该商品暂未设置图片",
+                    "商品「" + product.getProductName() + "」还没有图片。\n"
+                            + "管理员可在「编辑商品」的“图片路径”里填写，例如：\n"
+                            + "vcampus-client/images/P001.png（相对仓库根目录）\n"
+                            + "或 C:\\图片\\P001.png（绝对路径）。");
+            return;
+        }
+        File file = new File(product.getImagePath().trim());
+        if (!file.isFile()) {
+            SeuMessages.error(this, "图片文件不存在：" + file.getAbsolutePath()
+                    + "\n请确认路径是否正确（可在「编辑商品」中修改）。");
+            return;
+        }
+        ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+        if (icon.getIconWidth() <= 0) {
+            SeuMessages.error(this, "无法读取图片文件：" + file.getAbsolutePath());
+            return;
+        }
+        int maxWidth = 420;
+        int maxHeight = 320;
+        double scale = Math.min(1.0, Math.min(
+                (double) maxWidth / icon.getIconWidth(),
+                (double) maxHeight / icon.getIconHeight()));
+        Image scaled = icon.getImage().getScaledInstance(
+                (int) Math.round(icon.getIconWidth() * scale),
+                (int) Math.round(icon.getIconHeight() * scale),
+                Image.SCALE_SMOOTH);
+        JLabel caption = SeuLabels.subtitle(product.getProductName() + "（"
+                + StoreFormat.money(product.getPrice()) + " / 库存 " + product.getStock() + "）");
+        JPanel content = new JPanel(new BorderLayout(0, SeuTheme.SPACE_SM));
+        content.add(caption, BorderLayout.NORTH);
+        content.add(new JLabel(new ImageIcon(scaled)), BorderLayout.CENTER);
+        content.add(SeuLabels.muted(file.getAbsolutePath()), BorderLayout.SOUTH);
+        JOptionPane.showMessageDialog(this, content, "商品图片",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void addSelectedToCart() {
