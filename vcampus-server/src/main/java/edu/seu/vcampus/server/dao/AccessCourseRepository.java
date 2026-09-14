@@ -30,6 +30,30 @@ import java.util.UUID;
  */
 public final class AccessCourseRepository implements CourseRepository {
     private static final int SECTION_ID_LENGTH = 24;
+    private static final String[][] EXPANDED_COURSES = {
+            {"B71S0032", "编译原理", "4.0", "CS", "必修", "编译原理与编译器构造"},
+            {"B09N0014", "计算机网络", "3.0", "CS", "必修", "网络体系结构与协议"},
+            {"B09D0012", "数据库原理", "3.0", "CS", "必修", "关系数据库设计与实现"},
+            {"B09S0061", "软件工程", "3.0", "CS", "必修", "软件过程、设计与质量保证"},
+            {"B71S1021", "Python编程（研讨）", "2.0", "SOFTWARE", "通选", "Python程序设计实践"},
+            {"B71S1170", "软件建模与UML", "2.0", "SOFTWARE", "限选", "面向对象分析与建模"},
+            {"B09S1031", "Java程序设计", "2.0", "SOFTWARE", "限选", "Java语言与工程实践"},
+            {"B71S1041", "Java设计模式（研讨）", "2.0", "SOFTWARE", "限选", "常用设计模式与重构"},
+            {"B58A0011", "人工智能导论", "3.0", "AI", "通选", "人工智能基础方法与应用"},
+            {"B09A1111", "机器学习（研讨）", "2.0", "AI", "限选", "监督学习与模型评估"},
+            {"B09A1131", "模式识别（全英文、研讨）", "2.0", "AI", "限选", "特征表示与模式分类"},
+            {"B58A1041", "深度学习与应用（研讨）", "2.0", "AI", "限选", "神经网络与应用实践"},
+            {"B5710022", "计算机组成原理", "4.0", "CYBER", "必修", "计算机组成与系统结构"},
+            {"B5710051", "数据结构基础", "4.0", "CYBER", "必修", "常用数据结构与算法"},
+            {"B5710071", "网络空间安全数学基础", "3.0", "CYBER", "必修", "密码与安全所需数学基础"},
+            {"B5710121", "操作系统", "4.0", "CYBER", "通选", "进程、存储与文件系统"},
+            {"B0401082", "信息通信网（双语）", "3.0", "RADIO", "通选", "现代信息通信网络"},
+            {"B0402010", "计算机组织与结构（双语）I", "2.0", "RADIO", "必修", "计算机组织结构基础"},
+            {"B0412032", "通信原理", "3.0", "RADIO", "必修", "模拟与数字通信基础"},
+            {"B2201020", "电路基础", "4.0", "INS", "必修", "电路分析基本理论"},
+            {"B2201111", "人工智能原理与实践", "3.0", "INS", "通选", "人工智能工程实践"},
+            {"B2201071", "自动控制原理", "3.0", "INS", "必修", "经典控制理论基础"}
+    };
 
     private final AccessDatabase database;
 
@@ -960,6 +984,217 @@ public final class AccessCourseRepository implements CourseRepository {
         }
         if (!recordExists("20260001", "CS102", "2025-2026-1")) {
             addCourseRecord("20260001", "CS102", "2025-2026-1", "未通过");
+        }
+    }
+
+    /**
+     * Adds a deterministic teaching-data set after expanded academic records
+     * are available. Existing sections and enrollments are never overwritten.
+     */
+    public void seedExpandedDemoData() throws SQLException {
+        List<DemoSectionSeed> sections = new ArrayList<DemoSectionSeed>();
+        int sectionNumber = 1;
+        for (int i = 0; i < EXPANDED_COURSES.length; i++) {
+            String[] course = EXPANDED_COURSES[i];
+            DemoSectionSeed seed = createDemoSection(
+                    sectionNumber++, course, i, false, i <= 1 ? 2 : 1);
+            ensureDemoSection(seed);
+            sections.add(seed);
+        }
+        for (int i = 0; i < 6; i++) {
+            String[] course = EXPANDED_COURSES[i];
+            DemoSectionSeed seed = createDemoSection(
+                    sectionNumber++, course, i, true, 11);
+            ensureDemoSection(seed);
+            sections.add(seed);
+        }
+        seedExpandedEnrollmentsAndRecords(sections);
+    }
+
+    private DemoSectionSeed createDemoSection(int sectionNumber, String[] course,
+                                              int courseIndex, boolean alternate,
+                                              int rosterStart) {
+        String sectionId = String.format("DEMO-SEC-%03d", Integer.valueOf(sectionNumber));
+        String departmentId = course[3];
+        String teacherId = teacherFor(departmentId, courseIndex + (alternate ? 1 : 0));
+        boolean global = isGlobalDemoCourse(course[0]);
+        int weekday = courseIndex % 5 + 1;
+        int periodStart = courseIndex % 4 * 2 + 1;
+        if (courseIndex == 0 && !alternate) {
+            weekday = 1;
+            periodStart = 3;
+        }
+        if (alternate) {
+            weekday = courseIndex % 5 + 1;
+            periodStart = 9;
+        }
+        int periodEnd = periodStart + 1;
+        String location = "教" + (courseIndex % 4 + 1) + "-"
+                + String.format("%03d", Integer.valueOf(101 + sectionNumber));
+        int enrollmentTarget = sectionNumber <= 9 ? 6 : 5;
+        int capacity = sectionNumber == 2 ? enrollmentTarget : 40;
+        String selectionStart = sectionNumber == 17
+                ? "2099-12-01 08:00" : "2020-01-01 08:00";
+        boolean active = sectionNumber != 22;
+        List<SectionAudienceDto> audiences = java.util.Collections.singletonList(
+                new SectionAudienceDto(null,
+                        global ? SectionAudienceDto.SCOPE_ALL
+                                : SectionAudienceDto.SCOPE_DEPARTMENT,
+                        global ? null : departmentId,
+                        Integer.valueOf(2024), Integer.valueOf(2028)));
+        List<SectionScheduleDto> schedules = java.util.Collections.singletonList(
+                new SectionScheduleDto(weekday, periodStart, periodEnd,
+                        1, 16, location));
+        CourseDto dto = new CourseDto(sectionId, course[0], course[1], course[5],
+                teacherId, null, departmentId, null, Double.parseDouble(course[2]),
+                course[4], capacity, Math.max(1, capacity - 8), Math.min(8, capacity),
+                0, 0, 0, null, "2026-2027-1",
+                "", location, selectionStart, "2099-12-31 23:59",
+                active, false, null, audiences, schedules);
+        return new DemoSectionSeed(dto, departmentId, rosterStart, enrollmentTarget,
+                sectionNumber);
+    }
+
+    private void ensureDemoSection(DemoSectionSeed seed) throws SQLException {
+        if (!exists("tblCourseSection", "sectionId", seed.section.getSectionId())) {
+            saveSection(seed.section);
+        }
+    }
+
+    private void seedExpandedEnrollmentsAndRecords(List<DemoSectionSeed> sections)
+            throws SQLException {
+        String enrollmentExists = "SELECT COUNT(*) FROM [tblCourseEnrollment] "
+                + "WHERE [sectionId]=? AND [studentId]=?";
+        String enrollmentInsert = "INSERT INTO [tblCourseEnrollment] "
+                + "([enrollmentId], [studentId], [sectionId], [attemptType], [enrollTime]) "
+                + "VALUES (?, ?, ?, ?, ?)";
+        String recordExistsSql = "SELECT COUNT(*) FROM [tblCourseRecord] "
+                + "WHERE [studentId]=? AND [courseId]=? AND [semesterName]=?";
+        String recordInsert = "INSERT INTO [tblCourseRecord] "
+                + "([recordId], [studentId], [courseId], [semesterName], [gradeStatus]) "
+                + "VALUES (?, ?, ?, ?, ?)";
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement enrollmentCheck = connection.prepareStatement(enrollmentExists);
+                 PreparedStatement enrollmentSave = connection.prepareStatement(enrollmentInsert);
+                 PreparedStatement recordCheck = connection.prepareStatement(recordExistsSql);
+                 PreparedStatement recordSave = connection.prepareStatement(recordInsert)) {
+                for (DemoSectionSeed section : sections) {
+                    for (int i = 0; i < section.enrollmentTarget; i++) {
+                        int localIndex = section.rosterStart + i;
+                        String studentId = demoStudentId(section.departmentId, localIndex);
+                        if (!pairExists(enrollmentCheck,
+                                section.section.getSectionId(), studentId)) {
+                            enrollmentSave.setString(1, "DEMOENR"
+                                    + String.format("%03d%03d", Integer.valueOf(section.number),
+                                    Integer.valueOf(localIndex)));
+                            enrollmentSave.setString(2, studentId);
+                            enrollmentSave.setString(3, section.section.getSectionId());
+                            enrollmentSave.setString(4, CourseDto.ATTEMPT_FIRST);
+                            enrollmentSave.setString(5, "2026-09-02 09:00:00");
+                            enrollmentSave.executeUpdate();
+                        }
+                    }
+                }
+                for (int i = 1; i <= 20; i++) {
+                    String departmentId = i <= 10 ? "SOFTWARE" : "AI";
+                    String studentId = demoStudentId(departmentId, (i - 1) % 10 + 1);
+                    String courseId = i <= 10 ? "B09S1031" : "B09A1111";
+                    if (!tripleExists(recordCheck, studentId, courseId, "2025-2026-2")) {
+                        recordSave.setString(1, "DEMOREC" + String.format("%03d", Integer.valueOf(i)));
+                        recordSave.setString(2, studentId);
+                        recordSave.setString(3, courseId);
+                        recordSave.setString(4, "2025-2026-2");
+                        recordSave.setString(5, i % 4 == 0 ? "未通过" : "通过");
+                        recordSave.executeUpdate();
+                    }
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private boolean pairExists(PreparedStatement statement, String first, String second)
+            throws SQLException {
+        statement.setString(1, first);
+        statement.setString(2, second);
+        try (ResultSet result = statement.executeQuery()) {
+            return result.next() && result.getInt(1) > 0;
+        }
+    }
+
+    private boolean tripleExists(PreparedStatement statement, String first, String second,
+                                 String third) throws SQLException {
+        statement.setString(1, first);
+        statement.setString(2, second);
+        statement.setString(3, third);
+        try (ResultSet result = statement.executeQuery()) {
+            return result.next() && result.getInt(1) > 0;
+        }
+    }
+
+    private String teacherFor(String departmentId, int index) {
+        if ("CS".equals(departmentId)) {
+            return index % 2 == 0 ? "T0001" : "T0004";
+        }
+        if ("SOFTWARE".equals(departmentId)) {
+            return index % 2 == 0 ? "T0002" : "T0005";
+        }
+        if ("AI".equals(departmentId)) {
+            return index % 2 == 0 ? "T0003" : "T0006";
+        }
+        if ("CYBER".equals(departmentId)) {
+            return index % 2 == 0 ? "T0007" : "T0008";
+        }
+        if ("RADIO".equals(departmentId)) {
+            return index % 2 == 0 ? "T0009" : "T0010";
+        }
+        return index % 2 == 0 ? "T0011" : "T0012";
+    }
+
+    private boolean isGlobalDemoCourse(String courseId) {
+        return "B09D0012".equals(courseId) || "B71S1021".equals(courseId)
+                || "B58A0011".equals(courseId) || "B5710121".equals(courseId)
+                || "B0401082".equals(courseId) || "B2201111".equals(courseId);
+    }
+
+    private String demoStudentId(String departmentId, int localIndex) {
+        String prefix;
+        if ("CS".equals(departmentId)) {
+            prefix = "20260";
+        } else if ("SOFTWARE".equals(departmentId)) {
+            prefix = "20261";
+        } else if ("AI".equals(departmentId)) {
+            prefix = "20262";
+        } else if ("CYBER".equals(departmentId)) {
+            prefix = "20263";
+        } else if ("RADIO".equals(departmentId)) {
+            prefix = "20264";
+        } else {
+            prefix = "20265";
+        }
+        return prefix + String.format("%03d", Integer.valueOf(localIndex));
+    }
+
+    private static final class DemoSectionSeed {
+        private final CourseDto section;
+        private final String departmentId;
+        private final int rosterStart;
+        private final int enrollmentTarget;
+        private final int number;
+
+        private DemoSectionSeed(CourseDto section, String departmentId, int rosterStart,
+                                int enrollmentTarget, int number) {
+            this.section = section;
+            this.departmentId = departmentId;
+            this.rosterStart = rosterStart;
+            this.enrollmentTarget = enrollmentTarget;
+            this.number = number;
         }
     }
 

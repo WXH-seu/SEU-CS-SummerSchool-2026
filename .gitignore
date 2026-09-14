@@ -6,6 +6,9 @@ tmp/
 __pycache__/
 *.pyc
 
+# 服务端运行日志（按天滚动写入工作区 log/ 目录）
+/log/
+
 # Eclipse local metadata
 .metadata/
 .settings/

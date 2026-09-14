@@ -18,6 +18,23 @@ import java.util.List;
 
 /** Access-backed implementation of the academic repository. */
 public final class AccessAcademicRepository implements AcademicRepository {
+    private static final String[][] DEMO_DEPARTMENTS = {
+            {"CS", "CS2026", "计算机2026级", "张老师", "20260"},
+            {"SOFTWARE", "SE2026", "软件工程2026级", "李老师", "20261"},
+            {"AI", "AI2026", "人工智能2026级", "王老师", "20262"},
+            {"CYBER", "CY2026", "网络安全2026级", "赵老师", "20263"},
+            {"RADIO", "IE2026", "信息工程2026级", "陈老师", "20264"},
+            {"INS", "IS2026", "仪器科学2026级", "刘老师", "20265"}
+    };
+    private static final String[] DEMO_SURNAMES = {
+            "王", "李", "张", "刘", "陈", "杨", "赵", "黄", "周", "吴",
+            "徐", "孙", "胡", "朱", "高", "林", "何", "郭", "马", "罗"
+    };
+    private static final String[] DEMO_GIVEN_NAMES = {
+            "子涵", "宇轩", "雨桐", "浩然", "思远", "欣怡", "嘉诚", "若曦", "明哲", "诗涵",
+            "俊杰", "佳宁", "博文", "可欣", "天佑", "梦琪", "泽宇", "语嫣", "致远", "安然"
+    };
+
     private final AccessDatabase database;
 
     public AccessAcademicRepository(AccessDatabase database) throws SQLException {
@@ -373,6 +390,144 @@ public final class AccessAcademicRepository implements AcademicRepository {
         if (!exists("tblTeacher", "teacherId", "T0001")) {
             saveTeacher(new TeacherDto("T0001", "teacher", "演示教师", "CS",
                     "讲师", "13800000002", "teacher@vcampus.local", true));
+        }
+    }
+
+    /**
+     * Adds the richer, cross-department demonstration population after the
+     * bundled SEU department catalog has been imported. Stable identifiers and
+     * insert-if-missing semantics make this safe for existing databases.
+     */
+    public void seedExpandedDemoData() throws SQLException {
+        final String classInsert = "INSERT INTO [tblSchoolClass] "
+                + "([className], [departmentId], [gradeYear], [counselor], [capacity], "
+                + "[active], [classId]) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        final String teacherInsert = "INSERT INTO [tblTeacher] "
+                + "([userId], [fullName], [departmentId], [titleName], [phone], [email], "
+                + "[active], [teacherId]) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        final String studentInsert = "INSERT INTO [tblStudent] "
+                + "([userId], [fullName], [genderName], [birthDate], [departmentId], "
+                + "[classId], [enrollmentYear], [statusName], [phone], [email], [studentId]) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection connection = database.openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                seedExpandedClasses(connection, classInsert);
+                seedExpandedTeachers(connection, teacherInsert);
+                seedExpandedStudents(connection, studentInsert);
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private void seedExpandedClasses(Connection connection, String insert) throws SQLException {
+        for (String[] department : DEMO_DEPARTMENTS) {
+            for (int classNumber = 1; classNumber <= 2; classNumber++) {
+                String classId = department[1] + "-0" + classNumber;
+                if (!rowExists(connection, "tblSchoolClass", "classId", classId)) {
+                    executeClassSave(connection, insert, new SchoolClassDto(
+                            classId, department[2] + classNumber + "班", department[0], 2026,
+                            department[3], 40, true));
+                }
+            }
+        }
+    }
+
+    private void seedExpandedTeachers(Connection connection, String insert) throws SQLException {
+        String[] names = {
+                "演示教师01", "演示教师02", "演示教师03", "陈明远", "刘思源", "周文博",
+                "黄嘉宁", "吴致远", "徐安然", "孙浩然", "林若曦", "郭俊杰"
+        };
+        String[] departments = {
+                "CS", "SOFTWARE", "AI", "CS", "SOFTWARE", "AI",
+                "CYBER", "CYBER", "RADIO", "RADIO", "INS", "INS"
+        };
+        String[] titles = {
+                "讲师", "副教授", "教授", "副教授", "讲师", "副教授",
+                "教授", "讲师", "副教授", "教授", "讲师", "副教授"
+        };
+        for (int i = 0; i < names.length; i++) {
+            String teacherId = String.format("T%04d", Integer.valueOf(i + 1));
+            if (!rowExists(connection, "tblTeacher", "teacherId", teacherId)) {
+                String userId = i == 0 ? "teacher"
+                        : (i == 1 ? "teacher02" : (i == 2 ? "teacher03" : null));
+                executeTeacherSave(connection, insert, new TeacherDto(
+                        teacherId, userId, names[i], departments[i], titles[i],
+                        String.format("138%08d", Integer.valueOf(i + 1)),
+                        "teacher" + String.format("%02d", Integer.valueOf(i + 1))
+                                + "@demo.vcampus.local", true));
+            }
+        }
+    }
+
+    private void seedExpandedStudents(Connection connection, String insert) throws SQLException {
+        int globalIndex = 0;
+        for (int departmentIndex = 0;
+             departmentIndex < DEMO_DEPARTMENTS.length; departmentIndex++) {
+            String[] department = DEMO_DEPARTMENTS[departmentIndex];
+            for (int localIndex = 1; localIndex <= 20; localIndex++) {
+                globalIndex++;
+                String studentId = department[4]
+                        + String.format("%03d", Integer.valueOf(localIndex));
+                if (rowExists(connection, "tblStudent", "studentId", studentId)) {
+                    continue;
+                }
+                String userId = demoStudentUserId(departmentIndex, localIndex);
+                String fullName = userId == null
+                        ? generatedStudentName(globalIndex) : demoStudentDisplayName(userId);
+                String classId = department[1] + (localIndex <= 10 ? "-01" : "-02");
+                String status = localIndex == 20 ? "休学" : "在读";
+                executeStudentSave(connection, insert, new StudentDto(
+                        studentId, userId, fullName, localIndex % 2 == 0 ? "女" : "男",
+                        String.format("2008-%02d-%02d", Integer.valueOf((localIndex % 12) + 1),
+                                Integer.valueOf((localIndex % 27) + 1)),
+                        department[0], classId, 2026, status,
+                        String.format("139%08d", Integer.valueOf(globalIndex)),
+                        studentId + "@demo.vcampus.local"));
+            }
+        }
+    }
+
+    private String demoStudentUserId(int departmentIndex, int localIndex) {
+        if (departmentIndex == 0 && localIndex == 1) {
+            return "student";
+        }
+        if (departmentIndex == 0 && localIndex == 2) {
+            return "student02";
+        }
+        if (localIndex == 1 && departmentIndex >= 1 && departmentIndex <= 4) {
+            return "student0" + (departmentIndex + 2);
+        }
+        return null;
+    }
+
+    private String demoStudentDisplayName(String userId) {
+        if ("student".equals(userId)) {
+            return "演示学生01";
+        }
+        return "演示学生" + userId.substring("student".length());
+    }
+
+    private String generatedStudentName(int index) {
+        String surname = DEMO_SURNAMES[(index - 1) % DEMO_SURNAMES.length];
+        String givenName = DEMO_GIVEN_NAMES[((index - 1) / DEMO_SURNAMES.length
+                + index * 3) % DEMO_GIVEN_NAMES.length];
+        return surname + givenName;
+    }
+
+    private boolean rowExists(Connection connection, String table, String idColumn, String id)
+            throws SQLException {
+        String sql = "SELECT COUNT(*) FROM [" + table + "] WHERE [" + idColumn + "]=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
         }
     }
 
