@@ -104,6 +104,9 @@ public final class ServerApplication {
                 + catalogRepository.getImportSummary().getCourseCount() + " courses");
         // 再确认一次日志级别，随后开始接受连接，连接/断开日志即可见。
         ServerLogging.configure();
+        if (ServerLogging.getLogFile() != null) {
+            LOGGER.info("Server log file: " + ServerLogging.getLogFile());
+        }
         server.start();
     }
 }
