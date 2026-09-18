@@ -70,7 +70,15 @@ public final class StoreService {
         if (product.getImagePath() != null && product.getImagePath().length() > 255) {
             throw invalid("图片路径过长（最多 255 个字符）");
         }
-        repository.saveProduct(product);
+        try {
+            repository.saveProduct(product);
+        } catch (SQLException e) {
+            String message = e.getMessage();
+            if (message != null && message.contains("已被他人修改")) {
+                throw new BusinessException(ResponseCode.CONFLICT, message);
+            }
+            throw e;
+        }
     }
 
     public void deleteProduct(UserAccount actor, String productId)
@@ -230,6 +238,9 @@ public final class StoreService {
                 throw new BusinessException(ResponseCode.FORBIDDEN, message);
             }
             if (message != null && message.contains("仅已付款订单")) {
+                throw new BusinessException(ResponseCode.CONFLICT, message);
+            }
+            if (message != null && message.contains("状态已变化")) {
                 throw new BusinessException(ResponseCode.CONFLICT, message);
             }
             throw e;

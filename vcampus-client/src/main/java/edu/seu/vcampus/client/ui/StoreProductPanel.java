@@ -378,8 +378,9 @@ public final class StoreProductPanel extends JPanel {
                     showError("操作被中断");
                     setBusy(false, "操作失败");
                 } catch (ExecutionException e) {
-                    showError(messageOf(e));
-                    setBusy(false, "操作失败");
+                    // 例如“商品已被他人修改”：刷新列表拿到最新版本号后重试即可成功。
+                    showError(messageOf(e) + "\n已为你刷新商品列表，请确认最新数据后重试。");
+                    refresh();
                 }
             }
         }.execute();

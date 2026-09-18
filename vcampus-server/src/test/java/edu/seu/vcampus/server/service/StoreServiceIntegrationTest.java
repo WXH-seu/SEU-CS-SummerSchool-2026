@@ -25,6 +25,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -115,6 +117,86 @@ public class StoreServiceIntegrationTest {
         }
         assertEquals("已取消",
                 service.queryOrders(studentAccount, null).get(0).getStatusName());
+    }
+
+    @Test
+    public void adminSaveIsRejectedWhenStockChangedConcurrently() throws Exception {
+        // 管理员打开编辑框时读到的快照（库存 100、版本 1）
+        ProductDto snapshot = findProduct("P001");
+        assertEquals(100, snapshot.getStock());
+
+        // 顾客在此期间下单扣了 2 件：库存 98，商品版本随之 +1
+        service.updateCart(studentAccount, new CartUpdateRequest("P001", 2));
+        service.createOrder(studentAccount,
+                new OrderCreateRequest(Collections.singletonList("P001")));
+        assertEquals(98, findProduct("P001").getStock());
+
+        // 管理员仍用旧快照保存（虽然只改了描述，但会把旧库存 100 一起写回）
+        ProductDto stale = new ProductDto(snapshot.getProductId(), snapshot.getProductName(),
+                snapshot.getCategory(), "并发修改后的描述", snapshot.getImagePath(),
+                snapshot.getPrice(), snapshot.getStock(), snapshot.isActive(),
+                snapshot.getVersion());
+        try {
+            service.saveProduct(admin, stale);
+            fail("Stale save should be rejected by the optimistic lock");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+        }
+        // 顾客已买走的 2 件没有被旧快照覆盖回去
+        assertEquals(98, findProduct("P001").getStock());
+    }
+
+    @Test
+    public void twoShoppersRacingForLastItemDoNotOversell() throws Exception {
+        PasswordHasher hasher = new PasswordHasher();
+        String salt = hasher.newSalt();
+        users.insert(new UserAccount("racer2", hasher.hash("student123", salt), salt,
+                "并发买家", Role.STUDENT, true));
+        UserAccount racer2 = users.findById("racer2");
+
+        // 把 P004 的库存改成 1（管理员基于最新版本保存，不会触发乐观锁冲突）
+        ProductDto current = findProduct("P004");
+        service.saveProduct(admin, new ProductDto(current.getProductId(),
+                current.getProductName(), current.getCategory(), current.getDescription(),
+                current.getImagePath(), current.getPrice(), 1, true,
+                current.getVersion()));
+        assertEquals(1, findProduct("P004").getStock());
+
+        service.updateCart(studentAccount, new CartUpdateRequest("P004", 1));
+        service.updateCart(racer2, new CartUpdateRequest("P004", 1));
+
+        final CountDownLatch start = new CountDownLatch(1);
+        final AtomicInteger success = new AtomicInteger();
+        Thread first = new Thread(orderRunnable(studentAccount, start, success), "buyer-1");
+        Thread second = new Thread(orderRunnable(racer2, start, success), "buyer-2");
+        first.start();
+        second.start();
+        start.countDown();
+        first.join(30000);
+        second.join(30000);
+
+        int remaining = findProduct("P004").getStock();
+        assertTrue("库存不能为负", remaining >= 0);
+        assertTrue("最后一件最多只能被一单买走", success.get() <= 1);
+        assertEquals("库存与成功订单数应守恒（总共只有 1 件）",
+                1, remaining + success.get());
+    }
+
+    private Runnable orderRunnable(final UserAccount buyer, final CountDownLatch start,
+                                   final AtomicInteger success) {
+        return new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    start.await();
+                    service.createOrder(buyer,
+                            new OrderCreateRequest(Collections.singletonList("P004")));
+                    success.incrementAndGet();
+                } catch (Exception ignored) {
+                    // 抢不到或锁等待超时都视为失败，测试只关心不超卖
+                }
+            }
+        };
     }
 
     @Test
