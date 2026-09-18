@@ -38,6 +38,7 @@ public final class AccessStoreRepository implements StoreRepository {
         // 先补齐旧库缺失的列（imagePath / balance），再写入演示数据，
         // 否则旧库上的 INSERT/UPDATE 会因为列不存在而失败。
         ensureProductImageColumn();
+        ensureProductVersionColumn();
         ensureBalanceColumn();
         seedDemoData();
     }
@@ -111,18 +112,39 @@ public final class AccessStoreRepository implements StoreRepository {
 
     @Override
     public void saveProduct(ProductDto product) throws SQLException {
-        String update = "UPDATE [tblProduct] SET [productName]=?, [category]=?, "
-                + "[description]=?, [imagePath]=?, [price]=?, [stock]=?, [active]=? "
-                + "WHERE [productId]=?";
-        String insert = "INSERT INTO [tblProduct] ([productName], [category], "
-                + "[description], [imagePath], [price], [stock], [active], [productId]) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = database.openConnection()) {
-            if (executeProductSave(connection, update, product) == 0) {
-                executeProductSave(connection, insert, product);
+            // 带版本号（来自界面加载时的快照）→ 乐观锁更新：
+            // 期间若有下单扣库存、其它管理员编辑等操作，版本已变化，则拒绝覆盖并提示刷新。
+            if (product.getVersion() > 0) {
+                if (executeProductUpdate(connection, PRODUCT_UPDATE_CAS, product) > 0) {
+                    return;
+                }
+                if (productExists(connection, product.getProductId())) {
+                    throw new SQLException("商品已被他人修改，请刷新后重试");
+                }
+            } else if (executeProductUpdate(connection, PRODUCT_UPDATE, product) > 0) {
+                // 未提供版本号（旧调用 / 演示数据播种）：直接更新，不参与乐观锁。
+                return;
             }
+            executeProductInsert(connection, product);
         }
     }
+
+    private static final String PRODUCT_UPDATE =
+            "UPDATE [tblProduct] SET [productName]=?, [category]=?, [description]=?, "
+                    + "[imagePath]=?, [price]=?, [stock]=?, [active]=?, "
+                    + "[version] = COALESCE([version], 1) + 1 WHERE [productId]=?";
+
+    private static final String PRODUCT_UPDATE_CAS =
+            "UPDATE [tblProduct] SET [productName]=?, [category]=?, [description]=?, "
+                    + "[imagePath]=?, [price]=?, [stock]=?, [active]=?, "
+                    + "[version] = COALESCE([version], 1) + 1 "
+                    + "WHERE [productId]=? AND COALESCE([version], 1) = ?";
+
+    private static final String PRODUCT_INSERT =
+            "INSERT INTO [tblProduct] ([productName], [category], [description], "
+                    + "[imagePath], [price], [stock], [active], [version], [productId]) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)";
 
     @Override
     public boolean deleteProduct(String productId) throws SQLException {
@@ -230,8 +252,7 @@ public final class AccessStoreRepository implements StoreRepository {
                 for (OrderItemDto item : items) {
                     insertOrderItem(connection, item);
                     if (!tryDeductStock(connection, item.getProductId(), item.getQuantity())) {
-                        throw new SQLException("库存不足：" + item.getProductName()
-                                + "（已被抢购，请刷新后重试）");
+                        throw new SQLException(describeDeductFailure(connection, item));
                     }
                 }
                 clearCartItems(connection, userId, settledProducts);
@@ -336,6 +357,7 @@ public final class AccessStoreRepository implements StoreRepository {
                         + "[description] TEXT(255), [imagePath] TEXT(255), "
                         + "[price] CURRENCY NOT NULL, "
                         + "[stock] INTEGER NOT NULL, [active] YESNO NOT NULL, "
+                        + "[version] INTEGER NOT NULL, "
                         + "CONSTRAINT [uqProductName] UNIQUE ([productName]))");
             }
             if (!tableExists(connection, "tblCartItem")) {
@@ -497,14 +519,37 @@ public final class AccessStoreRepository implements StoreRepository {
     /** 库存条件扣减：库存不足时返回 false，避免多客户端同时抢最后一件导致超卖。 */
     private boolean tryDeductStock(Connection connection, String productId, int quantity)
             throws SQLException {
+        // 同时检查「在架」与「库存充足」，并把版本号 +1：
+        // 这样管理员基于旧快照保存商品时会因版本不一致被拦下，不会覆盖并发销售。
         String sql = "UPDATE [tblProduct] SET [stock] = [stock] - ? "
-                + "WHERE [productId] = ? AND [stock] >= ?";
+                + ", [version] = COALESCE([version], 1) + 1 "
+                + "WHERE [productId] = ? AND [stock] >= ? AND [active] = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, quantity);
             statement.setString(2, productId);
             statement.setInt(3, quantity);
+            statement.setBoolean(4, Boolean.TRUE);
             return statement.executeUpdate() == 1;
         }
+    }
+
+    /** 扣减失败时判断具体原因（已下架 / 库存被抢空），用于给出准确提示。 */
+    private String describeDeductFailure(Connection connection, OrderItemDto item)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT [active], [stock] FROM [tblProduct] WHERE [productId] = ?")) {
+            statement.setString(1, item.getProductId());
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) {
+                    if (!result.getBoolean("active")) {
+                        return "商品已下架：" + item.getProductName();
+                    }
+                    return "库存不足：" + item.getProductName()
+                            + "（剩余 " + result.getInt("stock") + "，已被抢购，请刷新后重试）";
+                }
+            }
+        }
+        return "商品已不可购买：" + item.getProductName();
     }
 
     @Override
@@ -614,10 +659,10 @@ public final class AccessStoreRepository implements StoreRepository {
                 result.getString("productName"), result.getString("category"),
                 result.getString("description"), result.getString("imagePath"),
                 result.getBigDecimal("price"), result.getInt("stock"),
-                result.getBoolean("active"));
+                result.getBoolean("active"), result.getInt("version"));
     }
 
-    private int executeProductSave(Connection connection, String sql, ProductDto product)
+    private int executeProductUpdate(Connection connection, String sql, ProductDto product)
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, product.getProductName());
@@ -628,7 +673,35 @@ public final class AccessStoreRepository implements StoreRepository {
             statement.setInt(6, product.getStock());
             statement.setBoolean(7, product.isActive());
             statement.setString(8, product.getProductId());
+            if (sql.contains("AND COALESCE([version], 1) = ?")) {
+                statement.setInt(9, product.getVersion());
+            }
             return statement.executeUpdate();
+        }
+    }
+
+    private void executeProductInsert(Connection connection, ProductDto product)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(PRODUCT_INSERT)) {
+            statement.setString(1, product.getProductName());
+            setNullableString(statement, 2, product.getCategory());
+            setNullableString(statement, 3, product.getDescription());
+            setNullableString(statement, 4, product.getImagePath());
+            statement.setBigDecimal(5, money(product.getPrice()));
+            statement.setInt(6, product.getStock());
+            statement.setBoolean(7, product.isActive());
+            statement.setString(8, product.getProductId());
+            statement.executeUpdate();
+        }
+    }
+
+    private boolean productExists(Connection connection, String productId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM [tblProduct] WHERE [productId] = ?")) {
+            statement.setString(1, productId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getInt(1) > 0;
+            }
         }
     }
 
@@ -662,7 +735,9 @@ public final class AccessStoreRepository implements StoreRepository {
                 // 退回库存
                 List<OrderItemDto> items = findOrderItems(connection, orderId);
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE [tblProduct] SET [stock] = [stock] + ? WHERE [productId] = ?")) {
+                        "UPDATE [tblProduct] SET [stock] = [stock] + ?, "
+                                + "[version] = COALESCE([version], 1) + 1 "
+                                + "WHERE [productId] = ?")) {
                     for (OrderItemDto item : items) {
                         statement.setInt(1, item.getQuantity());
                         statement.setString(2, item.getProductId());
@@ -678,9 +753,12 @@ public final class AccessStoreRepository implements StoreRepository {
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE [tblOrder] SET [statusName] = '已取消' WHERE [orderId] = ?")) {
+                        "UPDATE [tblOrder] SET [statusName] = '已取消' "
+                                + "WHERE [orderId] = ? AND [statusName] = '已付款'")) {
                     statement.setString(1, orderId);
-                    statement.executeUpdate();
+                    if (statement.executeUpdate() == 0) {
+                        throw new SQLException("订单状态已变化，无法取消，请刷新后重试");
+                    }
                 }
                 connection.commit();
             } catch (SQLException e) {
@@ -699,6 +777,21 @@ public final class AccessStoreRepository implements StoreRepository {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("ALTER TABLE [tblProduct] ADD COLUMN [imagePath] TEXT(255)");
                 }
+            }
+        }
+    }
+
+    /** 为旧库补充 version 列（商品乐观锁），已有商品统一从版本 1 起算。 */
+    private void ensureProductVersionColumn() throws SQLException {
+        try (Connection connection = database.openConnection()) {
+            if (!columnExists(connection, "tblProduct", "version")) {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("ALTER TABLE [tblProduct] ADD COLUMN [version] INTEGER");
+                }
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(
+                        "UPDATE [tblProduct] SET [version] = 1 WHERE [version] IS NULL");
             }
         }
     }

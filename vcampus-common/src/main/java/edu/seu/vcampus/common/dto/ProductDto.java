@@ -15,15 +15,23 @@ public final class ProductDto implements Serializable {
     private final BigDecimal price;
     private final int stock;
     private final boolean active;
+    /** 乐观锁版本号：查询返回真实版本；保存时回传即可检测“商品已被他人修改”。 */
+    private final int version;
 
     public ProductDto(String productId, String productName, String category,
                       String description, BigDecimal price, int stock, boolean active) {
-        this(productId, productName, category, description, null, price, stock, active);
+        this(productId, productName, category, description, null, price, stock, active, 0);
     }
 
     public ProductDto(String productId, String productName, String category,
                       String description, String imagePath,
                       BigDecimal price, int stock, boolean active) {
+        this(productId, productName, category, description, imagePath, price, stock, active, 0);
+    }
+
+    public ProductDto(String productId, String productName, String category,
+                      String description, String imagePath,
+                      BigDecimal price, int stock, boolean active, int version) {
         this.productId = productId;
         this.productName = productName;
         this.category = category;
@@ -32,6 +40,7 @@ public final class ProductDto implements Serializable {
         this.price = price;
         this.stock = stock;
         this.active = active;
+        this.version = version;
     }
 
     public String getProductId() {
@@ -65,5 +74,9 @@ public final class ProductDto implements Serializable {
 
     public boolean isActive() {
         return active;
+    }
+
+    public int getVersion() {
+        return version;
     }
 }

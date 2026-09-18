@@ -37,8 +37,10 @@ final class StoreEditors {
         if (!confirm(parent, form, value == null ? "新增商品" : "编辑商品")) {
             return null;
         }
+        // 回传加载时的版本号：若期间有下单扣库存或他人编辑，保存会被乐观锁拦下并提示刷新。
         return new ProductDto(text(id), text(name), text(category), text(description),
-                text(imagePath), parsePrice(price), parseStock(stock), active.isSelected());
+                text(imagePath), parsePrice(price), parseStock(stock), active.isSelected(),
+                value == null ? 0 : value.getVersion());
     }
 
     private static JPanel form(String[] labels, Component[] components) {
