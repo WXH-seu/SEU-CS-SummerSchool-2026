@@ -281,6 +281,11 @@ final class CourseCatalogPanel extends JPanel {
         if (course == null) {
             return;
         }
+        // 与服务端共用 CourseDto.isSelectionClosed()：选课结束前教师看不到名单。
+        if (effectiveRole == SubSystemRole.TEACHER && !course.isSelectionClosed()) {
+            SeuMessages.info(this, "该教学班选课尚未结束，选课结束后才能查看名单");
+            return;
+        }
         setBusy(true, "正在加载名单……");
         new SwingWorker<List<SectionRosterEntry>, Void>() {
             @Override
