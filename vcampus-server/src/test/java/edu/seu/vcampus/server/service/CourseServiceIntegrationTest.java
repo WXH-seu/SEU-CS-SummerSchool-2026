@@ -253,8 +253,18 @@ public class CourseServiceIntegrationTest {
                 service.queryCourses(teacher.getUserId(), eff(teacher), null);
         assertFalse(rosterSections.isEmpty());
         String sectionId = rosterSections.get(0).getSectionId();
-        assertEquals(1, service.queryRoster(
-                teacher.getUserId(), eff(teacher), sectionId).size());
+        // 演示班次的选课窗口还没结束，教师此时看不到名单（结束后才开放，
+        // 见 teacherRosterOpensOnlyAfterSelectionWindowCloses）。
+        try {
+            service.queryRoster(teacher.getUserId(), eff(teacher), sectionId);
+            fail("Roster should stay hidden while selection is still open");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("选课尚未结束"));
+        }
+        // 管理员不受选课窗口限制。
+        assertFalse(service.queryRoster(
+                admin.getUserId(), eff(admin), sectionId).isEmpty());
         try {
             service.queryRoster(student.getUserId(), eff(student), sectionId);
             fail("Student should not view rosters");
@@ -345,6 +355,9 @@ public class CourseServiceIntegrationTest {
             assertTrue(expected.getMessage().contains("名额已满"));
         }
 
+        // 教师名单在选课结束后才开放：先把窗口收成“已结束”，再查名单。
+        service.saveCourse(admin.getUserId(), eff(admin),
+                withWindow(section, "2026-09-01 08:00", "2026-09-10 23:59"));
         List<edu.seu.vcampus.common.dto.SectionRosterEntry> roster =
                 service.queryRoster(teacher.getUserId(), eff(teacher), sectionId);
         assertEquals(2, roster.size());
@@ -546,6 +559,219 @@ public class CourseServiceIntegrationTest {
     }
 
     @Test
+    public void deletingSectionWithEnrollmentsLeavesSchedulesAndAudiencesIntact()
+            throws Exception {
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS701", "删除原子性", slot(7, 1, 2, 1, 16)));
+        String sectionId = section.getSectionId();
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(sectionId));
+
+        try {
+            courseRepository.deleteSection(sectionId);
+            fail("外键应当拒绝删除仍有选课记录的教学班");
+        } catch (SQLException expected) {
+            assertTrue(expected.getMessage().toLowerCase().contains("constraint"));
+        }
+        // 删除失败必须整体回滚：教学班、时段、受众和选课记录都保持原样，
+        // 不能留下“教学班还在、排课和受众被清空”的半成品。
+        assertNotNull(courseRepository.findSectionById(sectionId));
+        assertEquals(1, courseRepository.findSchedules(sectionId).size());
+        assertEquals(1,
+                courseRepository.findSectionById(sectionId).getAudiences().size());
+        assertEquals(1, courseRepository.countEnrolled(sectionId));
+    }
+
+    @Test
+    public void concurrentDeleteAndSelectionNeverLeavesPartialState() throws Exception {
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS702", "删除并发", slot(7, 3, 4, 1, 16)));
+        final String sectionId = section.getSectionId();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        final CountDownLatch start = new CountDownLatch(1);
+        Callable<String> selecting = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                start.await();
+                try {
+                    service.selectCourse(student.getUserId(), eff(student),
+                            new CourseSelectRequest(sectionId));
+                    return "OK";
+                } catch (BusinessException e) {
+                    return e.getMessage();
+                }
+            }
+        };
+        Callable<String> deleting = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                start.await();
+                try {
+                    service.deleteCourse(admin.getUserId(), eff(admin), sectionId);
+                    return "OK";
+                } catch (BusinessException e) {
+                    return e.getMessage();
+                }
+            }
+        };
+        String selectResult;
+        String deleteResult;
+        try {
+            Future<String> selected = pool.submit(selecting);
+            Future<String> deleted = pool.submit(deleting);
+            start.countDown();
+            selectResult = selected.get();
+            deleteResult = deleted.get();
+        } finally {
+            pool.shutdownNow();
+        }
+        // 两者只能有一个成功：要么选课成功、删除被拒；要么删除成功、选课拿到
+        // “课程不存在”。两种结果都不允许留下半成品。
+        assertEquals(1,
+                (selectResult.equals("OK") ? 1 : 0) + (deleteResult.equals("OK") ? 1 : 0));
+        if (courseRepository.findSectionById(sectionId) == null) {
+            assertEquals(0, courseRepository.countEnrolled(sectionId));
+        } else {
+            assertEquals(1, courseRepository.findSchedules(sectionId).size());
+            assertEquals(1, courseRepository.findSectionById(sectionId)
+                    .getAudiences().size());
+            assertEquals(1, courseRepository.countEnrolled(sectionId));
+        }
+    }
+
+    @Test
+    public void conflictGuardRunsEvenWhenClassTimeIsUnchanged() throws Exception {
+        academicService.saveTeacher(admin.getUserId(), effAcademic(admin),
+                new TeacherDto("T0002", null, "测试教师二", "CS", "讲师", "", "", true));
+        CourseDto first = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS706", "冲突课程A", slot(7, 13, 14, 1, 16)));
+        service.selectCourse(student.getUserId(), eff(student),
+                new CourseSelectRequest(first.getSectionId()));
+
+        // 直接写入一条同一时段的教学班选课记录，制造“数据层面已经冲突”的历史数据。
+        // 换一位教师，避免被“同一教师同一时段”检查挡住（这里要验证的是学生侧冲突）。
+        CourseDto second = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS707", "冲突课程B", "T0002",
+                        slot(7, 13, 14, 1, 16)));
+        courseRepository.insertEnrollment("20260001", second.getSectionId(), "FIRST",
+                "CONFLICT-SEED-1", "2026-09-02 09:00:00");
+
+        // 只调整名额、上课时间文本没变：仍然要检出冲突并拒绝保存。
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin), withPools(second, 20, 10));
+            fail("已选学生与当前排课冲突时，任何保存都应被拒绝");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.CONFLICT, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("冲突"));
+        }
+    }
+
+    @Test
+    public void audienceChangeCannotExcludeEnrolledStudents() throws Exception {
+        CourseDto section = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS703", "受众收紧", slot(7, 5, 6, 1, 16)));
+        String sectionId = section.getSectionId();
+        String stu = createStudent("stuAudience", "20260006");
+        service.selectCourse(stu, SubSystemRole.STUDENT,
+                new CourseSelectRequest(sectionId));
+
+        // 该生入学年份为 2026，收窄到 2020-2024 就会把他排除在外。
+        List<SectionAudienceDto> oldYearsOnly = Collections.singletonList(
+                new SectionAudienceDto(null, SectionAudienceDto.SCOPE_ALL, null,
+                        Integer.valueOf(2020), Integer.valueOf(2024)));
+        try {
+            service.saveCourse(admin.getUserId(), eff(admin),
+                    withAudiences(section, oldYearsOnly));
+            fail("收紧受众不能把已经选上这门课的学生排除在外");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.INVALID_REQUEST, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("未覆盖"));
+        }
+        assertEquals(SectionAudienceDto.SCOPE_ALL,
+                courseRepository.findSectionById(sectionId).getAudiences().get(0)
+                        .getScopeType());
+
+        // 放宽受众（仍覆盖已选学生）可以正常保存。
+        assertEquals(sectionId, service.saveCourse(admin.getUserId(), eff(admin),
+                withAudiences(section, allAudience())).getSectionId());
+        assertEquals(1, courseRepository.findSchedules(sectionId).size());
+    }
+
+    @Test
+    public void teacherRosterOpensOnlyAfterSelectionWindowCloses() throws Exception {
+        String teacherId = courseRepository.findTeacherIdByUserId(teacher.getUserId());
+        CourseDto openSection = service.saveCourse(admin.getUserId(), eff(admin),
+                demoScheduledCourse("CS704", "选课进行中", teacherId,
+                        slot(7, 7, 8, 1, 16)));
+        try {
+            service.queryRoster(teacher.getUserId(), eff(teacher),
+                    openSection.getSectionId());
+            fail("选课进行中教师不应看到名单");
+        } catch (BusinessException expected) {
+            assertEquals(ResponseCode.FORBIDDEN, expected.getResponseCode());
+            assertTrue(expected.getMessage().contains("选课结束后"));
+        }
+        assertEquals(0, service.queryRoster(admin.getUserId(), eff(admin),
+                openSection.getSectionId()).size());
+
+        CourseDto closedSection = service.saveCourse(admin.getUserId(), eff(admin),
+                new CourseDto(null, "CS705", "选课已结束", "测试课程", teacherId,
+                        null, "CS", null, 3.0, "必修", 30, 30, 0, 0, 0, 0, null,
+                        "2026-2027-1", "", "", "2026-08-01 08:00", "2026-09-10 23:59",
+                        true, false, null, allAudience(),
+                        Collections.singletonList(slot(7, 9, 10, 1, 16))));
+        // 窗口已结束，学生无法再通过服务选课，这里直接写入一条选课记录。
+        courseRepository.insertEnrollment("20260001", closedSection.getSectionId(),
+                "FIRST", "ROSTER-CLOSED-1", "2026-08-02 09:00:00");
+        assertEquals(1, service.queryRoster(teacher.getUserId(), eff(teacher),
+                closedSection.getSectionId()).size());
+    }
+
+    @Test
+    public void concurrentSectionCreationCannotDoubleBookTheSameTeacherSlot()
+            throws Exception {
+        final String teacherId = courseRepository.findTeacherIdByUserId(teacher.getUserId());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        final CountDownLatch start = new CountDownLatch(1);
+        Callable<String> first = createSectionTask(start, "CS801", "并发新建A", teacherId);
+        Callable<String> second = createSectionTask(start, "CS802", "并发新建B", teacherId);
+        String firstResult;
+        String secondResult;
+        try {
+            Future<String> taskA = pool.submit(first);
+            Future<String> taskB = pool.submit(second);
+            start.countDown();
+            firstResult = taskA.get();
+            secondResult = taskB.get();
+        } finally {
+            pool.shutdownNow();
+        }
+        // 同一教师同一时段只能建出一个教学班：先建成功的那个占住时段，
+        // 后一个必须被教师占用检查拒绝。
+        assertEquals(1, (firstResult.equals("OK") ? 1 : 0)
+                + (secondResult.equals("OK") ? 1 : 0));
+    }
+
+    private Callable<String> createSectionTask(final CountDownLatch start,
+                                               final String courseId, final String courseName,
+                                               final String teacherId) {
+        return new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                start.await();
+                try {
+                    service.saveCourse(admin.getUserId(), eff(admin),
+                            demoScheduledCourse(courseId, courseName, teacherId,
+                                    slot(7, 11, 12, 1, 16)));
+                    return "OK";
+                } catch (BusinessException e) {
+                    return e.getMessage();
+                }
+            }
+        };
+    }
+
+    @Test
     public void academicEntitiesReferencedByCourseV2CannotBeDeleted() throws Exception {
         try {
             academicService.deleteStudent(
@@ -625,6 +851,34 @@ public class CourseServiceIntegrationTest {
                 source.getEnrolledCount(), source.getAttemptType(),
                 source.getSemesterName(), source.getClassTime(), source.getLocation(),
                 source.getSelectionStartTime(), source.getSelectionEndTime(),
+                source.isActive(), source.isSelected(), source.getReason(),
+                source.getAudiences(), source.getSchedules());
+    }
+
+    private CourseDto withAudiences(CourseDto source, List<SectionAudienceDto> audiences) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                source.getFirstAttemptCapacity(), source.getRetakeCapacity(),
+                source.getFirstAttemptEnrolled(), source.getRetakeEnrolled(),
+                source.getEnrolledCount(), source.getAttemptType(),
+                source.getSemesterName(), source.getClassTime(), source.getLocation(),
+                source.getSelectionStartTime(), source.getSelectionEndTime(),
+                source.isActive(), source.isSelected(), source.getReason(),
+                audiences, source.getSchedules());
+    }
+
+    private CourseDto withWindow(CourseDto source, String start, String end) {
+        return new CourseDto(source.getSectionId(), source.getCourseId(),
+                source.getCourseName(), source.getDescription(), source.getTeacherId(),
+                source.getTeacherName(), source.getDepartmentId(), source.getDepartmentName(),
+                source.getCredit(), source.getCourseNature(), source.getCapacity(),
+                source.getFirstAttemptCapacity(), source.getRetakeCapacity(),
+                source.getFirstAttemptEnrolled(), source.getRetakeEnrolled(),
+                source.getEnrolledCount(), source.getAttemptType(),
+                source.getSemesterName(), source.getClassTime(), source.getLocation(),
+                start, end,
                 source.isActive(), source.isSelected(), source.getReason(),
                 source.getAudiences(), source.getSchedules());
     }

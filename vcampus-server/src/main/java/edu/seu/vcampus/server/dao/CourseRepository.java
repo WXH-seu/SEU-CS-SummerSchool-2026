@@ -25,6 +25,12 @@ public interface CourseRepository {
 
     List<SectionRosterEntry> findRoster(String sectionId) throws SQLException;
 
+    /**
+     * 已选学生的受众判定字段（院系 + 入学年份），供管理员收紧受众时校验使用。
+     */
+    List<EnrolledStudentAudience> findEnrolledStudentAudiences(String sectionId)
+            throws SQLException;
+
     /** Schedules attached to one section (may be empty for legacy rows). */
     List<SectionScheduleDto> findSchedules(String sectionId) throws SQLException;
 

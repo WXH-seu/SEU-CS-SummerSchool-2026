@@ -12,6 +12,7 @@ import edu.seu.vcampus.common.dto.StudentDto;
 import edu.seu.vcampus.common.enums.ResponseCode;
 import edu.seu.vcampus.common.enums.SubSystemRole;
 import edu.seu.vcampus.server.dao.CourseRepository;
+import edu.seu.vcampus.server.dao.EnrolledStudentAudience;
 import edu.seu.vcampus.server.dao.EnrolledStudentTime;
 import edu.seu.vcampus.server.dao.EnrolledStudentSchedule;
 
@@ -48,6 +49,11 @@ public final class CourseService {
     private final CourseRepository repository;
     private final ConcurrentMap<String, Object> courseLocks =
             new ConcurrentHashMap<String, Object>();
+    /**
+     * 管理员维护教学班的写锁：串行化所有课程维护写入，保证“检查教师时段是否被占用”
+     * 与“写入教学班”之间不会被另一个管理员插入。
+     */
+    private final Object adminWriteLock = new Object();
 
     public CourseService(CourseRepository repository) {
         this.repository = repository;
@@ -154,53 +160,86 @@ public final class CourseService {
         }
     }
 
-    /** Saves a catalog course, its section and the audience rules together. */
+    /**
+     * Saves a catalog course, its section and the audience rules together.
+     *
+     * <p>所有管理员写入先取 {@code adminWriteLock}，因此两个管理员并发新建或调课时，
+     * 教师时段占用检查不会互相漏看；与学生在同一门课上的选课则由课程级锁
+     * {@link #lockFor(String)} 串行。两把锁的获取顺序固定为“管理员写锁 → 课程锁”，
+     * 而选课路径只取课程锁，因此不会形成环。
+     */
     public CourseDto saveCourse(String userId, SubSystemRole effectiveRole, CourseDto course)
             throws SQLException, BusinessException {
         requireAdmin(effectiveRole);
-        validateCourse(course);
-        String classTime = course.getClassTime().trim();
-        String sectionId = course == null ? null : course.getSectionId();
-        if (!isBlank(sectionId)) {
-            synchronized (lockFor(course.getCourseId())) {
-                CourseDto existing = repository.findSectionById(sectionId.trim());
-                if (existing != null && classTimeChanged(existing, course)) {
-                    List<EnrolledStudentTime> conflicts =
-                            new ArrayList<EnrolledStudentTime>();
-                    if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
-                        for (EnrolledStudentSchedule row
-                                : repository.findEnrolledStudentsOtherSchedules(
-                                        sectionId.trim())) {
-                            if (overlapsAny(course.getSchedules(),
-                                    java.util.Collections.singletonList(
-                                            row.getSchedule()))) {
-                                conflicts.add(new EnrolledStudentTime(
-                                        row.getStudentId(), row.getFullName(),
-                                        ""));
-                            }
+        synchronized (adminWriteLock) {
+            validateCourse(course);
+            String classTime = course.getClassTime().trim();
+            String sectionId = course == null ? null : course.getSectionId();
+            if (!isBlank(sectionId)) {
+                synchronized (lockFor(course.getCourseId())) {
+                    CourseDto existing = repository.findSectionById(sectionId.trim());
+                    if (existing != null) {
+                        // 每次保存都复查已选学生的时段冲突：只要当前排课与他们的其它
+                        // 课程冲突就拒绝，不因为“上课时间文本没变”而跳过检查。
+                        List<EnrolledStudentTime> conflicts = enrolledConflicts(course,
+                                sectionId.trim(), classTime);
+                        if (!conflicts.isEmpty()) {
+                            throw conflictFor(conflicts);
                         }
-                    } else {
-                        for (EnrolledStudentTime row
-                                : repository.findEnrolledStudentsOtherClassTimes(
-                                        sectionId.trim())) {
-                            if (timesConflict(classTime, row.getClassTime())) {
-                                conflicts.add(row);
-                            }
-                        }
+                        enforceExistingEnrollments(course, sectionId.trim());
+                        enforceAudienceCoversEnrolled(course, sectionId.trim());
                     }
-                    if (!conflicts.isEmpty()) {
-                        throw conflictFor(conflicts);
-                    }
+                    ensureTeacherAvailable(course, sectionId.trim());
+                    return repository.saveSection(course);
                 }
-                if (existing != null) {
-                    enforceExistingEnrollments(course, sectionId.trim());
+            }
+            ensureTeacherAvailable(course, "");
+            return repository.saveSection(course);
+        }
+    }
+
+    /** 已选学生中，会因为该班当前排课而与自己其它课程冲突的名单。 */
+    private List<EnrolledStudentTime> enrolledConflicts(CourseDto course, String sectionId,
+                                                        String classTime) throws SQLException {
+        List<EnrolledStudentTime> conflicts = new ArrayList<EnrolledStudentTime>();
+        if (course.getSchedules() != null && !course.getSchedules().isEmpty()) {
+            for (EnrolledStudentSchedule row
+                    : repository.findEnrolledStudentsOtherSchedules(sectionId)) {
+                if (overlapsAny(course.getSchedules(),
+                        java.util.Collections.singletonList(row.getSchedule()))) {
+                    conflicts.add(new EnrolledStudentTime(
+                            row.getStudentId(), row.getFullName(), ""));
                 }
-                ensureTeacherAvailable(course, sectionId.trim());
-                return repository.saveSection(course);
+            }
+        } else {
+            for (EnrolledStudentTime row
+                    : repository.findEnrolledStudentsOtherClassTimes(sectionId)) {
+                if (timesConflict(classTime, row.getClassTime())) {
+                    conflicts.add(row);
+                }
             }
         }
-        ensureTeacherAvailable(course, "");
-        return repository.saveSection(course);
+        return conflicts;
+    }
+
+    /**
+     * 收紧受众时不能把已经选上这门课的学生排除在外：否则会留下“名单里有人、
+     * 但他已不满足受众”的记录，学生侧的课程目录与我的课表也会自相矛盾。
+     */
+    private void enforceAudienceCoversEnrolled(CourseDto course, String sectionId)
+            throws SQLException, BusinessException {
+        List<String> excluded = new ArrayList<String>();
+        for (EnrolledStudentAudience row
+                : repository.findEnrolledStudentAudiences(sectionId)) {
+            if (!matchesAudience(course, row.getDepartmentId(), row.getEnrollmentYear())) {
+                excluded.add(row.getStudentId() + "（" + row.getFullName() + "）");
+            }
+        }
+        if (excluded.isEmpty()) {
+            return;
+        }
+        throw invalid("新受众规则未覆盖已选的 " + excluded.size() + " 名学生（如 "
+                + excluded.get(0) + "），未保存；请先让这些学生退课或放宽受众范围");
     }
 
     private void enforceExistingEnrollments(CourseDto course, String sectionId)
@@ -235,15 +274,6 @@ public final class CourseService {
                         "该教师在该时段已有其他教学班上课，未保存");
             }
         }
-    }
-
-    private boolean classTimeChanged(CourseDto existing, CourseDto next) {
-        String oldTime = existing.getClassTime();
-        String newTime = next == null ? null : next.getClassTime();
-        return oldTime == null
-                ? newTime != null
-                : !oldTime.trim().equals(
-                        newTime == null ? null : newTime.trim());
     }
 
     private BusinessException conflictFor(List<EnrolledStudentTime> conflicts) {
@@ -315,16 +345,32 @@ public final class CourseService {
             throws SQLException, BusinessException {
         requireAdmin(effectiveRole);
         requireId(sectionId, "教学班编号不能为空");
-        sectionId = sectionId.trim();
-        if (repository.sectionHasEnrollments(sectionId)) {
-            throw new BusinessException(ResponseCode.CONFLICT, "课程仍有学生选课，请先停用");
-        }
-        if (!repository.deleteSection(sectionId)) {
+        String target = sectionId.trim();
+        CourseDto preview = repository.findSectionById(target);
+        if (preview == null) {
             throw new BusinessException(ResponseCode.NOT_FOUND, "课程记录不存在");
+        }
+        // 与选课共用同一把课程锁：否则“检查有没有人选”与“删除”之间学生可以插进来，
+        // 删除会被外键拒绝，而时段和受众已经先删掉了，留下半成品。
+        synchronized (lockFor(preview.getCourseId())) {
+            if (repository.findSectionById(target) == null) {
+                throw new BusinessException(ResponseCode.NOT_FOUND, "课程记录不存在");
+            }
+            if (repository.sectionHasEnrollments(target)) {
+                throw new BusinessException(ResponseCode.CONFLICT,
+                        "课程仍有学生选课，请先停用");
+            }
+            if (!repository.deleteSection(target)) {
+                throw new BusinessException(ResponseCode.NOT_FOUND, "课程记录不存在");
+            }
         }
     }
 
-    /** Roster of one section; teachers may only open their own sections. */
+    /**
+     * Roster of one section. Teachers may only open their own sections, and only
+     * after that section's selection window has closed: while students can still
+     * select, the roster stays hidden. Administrators are not restricted.
+     */
     public ArrayList<SectionRosterEntry> queryRoster(String userId,
                                                      SubSystemRole effectiveRole,
                                                      String sectionId)
@@ -343,6 +389,10 @@ public final class CourseService {
             String teacherId = repository.findTeacherIdByUserId(userId);
             if (teacherId == null || !teacherId.equals(course.getTeacherId())) {
                 throw new BusinessException(ResponseCode.FORBIDDEN, "只能查看本人课程的名单");
+            }
+            if (!course.isSelectionClosed()) {
+                throw new BusinessException(ResponseCode.FORBIDDEN,
+                        "该教学班选课尚未结束，选课结束后才能查看名单");
             }
         }
         return new ArrayList<SectionRosterEntry>(repository.findRoster(sectionId));

@@ -192,12 +192,26 @@ public final class AccessCourseRepository implements CourseRepository {
     @Override
     public boolean deleteSection(String sectionId) throws SQLException {
         try (Connection connection = database.openConnection()) {
-            deleteBy(connection, "tblSectionSchedule", "sectionId", sectionId);
-            deleteBy(connection, "tblSectionAudience", "sectionId", sectionId);
-            String sql = "DELETE FROM [tblCourseSection] WHERE [sectionId]=?";
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setString(1, sectionId);
-                return statement.executeUpdate() > 0;
+            // 从表必须先删，否则教学班行会被外键挡住；反过来，教学班行被选课记录
+            // 引用时删除会失败，此时已删除的时段和受众必须一并回滚，不能留下
+            // “教学班还在、排课和受众已经没了”的半成品。
+            connection.setAutoCommit(false);
+            try {
+                deleteBy(connection, "tblSectionSchedule", "sectionId", sectionId);
+                deleteBy(connection, "tblSectionAudience", "sectionId", sectionId);
+                String sql = "DELETE FROM [tblCourseSection] WHERE [sectionId]=?";
+                boolean deleted;
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setString(1, sectionId);
+                    deleted = statement.executeUpdate() > 0;
+                }
+                connection.commit();
+                return deleted;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
             }
         }
     }
@@ -239,6 +253,31 @@ public final class AccessCourseRepository implements CourseRepository {
                             result.getString("enrollTime")));
                 }
                 return roster;
+            }
+        }
+    }
+
+    @Override
+    public List<EnrolledStudentAudience> findEnrolledStudentAudiences(String sectionId)
+            throws SQLException {
+        String sql = "SELECT e.[studentId], st.[fullName], st.[departmentId], "
+                + "st.[enrollmentYear] FROM [tblCourseEnrollment] e "
+                + "INNER JOIN [tblStudent] st ON st.[studentId] = e.[studentId] "
+                + "WHERE e.[sectionId] = ? ORDER BY e.[studentId]";
+        try (Connection connection = database.openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, sectionId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<EnrolledStudentAudience> rows =
+                        new ArrayList<EnrolledStudentAudience>();
+                while (result.next()) {
+                    rows.add(new EnrolledStudentAudience(
+                            result.getString("studentId"),
+                            result.getString("fullName"),
+                            result.getString("departmentId"),
+                            result.getInt("enrollmentYear")));
+                }
+                return rows;
             }
         }
     }

@@ -1,6 +1,9 @@
 package edu.seu.vcampus.common.dto;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,6 +26,8 @@ import java.util.List;
  */
 public final class CourseDto implements Serializable {
     private static final long serialVersionUID = 1L;
+    private static final DateTimeFormatter SELECTION_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public static final String ATTEMPT_FIRST = "FIRST";
     public static final String ATTEMPT_RETAKE = "RETAKE";
@@ -275,5 +280,25 @@ public final class CourseDto implements Serializable {
 
     public List<SectionScheduleDto> getSchedules() {
         return Collections.unmodifiableList(schedules);
+    }
+
+    /**
+     * 该教学班的选课是否已经结束。
+     *
+     * <p>只有填写了选课结束时间、且当前时间已经晚于它，才算“已结束”。未设置选课窗口
+     * （不限时间）的班次永远返回 {@code false}：学生随时可能选课，教师的选课名单也
+     * 一直不开放。服务端与客户端共用本方法，避免同一条规则出现两种实现。
+     */
+    public boolean isSelectionClosed() {
+        if (selectionEndTime == null || selectionEndTime.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            return LocalDateTime.now().isAfter(
+                    LocalDateTime.parse(selectionEndTime.trim(), SELECTION_TIME_FORMAT));
+        } catch (DateTimeParseException e) {
+            // 非法格式由服务端保存时校验；这里按“未结束”处理，宁可保守。
+            return false;
+        }
     }
 }
